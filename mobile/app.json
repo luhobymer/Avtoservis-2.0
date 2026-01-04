@@ -1,0 +1,73 @@
+{
+  "expo": {
+    "name": "Avtoservis",
+    "slug": "avtoservis",
+    "scheme": "avtoservis",
+    "version": "1.0.0",
+    "projectId": "f1c5fd82-e044-4cca-8bfe-ed15e8856f23",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": false,
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.avtoservis.app",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Додатку потрібен доступ до камери для сканування документів та фотографування запчастин",
+        "NSPhotoLibraryUsageDescription": "Додатку потрібен доступ до фотогалереї для завантаження фотографій запчастин",
+        "NSMicrophoneUsageDescription": "Додатку потрібен доступ до мікрофону для запису відео"
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "package": "com.avtoservis.app",
+      "edgeToEdgeEnabled": true,
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.ACCESS_MEDIA_LOCATION"
+      ]
+    },
+    "plugins": [
+      "expo-localization",
+      "expo-file-system",
+      "expo-secure-store",
+      "expo-notifications",
+      ["expo-camera", {
+        "cameraPermission": "Додатку потрібен доступ до камери для сканування документів та фотографування запчастин"
+      }],
+      ["expo-image-picker", {
+        "photosPermission": "Додатку потрібен доступ до фотогалереї для завантаження фотографій запчастин"
+      }],
+      "expo-document-picker",
+      ["expo-media-library", {
+        "photosPermission": "Додатку потрібен доступ до медіатеки для збереження фотографій",
+        "savePhotosPermission": "Додатку потрібен доступ для збереження фотографій у вашу галерею",
+        "isAccessMediaLocationEnabled": true
+      }]
+    ],
+    "experiments": {
+      "tsconfigPaths": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": "f1c5fd82-e044-4cca-8bfe-ed15e8856f23"
+      },
+      "SUPABASE_URL": "https://aadrklaiemgilkaflvcy.supabase.co",
+      "SUPABASE_ANON_KEY": "sb_publishable_4XYJuVPZLITeEsX2qtWHdA_q5mZy7pv"
+    }
+  }
+}

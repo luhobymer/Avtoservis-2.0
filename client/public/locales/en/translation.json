@@ -1,0 +1,178 @@
+{
+  "app": {
+    "name": "Auto Service"
+  },
+  "fab": {
+    "action": "Action",
+    "speedDial": "Quick Actions",
+    "addVehicle": "Add Vehicle",
+    "newAppointment": "New Appointment",
+    "serviceHistory": "Service History",
+    "editProfile": "Edit Profile"
+  },
+  "common": {
+    "loading": "Loading...",
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "add": "Add",
+    "back": "Back",
+    "yes": "Yes",
+    "no": "No",
+    "confirm": "Confirm",
+    "success": "Success",
+    "error": "Error",
+    "actions": "Actions",
+    "page": "Page",
+    "notAvailable": "Not available"
+  },
+  "auth": {
+    "login": "Login",
+    "register": "Register",
+    "logout": "Logout",
+    "email": "Email",
+    "password": "Password",
+    "name": "Name",
+    "phone": "Phone",
+    "forgotPassword": "Forgot Password?",
+    "resetPassword": "Reset Password",
+    "role": "Role",
+    "owner": "Owner",
+    "serviceTypes": {
+    "air_conditioning": "Air Conditioning",
+    "alignment": "Alignment",
+    "battery_check": "Battery Check",
+    "brake_service": "Brake Service",
+    "cooling_system": "Cooling System",
+    "electrical": "Electrical",
+    "engine_diagnostics": "Engine Diagnostics",
+    "exhaust": "Exhaust System",
+    "filter_replacement": "Filter Replacement",
+    "fluid_change": "Fluid Change",
+    "inspection": "Inspection",
+    "lights": "Lights",
+    "oil_change": "Oil Change",
+    "suspension": "Suspension",
+    "tire_rotation": "Tire Rotation",
+    "transmission_service": "Transmission Service",
+    "wipers": "Wipers",
+    "other": "Other"
+  ,
+    "oil_change": "Oil Change",
+    "brake_service": "Brake Service",
+    "tire_rotation": "Tire Rotation",
+    "battery_check": "Battery Check",
+    "inspection": "Inspection",
+    "engine_diagnostics": "Engine Diagnostics",
+    "other": "Other"
+  },
+  "errors": {
+      "required_field": "This field is required",
+      "phone_format": "Invalid phone format"
+    }
+  },
+  "vehicle": {
+    "title": "My Vehicles",
+    "add": "Add Vehicle",
+    "make": "Make",
+    "model": "Model",
+    "year": "Year",
+    "vin": "VIN",
+    "licensePlate": "License Plate",
+    "mileage": "Mileage",
+    "lastService": "Last Service",
+    "noVehicles": "You don't have any vehicles yet"
+  },
+  "appointment": {
+    "title": "Service Appointments",
+    "schedule": "Schedule Appointment",
+    "serviceType": "Service Type",
+    "description": "Description",
+    "status": "Status",
+    "scheduledDate": "Scheduled Date",
+    "estimatedCompletionDate": "Estimated Completion Date",
+    "actualCompletionDate": "Actual Completion Date",
+    "notes": "Notes",
+    "noAppointments": "You don't have any appointments yet",
+    "statuses": {
+      "scheduled": "Scheduled",
+      "in-progress": "In Progress",
+      "completed": "Completed",
+      "cancelled": "Cancelled"
+    }
+  },
+  "serviceRecord": {
+    "title": "Service Book",
+    "add": "Add Record",
+    "serviceType": "Service Type",
+    "description": "Description",
+    "mileage": "Mileage",
+    "serviceDate": "Service Date",
+    "performedBy": "Performed By",
+    "cost": "Cost",
+    "parts": "Parts",
+    "noRecords": "There are no records in the service book yet",
+    "exportTitle": "Service Book Export",
+    "exportPdf": "Export to PDF",
+    "exportedOn": "Exported on",
+    "servicebook": "Service Book"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "welcome": "Welcome",
+    "upcomingAppointments": "Upcoming Appointments",
+    "recentServiceRecords": "Recent Service Records",
+    "vehicleStatus": "Vehicle Status"
+  },
+  "navigation": {
+    "dashboard": "Dashboard",
+    "vehicles": "My Vehicles",
+    "appointments": "Appointments",
+    "serviceRecords": "Service Book",
+    "profile": "Profile",
+    "settings": "Settings"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "vehicles": "My Vehicles",
+    "appointments": "Appointments",
+    "serviceRecords": "Service Book",
+    "profile": "Profile",
+    "admin": "Administration",
+    "logout": "Logout"
+  },
+  "user": {
+    "admin": "Administrator",
+    "client": "Client"
+  },
+  "admin": {
+    "title": "Admin Panel",
+    "addUser": "Add User",
+    "editUser": "Edit User",
+    "addUserDesc": "Enter new user details",
+    "editUserDesc": "Edit user details",
+    "confirmDelete": "Are you sure you want to delete this user?",
+    "stats": "System Statistics",
+    "appointments": "Appointment Management",
+    "serviceRecords": "Service Records Management",
+    "dashboard": "Dashboard",
+    "users": "Users Management",
+    "vehicles": "Vehicles Management",
+    "noUsers": "There are no users in the system",
+    "appointmentsByStatus": "Appointments by Status",
+    "recentActivity": "Recent Activity",
+    "recentAppointments": "Recent Appointments",
+    "recentServiceRecords": "Recent Service Records",
+    "userCreateViaRegisterOnly": "Creating a new user is only available via registration"
+  },
+  "notifications": {
+    "title": "Notifications",
+    "all": "All Notifications",
+    "empty": "You don't have any notifications",
+    "new": "New",
+    "markAllRead": "Mark All as Read",
+    "deleteAll": "Delete All",
+    "viewAll": "View All"
+  }
+}

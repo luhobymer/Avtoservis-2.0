@@ -1,0 +1,162 @@
+{
+    "profile": "data-package", 
+    "name": "06779371-308f-42d7-895e-5a39833375f0", 
+    "contributors": [
+        {
+            "role": "author", 
+            "email": "rodger@mvs.gov.ua", 
+            "title": "rodger_236"
+        }, 
+        {
+            "role": "maintainer", 
+            "email": "i.bugaenko@hsc.gov.ua", 
+            "title": "Бугаєнко Ігор Іванович"
+        }
+    ], 
+    "created": "2018-08-22T14:52:50.808591", 
+    "title": "Відомості про транспортні засоби та їх власників", 
+    "keywords": [
+        "автомобіль", 
+        "автомобілі", 
+        "власник", 
+        "власники", 
+        "засоби", 
+        "колісні", 
+        "реєстр", 
+        "тз", 
+        "транспортні"
+    ], 
+    "version": "1.0", 
+    "licenses": [
+        {
+            "path": "http://www.opendefinition.org/licenses/cc-by", 
+            "name": "cc-by", 
+            "title": "Creative Commons Attribution"
+        }
+    ], 
+    "homepage": "https://data.gov.ua/dataset/06779371-308f-42d7-895e-5a39833375f0", 
+    "id": "0ffd8b75-0628-48cc-952a-9302f9799ec0", 
+    "resources": [
+        {
+            "mimetype": "application/zip", 
+            "profile": "data-resource", 
+            "name": "reestrTZ2018", 
+            "format": "csv, zip", 
+            "encoding": "utf-8", 
+            "path": "https://data.gov.ua/dataset/0ffd8b75-0628-48cc-952a-9302f9799ec0/resource/01323740-88df-46c2-b06e-fbb58c89fe17/download/tz_opendata_z01012018_po01012019.zip"
+        }, 
+        {
+            "mimetype": "application/zip", 
+            "profile": "data-resource", 
+            "name": "reestrTZ2017", 
+            "format": "csv, zip", 
+            "encoding": "utf-8", 
+            "path": "https://data.gov.ua/dataset/0ffd8b75-0628-48cc-952a-9302f9799ec0/resource/9ce32352-bd11-4324-a2b4-5addbd228b1b/download/tz_opendata_z01012017_po31122017.zip"
+        }, 
+        {
+            "mimetype": "application/zip", 
+            "profile": "data-resource", 
+            "name": "reestrTZ2016", 
+            "format": "csv, zip", 
+            "encoding": "utf-8", 
+            "path": "https://data.gov.ua/dataset/0ffd8b75-0628-48cc-952a-9302f9799ec0/resource/7bdc2a1b-5399-4ab0-97e0-633e68837b04/download/tz_opendata_z01012016_po31122016.zip"
+        }, 
+        {
+            "mimetype": "application/zip", 
+            "profile": "data-resource", 
+            "name": "reestrTZ2015", 
+            "format": "csv, zip", 
+            "encoding": "utf-8", 
+            "path": "https://data.gov.ua/dataset/0ffd8b75-0628-48cc-952a-9302f9799ec0/resource/09c606dc-d740-40db-96f0-e679eeca6ace/download/tz_opendata_z01012015_po31122015.zip"
+        }, 
+        {
+            "mimetype": "application/zip", 
+            "profile": "data-resource", 
+            "name": "reestrTZ2014", 
+            "format": "csv, zip", 
+            "encoding": "utf-8", 
+            "path": "https://data.gov.ua/dataset/0ffd8b75-0628-48cc-952a-9302f9799ec0/resource/80a115ae-61df-4a13-8771-36c2826268df/download/tz_opendata_z01012014_po31122014.zip"
+        }, 
+        {
+            "mimetype": "application/zip", 
+            "profile": "data-resource", 
+            "name": "reestrTZ2013", 
+            "format": "csv, zip", 
+            "encoding": "utf-8", 
+            "path": "https://data.gov.ua/dataset/0ffd8b75-0628-48cc-952a-9302f9799ec0/resource/86a9548b-8323-4fa2-972e-0692edf6959f/download/tz_opendata_z01012013_po31122013.zip"
+        }, 
+        {
+            "mimetype": "application/zip", 
+            "profile": "data-resource", 
+            "name": "reestrTZ2019", 
+            "format": "csv, zip", 
+            "encoding": "utf-8", 
+            "path": "https://data.gov.ua/dataset/0ffd8b75-0628-48cc-952a-9302f9799ec0/resource/7a58e8f7-9323-47d4-a21d-19486e014eb4/download/tz_opendata_z01012019_po01012020.zip"
+        }, 
+        {
+            "mimetype": "application/zip", 
+            "profile": "data-resource", 
+            "name": "reestrTZ2020", 
+            "format": "csv zip", 
+            "encoding": "utf-8", 
+            "path": "https://data.gov.ua/dataset/0ffd8b75-0628-48cc-952a-9302f9799ec0/resource/ebeb92fe-424c-41d1-aacf-288e91049dc9/download/tz_opendata_z01012020_po01012021.zip"
+        }, 
+        {
+            "mimetype": "application/zip", 
+            "profile": "data-resource", 
+            "name": "reestrTZ2021", 
+            "format": "csv zip", 
+            "encoding": "utf-8", 
+            "path": "https://data.gov.ua/dataset/0ffd8b75-0628-48cc-952a-9302f9799ec0/resource/c5cb530d-0533-40be-b9ad-f03e06c94b10/download/tz_opendata_z01012021_po01012022.zip"
+        }, 
+        {
+            "mimetype": "application/zip", 
+            "profile": "data-resource", 
+            "name": "reestrTZ2022", 
+            "format": "csv zip", 
+            "encoding": "utf-8", 
+            "path": "https://data.gov.ua/dataset/0ffd8b75-0628-48cc-952a-9302f9799ec0/resource/bef7b47b-7963-44b5-88a8-f84241137b5b/download/reestrtz2022.zip"
+        }, 
+        {
+            "mimetype": "application/zip", 
+            "profile": "data-resource", 
+            "name": "reestrTZ2022", 
+            "format": "CSV ZIP", 
+            "encoding": "utf-8", 
+            "path": "https://data.gov.ua/dataset/0ffd8b75-0628-48cc-952a-9302f9799ec0/resource/fb6d9eb4-875e-45c9-be51-d49b6875b9eb/download/reestrtz2022.zip"
+        }, 
+        {
+            "mimetype": "application/zip", 
+            "profile": "data-resource", 
+            "name": "reestrTZ2022", 
+            "format": "csv zip", 
+            "encoding": "utf-8", 
+            "path": "https://data.gov.ua/dataset/0ffd8b75-0628-48cc-952a-9302f9799ec0/resource/b1bcb4a9-8e60-4a1c-91c0-00faae008816/download/reestrtz2022.zip"
+        }, 
+        {
+            "mimetype": "application/zip", 
+            "profile": "data-resource", 
+            "name": "reestrTZ2023", 
+            "format": "ZIP", 
+            "encoding": "utf-8", 
+            "path": "https://data.gov.ua/dataset/0ffd8b75-0628-48cc-952a-9302f9799ec0/resource/c3a12388-55c2-4546-8b71-b4b7ff0d8b16/download/reestrtz2023.zip"
+        }, 
+        {
+            "mimetype": "application/zip", 
+            "profile": "data-resource", 
+            "name": "reestrTZ2024", 
+            "format": ".zip", 
+            "encoding": "utf-8", 
+            "path": "https://data.gov.ua/dataset/0ffd8b75-0628-48cc-952a-9302f9799ec0/resource/c3ffecc4-bb5c-4102-b761-6dcfeb60b4fe/download/reestrtz2024.zip"
+        }, 
+        {
+            "mimetype": "application/zip", 
+            "profile": "data-resource", 
+            "name": "reestrTZ2025", 
+            "format": ".zip", 
+            "encoding": "utf-8", 
+            "path": "https://data.gov.ua/dataset/0ffd8b75-0628-48cc-952a-9302f9799ec0/resource/3f13166f-090b-499e-8e23-e9851c5a5f67/download/reestrtz2025.zip"
+        }
+    ], 
+    "description": "Набір даних містить інформацію щодо транспортних засобів та їх власників. Інформація в наборі розділена на окремі ресурси, кожен з яких відповідає вказаному періоду."
+}

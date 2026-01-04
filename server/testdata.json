@@ -1,0 +1,70 @@
+{
+  "users": [
+    {
+      "role": "admin",
+      "name": "Адміністратор Системи",
+      "email": "admin@avtoservis.ua",
+      "phone": "+380501234567",
+      "password": "AdminPass123!",
+      "address": "м. Київ, вул. Хрещатик 1"
+    },
+    {
+      "role": "mechanic",
+      "name": "Петренко Іван Олексійович",
+      "email": "mechanic@avtoservis.ua",
+      "phone": "+380671234568",
+      "password": "MechPass123!",
+      "address": "м. Київ, вул. Лісова 5"
+    },
+    {
+      "role": "client",
+      "name": "Коваленко Марія Ігорівна",
+      "email": "client@example.ua",
+      "phone": "+380931234569",
+      "password": "ClientPass123!",
+      "address": "м. Київ, вул. Шевченка 10"
+    }
+  ],
+  "vehicles": [
+    {
+      "vin": "WAUZZZ8TZJA123456",
+      "make": "Audi",
+      "model": "A6",
+      "year": 2020,
+      "ownerId": 3,
+      "registrationDate": "2020-05-15"
+    },
+    {
+      "vin": "ZFA25000005678901",
+      "make": "Fiat",
+      "model": "Ducato",
+      "year": 2018,
+      "ownerId": 3,
+      "registrationDate": "2018-03-20"
+    },
+    {
+      "vin": "VF3WC9HXCES123456",
+      "make": "Citroen",
+      "model": "Jumper",
+      "year": 2022,
+      "ownerId": 3,
+      "registrationDate": "2022-01-10"
+    }
+  ],
+  "serviceRecords": [
+    {
+      "vehicleId": 1,
+      "date": "2023-05-10",
+      "description": "Заміна масла та фільтрів",
+      "cost": 2500
+    }
+  ],
+  "appointments": [
+    {
+      "userId": 3,
+      "vehicleId": 1,
+      "date": "2023-06-01T10:00:00",
+      "serviceType": "Технічний огляд"
+    }
+  ]
+}

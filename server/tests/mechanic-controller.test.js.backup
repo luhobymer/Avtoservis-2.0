@@ -1,0 +1,431 @@
+const { getAllMechanics, getMechanicById, getMechanicSchedule, createMechanic, updateMechanic, deleteMechanic } = require('../controllers/mechanicController');
+
+// Mock Supabase
+const mockSupabase = {
+  from: jest.fn().mockReturnThis(),
+  select: jest.fn().mockReturnThis(),
+  eq: jest.fn().mockReturnThis(),
+  gte: jest.fn().mockReturnThis(),
+  lte: jest.fn().mockReturnThis(),
+  order: jest.fn().mockReturnThis(),
+  insert: jest.fn().mockReturnThis(),
+  update: jest.fn().mockReturnThis(),
+  delete: jest.fn().mockReturnThis(),
+  single: jest.fn().mockReturnThis(),
+  limit: jest.fn().mockReturnThis(),
+  in: jest.fn().mockReturnThis()
+};
+
+jest.mock('../config/supabaseClient.js', () => ({ supabase: mockSupabase }));
+
+const { getAllMechanics, getMechanicById, createMechanic, updateMechanic, deleteMechanic, getMechanicSchedule } = require('../controllers/mechanicController');
+
+describe('MechanicController', () => {
+  let req, res;
+
+  beforeEach(() => {
+    req = {
+      params: {},
+      query: {},
+      body: {}
+    };
+    res = {
+      json: jest.fn(),
+      status: jest.fn(() => res),
+      send: jest.fn()
+    };
+    jest.clearAllMocks();
+  });
+
+  describe('getAllMechanics', () => {
+    it('should return all mechanics with related data', async () => {
+      const mockMechanics = [
+        {
+          id: 1,
+          first_name: 'Іван',
+          last_name: 'Петренко',
+          service_stations: { id: 1, name: 'СТО №1' },
+          specializations: { id: 1, name: 'Двигуни' }
+        }
+      ];
+
+      mockSupabase.select.mockResolvedValue({
+        data: mockMechanics,
+        error: null
+      });
+
+      await getAllMechanics(req, res);
+
+      expect(mockSupabase.from).toHaveBeenCalledWith('mechanics');
+      expect(mockSupabase.select).toHaveBeenCalledWith(`
+        *,
+        service_stations (id, name),
+        specializations (id, name)
+      `);
+      expect(res.json).toHaveBeenCalledWith(mockMechanics);
+    });
+
+    it('should handle database error', async () => {
+      mockSupabase.select.mockResolvedValue({
+        data: null,
+        error: new Error('Database error')
+      });
+
+      await getAllMechanics(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(500);
+      expect(res.json).toHaveBeenCalledWith({ message: 'Помилка сервера' });
+    });
+
+    it('should handle server error', async () => {
+      mockSupabase.select.mockRejectedValue(new Error('Server error'));
+
+      await getAllMechanics(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(500);
+      expect(res.json).toHaveBeenCalledWith({ message: 'Помилка сервера' });
+    });
+  });
+
+  describe('getMechanicById', () => {
+    beforeEach(() => {
+      req.params.id = '1';
+    });
+
+    it('should return mechanic by id with related data', async () => {
+      const mockMechanic = {
+        id: 1,
+        first_name: 'Іван',
+        last_name: 'Петренко',
+        service_stations: { id: 1, name: 'СТО №1' },
+        specializations: { id: 1, name: 'Двигуни' },
+        appointments: [{ id: 1, appointment_date: '2024-01-15', status: 'confirmed' }]
+      };
+
+      mockSupabase.single.mockResolvedValue({
+        data: mockMechanic,
+        error: null
+      });
+
+      await getMechanicById(req, res);
+
+      expect(mockSupabase.from).toHaveBeenCalledWith('mechanics');
+      expect(mockSupabase.eq).toHaveBeenCalledWith('id', '1');
+      expect(mockSupabase.single).toHaveBeenCalled();
+      expect(res.json).toHaveBeenCalledWith(mockMechanic);
+    });
+
+    it('should return 404 when mechanic not found', async () => {
+      mockSupabase.single.mockResolvedValue({
+        data: null,
+        error: null
+      });
+
+      await getMechanicById(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(404);
+      expect(res.json).toHaveBeenCalledWith({ message: 'Механіка не знайдено' });
+    });
+
+    it('should handle database error', async () => {
+      mockSupabase.single.mockResolvedValue({
+        data: null,
+        error: new Error('Database error')
+      });
+
+      await getMechanicById(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(500);
+      expect(res.json).toHaveBeenCalledWith({ message: 'Помилка сервера' });
+    });
+  });
+
+  describe('getMechanicSchedule', () => {
+    beforeEach(() => {
+      req.params.id = '1';
+      req.query = {
+        start_date: '2024-01-01',
+        end_date: '2024-01-31'
+      };
+    });
+
+    it('should return mechanic schedule for date range', async () => {
+      const mockSchedule = [
+        {
+          id: 1,
+          appointment_date: '2024-01-15T10:00:00Z',
+          status: 'confirmed',
+          services: { id: 1, name: 'Заміна масла', duration: 60 },
+          users: { id: 1, email: 'user@example.com' }
+        }
+      ];
+
+      mockSupabase.order.mockResolvedValue({
+        data: mockSchedule,
+        error: null
+      });
+
+      await getMechanicSchedule(req, res);
+
+      expect(mockSupabase.from).toHaveBeenCalledWith('appointments');
+      expect(mockSupabase.eq).toHaveBeenCalledWith('mechanic_id', '1');
+      expect(mockSupabase.gte).toHaveBeenCalledWith('appointment_date', '2024-01-01');
+      expect(mockSupabase.lte).toHaveBeenCalledWith('appointment_date', '2024-01-31');
+      expect(mockSupabase.order).toHaveBeenCalledWith('appointment_date', { ascending: true });
+      expect(res.json).toHaveBeenCalledWith(mockSchedule);
+    });
+
+    it('should handle database error', async () => {
+      mockSupabase.order.mockResolvedValue({
+        data: null,
+        error: new Error('Database error')
+      });
+
+      await getMechanicSchedule(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(500);
+      expect(res.json).toHaveBeenCalledWith({ message: 'Помилка сервера' });
+    });
+  });
+
+  describe('createMechanic', () => {
+    beforeEach(() => {
+      req.body = {
+        first_name: 'Іван',
+        last_name: 'Петренко',
+        phone: '+380501234567',
+        email: 'ivan@example.com',
+        specialization_id: 1,
+        service_station_id: 1,
+        experience_years: 5
+      };
+    });
+
+    it('should create new mechanic successfully', async () => {
+      const mockCreatedMechanic = {
+        id: 1,
+        ...req.body
+      };
+
+      mockSupabase.single.mockResolvedValue({
+        data: mockCreatedMechanic,
+        error: null
+      });
+
+      await createMechanic(req, res);
+
+      expect(mockSupabase.from).toHaveBeenCalledWith('mechanics');
+      expect(mockSupabase.insert).toHaveBeenCalledWith([req.body]);
+      expect(mockSupabase.select).toHaveBeenCalled();
+      expect(mockSupabase.single).toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(201);
+      expect(res.json).toHaveBeenCalledWith(mockCreatedMechanic);
+    });
+
+    it('should handle database error during creation', async () => {
+      mockSupabase.single.mockResolvedValue({
+        data: null,
+        error: new Error('Database error')
+      });
+
+      await createMechanic(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(500);
+      expect(res.json).toHaveBeenCalledWith({ message: 'Помилка сервера' });
+    });
+
+    it('should handle server error', async () => {
+      mockSupabase.single.mockRejectedValue(new Error('Server error'));
+
+      await createMechanic(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(500);
+      expect(res.json).toHaveBeenCalledWith({ message: 'Помилка сервера' });
+    });
+  });
+
+  describe('updateMechanic', () => {
+    beforeEach(() => {
+      req.params.id = '1';
+      req.body = {
+        first_name: 'Іван',
+        last_name: 'Петренко',
+        phone: '+380501234567',
+        email: 'ivan@example.com',
+        specialization_id: 1,
+        service_station_id: 1,
+        experience_years: 6
+      };
+    });
+
+    it('should update mechanic successfully', async () => {
+      const mockUpdatedMechanic = {
+        id: 1,
+        ...req.body
+      };
+
+      mockSupabase.single.mockResolvedValue({
+        data: mockUpdatedMechanic,
+        error: null
+      });
+
+      await updateMechanic(req, res);
+
+      expect(mockSupabase.from).toHaveBeenCalledWith('mechanics');
+      expect(mockSupabase.update).toHaveBeenCalledWith(req.body);
+      expect(mockSupabase.eq).toHaveBeenCalledWith('id', '1');
+      expect(mockSupabase.select).toHaveBeenCalled();
+      expect(mockSupabase.single).toHaveBeenCalled();
+      expect(res.json).toHaveBeenCalledWith(mockUpdatedMechanic);
+    });
+
+    it('should return 404 when mechanic not found', async () => {
+      mockSupabase.single.mockResolvedValue({
+        data: null,
+        error: null
+      });
+
+      await updateMechanic(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(404);
+      expect(res.json).toHaveBeenCalledWith({ message: 'Механіка не знайдено' });
+    });
+
+    it('should handle database error', async () => {
+      mockSupabase.single.mockResolvedValue({
+        data: null,
+        error: new Error('Database error')
+      });
+
+      await updateMechanic(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(500);
+      expect(res.json).toHaveBeenCalledWith({ message: 'Помилка сервера' });
+    });
+  });
+
+  describe('deleteMechanic', () => {
+    beforeEach(() => {
+      req.params.id = '1';
+    });
+
+    it('should delete mechanic successfully when no active appointments', async () => {
+      // Mock check for active appointments - none found
+      mockSupabase.limit.mockResolvedValueOnce({
+        data: [],
+        error: null
+      });
+
+      // Mock delete operation
+      mockSupabase.delete.mockResolvedValue({
+        data: null,
+        error: null
+      });
+
+      await deleteMechanic(req, res);
+
+      expect(mockSupabase.from).toHaveBeenCalledWith('appointments');
+      expect(mockSupabase.eq).toHaveBeenCalledWith('mechanic_id', '1');
+      expect(mockSupabase.in).toHaveBeenCalledWith('status', ['pending', 'confirmed']);
+      expect(mockSupabase.limit).toHaveBeenCalledWith(1);
+      expect(res.status).toHaveBeenCalledWith(204);
+      expect(res.send).toHaveBeenCalled();
+    });
+
+    it('should return 400 when mechanic has active appointments', async () => {
+      // Mock check for active appointments - found some
+      mockSupabase.limit.mockResolvedValue({
+        data: [{ id: 1 }],
+        error: null
+      });
+
+      await deleteMechanic(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({
+        message: 'Неможливо видалити механіка з активними записами'
+      });
+    });
+
+    it('should handle error when checking active appointments', async () => {
+      mockSupabase.limit.mockResolvedValue({
+        data: null,
+        error: new Error('Database error')
+      });
+
+      await deleteMechanic(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(500);
+      expect(res.json).toHaveBeenCalledWith({ message: 'Помилка сервера' });
+    });
+
+    it('should handle database error during deletion', async () => {
+      // Mock successful check for active appointments
+      mockSupabase.limit.mockResolvedValueOnce({
+        data: [],
+        error: null
+      });
+
+      // Mock delete operation error
+      mockSupabase.delete.mockResolvedValue({
+        data: null,
+        error: new Error('Database error')
+      });
+
+      await deleteMechanic(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(500);
+      expect(res.json).toHaveBeenCalledWith({ message: 'Помилка сервера' });
+    });
+
+    it('should handle server error', async () => {
+      mockSupabase.limit.mockRejectedValue(new Error('Server error'));
+
+      await deleteMechanic(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(500);
+      expect(res.json).toHaveBeenCalledWith({ message: 'Помилка сервера' });
+    });
+  });
+
+  // Integration tests
+  describe('Integration Tests', () => {
+    it('should properly chain Supabase calls for getAllMechanics', async () => {
+      const mockData = [{ id: 1, first_name: 'Test' }];
+      mockSupabase.select.mockResolvedValue({ data: mockData, error: null });
+
+      await getAllMechanics(req, res);
+
+      expect(mockSupabase.from).toHaveBeenCalledWith('mechanics');
+      expect(mockSupabase.select).toHaveBeenCalledWith(`
+        *,
+        service_stations (id, name),
+        specializations (id, name)
+      `);
+    });
+
+    it('should properly chain Supabase calls for getMechanicById', async () => {
+      req.params.id = '1';
+      const mockData = { id: 1, first_name: 'Test' };
+      mockSupabase.single.mockResolvedValue({ data: mockData, error: null });
+
+      await getMechanicById(req, res);
+
+      expect(mockSupabase.from).toHaveBeenCalledWith('mechanics');
+      expect(mockSupabase.eq).toHaveBeenCalledWith('id', '1');
+      expect(mockSupabase.single).toHaveBeenCalled();
+    });
+
+    it('should properly pass parameters to getMechanicSchedule', async () => {
+      req.params.id = '1';
+      req.query = { start_date: '2024-01-01', end_date: '2024-01-31' };
+      mockSupabase.order.mockResolvedValue({ data: [], error: null });
+
+      await getMechanicSchedule(req, res);
+
+      expect(mockSupabase.eq).toHaveBeenCalledWith('mechanic_id', '1');
+      expect(mockSupabase.gte).toHaveBeenCalledWith('appointment_date', '2024-01-01');
+      expect(mockSupabase.lte).toHaveBeenCalledWith('appointment_date', '2024-01-31');
+    });
+  });
+});

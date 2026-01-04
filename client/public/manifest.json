@@ -1,0 +1,67 @@
+{
+  "name": "Автосервіс",
+  "short_name": "Автосервіс",
+  "lang": "uk",
+  "description": "Мобільний додаток для керування автосервісом",
+  "categories": ["авто", "сервіс", "технічне обслуговування"],
+  "start_url": "/",
+  "display": "standalone",
+  "scope": "/",
+  "screenshots": [
+    {
+      "src": "/screenshots/screen1-720x1520.jpg",
+      "sizes": "720x1520",
+      "type": "image/jpeg",
+      "label": "Головний екран"
+    }
+  ],
+  "features": [
+    "Онлайн запис на ТО",
+    "Історія обслуговування",
+    "Сповіщення про наближення ТО"
+  ],
+  "orientation": "portrait",
+  "prefer_related_applications": false,
+  "iarc_rating_id": "e84b07d7",
+  "related_applications": [
+    {
+      "platform": "play",
+      "url": "https://play.google.com/store/apps/details?id=com.avtoservis"
+    },
+    {
+      "platform": "itunes",
+      "url": "https://apps.apple.com/app/avtoservis/id123456789"
+    }
+  ],
+  "background_color": "#ffffff",
+  "dir": "ltr",
+  "protocol_handlers": [
+    {
+      "protocol": "web+avtoservice",
+      "url": "/?protocol=%s"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Новий запис",
+      "short_name": "Запис",
+      "description": "Створити новий запис на ТО",
+      "url": "/new-appointment",
+      "icons": [{ "src": "/icons/icon-96x96.png", "sizes": "96x96" }]
+    }
+  ],
+  "theme_color": "#1976d2",
+  "icons": [
+    {
+      "src": "/pwa-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/pwa-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ],
+  "orientation": "portrait-primary"
+}

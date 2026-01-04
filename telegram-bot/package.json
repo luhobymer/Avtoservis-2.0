@@ -1,0 +1,40 @@
+{
+  "name": "avtoservis-telegram-bot",
+  "version": "1.0.0",
+  "description": "Телеграм бот для автосервісу - запис на обслуговування та сповіщення",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js",
+    "dev": "nodemon bot.js",
+    "start:polling": "node -e \"process.env.BOT_MODE='polling'; require('./bot.js')\"",
+    "dev:polling": "nodemon -x \"node -e \"\"process.env.BOT_MODE='polling'; require('./bot.js')\"\"\"",
+    "start:webhook": "node -e \"process.env.BOT_MODE='webhook'; require('./webhook.js')\"",
+    "dev:webhook": "nodemon -x \"node -e \"\"process.env.BOT_MODE='webhook'; require('./webhook.js')\"\"\"",
+    "start:polling:win": "set BOT_MODE=polling&& node bot.js",
+    "start:webhook:win": "set BOT_MODE=webhook&& node webhook.js",
+    "test": "jest",
+    "build": "echo 'No build step required'"
+  },
+  "keywords": [
+    "telegram",
+    "bot",
+    "autoservice",
+    "nodejs"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^1.6.0",
+    "dotenv": "^16.3.1",
+    "express": "^4.19.2",
+    "express-rate-limit": "^7.1.5",
+    "helmet": "^7.1.0",
+    "moment": "^2.29.4",
+    "node-telegram-bot-api": "^0.64.0",
+    "winston": "^3.11.0"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "nodemon": "^3.0.2"
+  }
+}

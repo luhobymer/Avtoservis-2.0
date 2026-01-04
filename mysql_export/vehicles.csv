@@ -1,0 +1,4 @@
+vin,license_plate,owner_email
+VINTEST12345678901,AA1234BB,test1@example.com
+VINTEST98765432109,BC5577AK,test2@example.com
+NEWVIN00000000000,CC9999DD,new@example.com

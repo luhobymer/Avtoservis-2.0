@@ -1,0 +1,4 @@
+vehicle_vin,service_date,time_slot,status,notes
+VINTEST12345678901,2024-05-20,10:00-12:00,completed,Оновлений запис з новими деталями
+VINTEST98765432109,2024-05-21,14:00-16:00,cancelled,Скасований запис
+NEWVIN00000000000,2024-06-01,09:00-11:00,pending,Новий тестовий запис

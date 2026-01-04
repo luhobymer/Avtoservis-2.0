@@ -1,0 +1,178 @@
+{
+  "app": {
+    "name": "Автосервис"
+  },
+  "fab": {
+    "action": "Действие",
+    "speedDial": "Быстрые действия",
+    "addVehicle": "Добавить автомобиль",
+    "newAppointment": "Новая запись",
+    "serviceHistory": "История обслуживания",
+    "editProfile": "Редактировать профиль"
+  },
+  "common": {
+    "loading": "Загрузка...",
+    "save": "Сохранить",
+    "cancel": "Отменить",
+    "delete": "Удалить",
+    "edit": "Редактировать",
+    "add": "Добавить",
+    "back": "Назад",
+    "yes": "Да",
+    "no": "Нет",
+    "confirm": "Подтвердить",
+    "success": "Успешно",
+    "error": "Ошибка",
+    "actions": "Действия",
+    "page": "Страница",
+    "notAvailable": "Недоступно"
+  },
+  "auth": {
+    "login": "Войти",
+    "register": "Зарегистрироваться",
+    "logout": "Выйти",
+    "email": "Электронная почта",
+    "password": "Пароль",
+    "name": "Имя",
+    "phone": "Телефон (формат: +380981234567 або 0981234567)",
+    "forgotPassword": "Забыли пароль?",
+    "serviceTypes": {
+    "air_conditioning": "Кондиционер",
+    "alignment": "Развал-схождение",
+    "battery_check": "Проверка аккумулятора",
+    "brake_service": "Обслуживание тормозов",
+    "cooling_system": "Охлаждающая система",
+    "electrical": "Электрика",
+    "engine_diagnostics": "Диагностика двигателя",
+    "exhaust": "Выхлопная система",
+    "filter_replacement": "Замена фильтров",
+    "fluid_change": "Замена жидкостей",
+    "inspection": "Инспекция",
+    "lights": "Освещение",
+    "oil_change": "Замена масла",
+    "suspension": "Подвеска",
+    "tire_rotation": "Шиномонтаж",
+    "transmission_service": "Обслуживание трансмиссии",
+    "wipers": "Щетки стеклоочистителя",
+    "other": "Другое"
+  ,
+    "oil_change": "Замена масла",
+    "brake_service": "Обслуживание тормозов",
+    "tire_rotation": "Шиномонтаж",
+    "battery_check": "Проверка аккумулятора",
+    "inspection": "Инспекция",
+    "engine_diagnostics": "Диагностика двигателя",
+    "other": "Другое"
+  },
+  "errors": {
+      "required_field": "Обязательное поле",
+      "phone_format": "Неверный формат телефона. Используйте +7XXXXXXXXXX или 0XXXXXXXXX"
+    },
+    "resetPassword": "Сбросить пароль",
+    "role": "Роль",
+    "owner": "Владелец"
+  },
+  "vehicle": {
+    "title": "Мои автомобили",
+    "add": "Добавить автомобиль",
+    "make": "Марка",
+    "model": "Модель",
+    "year": "Год",
+    "vin": "VIN-код",
+    "licensePlate": "Номерной знак",
+    "mileage": "Пробег",
+    "lastService": "Последнее обслуживание",
+    "noVehicles": "У вас еще нет добавленных автомобилей"
+  },
+  "appointment": {
+    "title": "Записи на обслуживание",
+    "schedule": "Записаться на обслуживание",
+    "serviceType": "Тип обслуживания",
+    "description": "Описание",
+    "status": "Статус",
+    "scheduledDate": "Запланированная дата",
+    "estimatedCompletionDate": "Ориентировочная дата завершения",
+    "actualCompletionDate": "Фактическая дата завершения",
+    "notes": "Примечания",
+    "noAppointments": "У вас еще нет записей на обслуживание",
+    "statuses": {
+      "scheduled": "Запланировано",
+      "in-progress": "В процессе",
+      "completed": "Завершено",
+      "cancelled": "Отменено"
+    }
+  },
+  "serviceRecord": {
+    "title": "Сервисная книга",
+    "add": "Добавить запись",
+    "serviceType": "Тип обслуживания",
+    "description": "Описание",
+    "mileage": "Пробег",
+    "serviceDate": "Дата обслуживания",
+    "performedBy": "Исполнитель",
+    "cost": "Стоимость",
+    "parts": "Запчасти",
+    "noRecords": "В сервисной книге еще нет записей",
+    "exportTitle": "Экспорт сервисной книги",
+    "exportPdf": "Экспорт в PDF",
+    "exportedOn": "Экспортировано",
+    "servicebook": "Сервисная книга"
+  },
+  "dashboard": {
+    "title": "Панель управления",
+    "welcome": "Добро пожаловать",
+    "upcomingAppointments": "Предстоящие записи",
+    "recentServiceRecords": "Последние обслуживания",
+    "vehicleStatus": "Состояние автомобилей"
+  },
+  "navigation": {
+    "dashboard": "Главная",
+    "vehicles": "Мои автомобили",
+    "appointments": "Записи на обслуживание",
+    "serviceRecords": "Сервисная книга",
+    "profile": "Профиль",
+    "settings": "Настройки"
+  },
+  "nav": {
+    "dashboard": "Главная",
+    "vehicles": "Мои автомобили",
+    "appointments": "Записи на обслуживание",
+    "serviceRecords": "Сервисная книга",
+    "profile": "Профиль",
+    "admin": "Администрирование",
+    "logout": "Выйти"
+  },
+  "user": {
+    "admin": "Администратор",
+    "client": "Клиент"
+  },
+  "admin": {
+    "title": "Административная панель",
+    "addUser": "Добавить пользователя",
+    "editUser": "Редактировать пользователя",
+    "addUserDesc": "Введите данные нового пользователя",
+    "editUserDesc": "Редактирование данных пользователя",
+    "confirmDelete": "Вы уверены, что хотите удалить этого пользователя?",
+    "stats": "Статистика системы",
+    "appointments": "Управление записями",
+    "serviceRecords": "Управление сервисной книгой",
+    "dashboard": "Панель управления",
+    "users": "Управление пользователями",
+    "vehicles": "Управление автомобилями",
+    "noUsers": "В системе нет пользователей",
+    "appointmentsByStatus": "Записи по статусу",
+    "recentActivity": "Недавняя активность",
+    "recentAppointments": "Недавние записи",
+    "recentServiceRecords": "Недавние обслуживания",
+    "userCreateViaRegisterOnly": "Создание нового пользователя доступно только через регистрацию"
+  },
+  "notifications": {
+    "title": "Уведомления",
+    "all": "Все уведомления",
+    "empty": "У вас нет уведомлений",
+    "new": "Новое",
+    "markAllRead": "Отметить все как прочитанные",
+    "deleteAll": "Удалить все",
+    "viewAll": "Просмотреть все"
+  }
+}

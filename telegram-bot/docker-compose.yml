@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  telegram-bot:
+    build: .
+    container_name: avtoservis-telegram-bot
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+    env_file:
+      - .env
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./logs:/app/logs
+      - ./data:/app/data
+    networks:
+      - avtoservis-network
+    depends_on:
+      - redis
+
+  redis:
+    image: redis:7-alpine
+    container_name: avtoservis-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - avtoservis-network
+
+networks:
+  avtoservis-network:
+    driver: bridge
+
+volumes:
+  redis_data:

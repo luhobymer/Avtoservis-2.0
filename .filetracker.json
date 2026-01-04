@@ -1,0 +1,12 @@
+{
+  "tracked_files": {
+    "client/vite.config.js": "3a9f8c7b1245d8f1",
+    "client/public/manifest.json": "b54d32a1cfd2e7f0",
+    "client/public/sw.js": "e76a89104cd25c3b",
+    "server/middleware/auth.js": "98c712ef436b5a09",
+    "server/routes/users.js": "2f7a4d6c8091e5b3",
+    "server/config/supabaseClient.js": "5d0e1f7a3b8c9426"
+  },
+  "last_checked": "2024-02-20T14:30:00Z",
+  "hash_algorithm": "sha256"
+}

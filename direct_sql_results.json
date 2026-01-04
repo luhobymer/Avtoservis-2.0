@@ -1,0 +1,30 @@
+{
+  "timestamp": "2025-11-30T13:47:32.197Z",
+  "supabase_url": "https://aadrklaiemgilkaflvcy.supabase.co",
+  "results": {
+    "Список всіх таблиць": {
+      "error": "Parse error: Unexpected end of JSON input",
+      "raw_data": ""
+    },
+    "Кількість записів у кожній таблиці": {
+      "error": "column \"tablename\" does not exist",
+      "status": 400
+    },
+    "Структура таблиці users": {
+      "error": "Parse error: Unexpected end of JSON input",
+      "raw_data": ""
+    },
+    "Структура таблиці appointments": {
+      "error": "Parse error: Unexpected end of JSON input",
+      "raw_data": ""
+    },
+    "Перевірка існування service_records": {
+      "error": "Parse error: Unexpected end of JSON input",
+      "raw_data": ""
+    },
+    "RLS політики для service_records": {
+      "error": "Parse error: Unexpected end of JSON input",
+      "raw_data": ""
+    }
+  }
+}
