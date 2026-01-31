@@ -121,36 +121,6 @@ jest.mock('../api/axiosConfig', () => {
   };
 });
 
-// Мок для supabase клієнта
-jest.mock('../api/supabaseClient', () => {
-  const auth = {
-    getSession: jest.fn(() => Promise.resolve({ data: { session: { access_token: 'test-token', refresh_token: 'test-refresh' }, user: { id: '1', email: 'test@example.com' } } })),
-    signInWithPassword: jest.fn(({ email }) => Promise.resolve({
-      data: {
-        session: { access_token: 'test-token', refresh_token: 'test-refresh' },
-        user: { id: '1', email }
-      },
-      error: null
-    })),
-    signOut: jest.fn(() => Promise.resolve({ error: null })),
-    signUp: jest.fn(({ email, password }) => Promise.resolve({
-      data: { user: { id: '1', email } },
-      error: null
-    }))
-  };
-  const tableApi = {
-    select: jest.fn(() => ({
-      eq: jest.fn(() => ({ single: jest.fn(() => Promise.resolve({ data: { id: '1', name: 'Test User', email: 'test@example.com', role: 'client', phone: '' }, error: null })) }))
-    })),
-    insert: jest.fn(() => ({ select: jest.fn(() => ({ single: jest.fn(() => Promise.resolve({ data: null, error: null })) })) })),
-    upsert: jest.fn(() => Promise.resolve({ error: null })),
-    update: jest.fn(() => ({ eq: jest.fn(() => ({ select: jest.fn(() => ({ single: jest.fn(() => Promise.resolve({ data: null, error: null })) })) })) })),
-    delete: jest.fn(() => ({ eq: jest.fn(() => Promise.resolve({ error: null })) })),
-    order: jest.fn(() => Promise.resolve({ data: [], error: null })),
-  };
-  return { supabase: { auth, from: jest.fn(() => tableApi) } };
-});
-
 // Мок для Expo Notifications
 jest.mock('expo-notifications', () => ({
   getPermissionsAsync: jest.fn(() => Promise.resolve({ status: 'granted' })),

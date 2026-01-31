@@ -1,130 +1,149 @@
-import { supabase } from '../supabaseClient';
+async function requestJson(url, options = {}) {
+  const token = localStorage.getItem('auth_token');
+  const response = await fetch(url, {
+    method: options.method || 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(options.headers || {})
+    },
+    body: options.body ? JSON.stringify(options.body) : undefined
+  });
 
-async function attachServiceInfo(rows) {
-  const items = Array.isArray(rows) ? rows : [];
-  const serviceIds = [...new Set(items.map(r => r.service_id).filter(Boolean))];
-  let servicesMap = {};
-  if (serviceIds.length > 0) {
-    const { data: servicesData, error: sError } = await supabase
-      .from('services')
-      .select('id, name, price, duration')
-      .in('id', serviceIds);
-    if (sError) throw sError;
-    (servicesData || []).forEach(s => {
-      servicesMap[s.id] = s;
-    });
+  if (!response.ok) {
+    let message = `Request failed with status ${response.status}`;
+    try {
+      const errorBody = await response.json();
+      if (errorBody && typeof errorBody.message === 'string') {
+        message = errorBody.message;
+      }
+    } catch (error) {
+      void error;
+    }
+    throw new Error(message);
   }
-  return items.map(r => ({
-    id: r.id,
-    VehicleId: r.vehicle_id,
-    vehicleId: r.vehicle_id,
-    serviceId: r.service_id || null,
-    serviceType: r.service_type,
-    serviceName: servicesMap[r.service_id]?.name || null,
-    servicePrice: servicesMap[r.service_id]?.price ?? null,
-    serviceDuration: servicesMap[r.service_id]?.duration ?? null,
-    description: r.description || '',
-    mileage: r.mileage || 0,
-    serviceDate: r.service_date,
-    performedBy: '',
-    cost: r.cost || 0,
-    parts: []
-  }));
+
+  const contentType = response.headers.get('content-type') || '';
+  if (contentType.includes('application/json')) {
+    return response.json();
+  }
+  return null;
+}
+
+function normalizeListPayload(payload) {
+  if (!payload) return [];
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload.data)) return payload.data;
+  return [];
+}
+
+function mapServiceRecord(row) {
+  const vehicleFromRow = row.vehicle || row.Vehicle || row.vehicles || null;
+  const vehicleFromColumns =
+    row.vehicle_make ||
+    row.vehicle_brand ||
+    row.vehicle_model ||
+    row.vehicle_license_plate ||
+    row.vehicle_year
+      ? {
+          make: row.vehicle_make || row.vehicle_brand || null,
+          brand: row.vehicle_brand || row.vehicle_make || null,
+          model: row.vehicle_model || null,
+          year: row.vehicle_year || null,
+          licensePlate: row.vehicle_license_plate || null,
+          vin: row.vehicle_vin || row.vin || null
+        }
+      : null;
+  const mappedVehicle = vehicleFromRow
+    ? {
+        make: vehicleFromRow.make || vehicleFromRow.brand || null,
+        brand: vehicleFromRow.brand || vehicleFromRow.make || null,
+        model: vehicleFromRow.model || null,
+        year: vehicleFromRow.year || null,
+        licensePlate:
+          vehicleFromRow.licensePlate || vehicleFromRow.license_plate || null,
+        vin: vehicleFromRow.vin || row.vehicle_vin || row.vin || null
+      }
+    : vehicleFromColumns;
+  const vehicleId = row.vehicle_id || row.vehicleId || vehicleFromRow?.id || null;
+
+  return {
+    id: row.id,
+    VehicleId: vehicleId,
+    vehicleId,
+    vehicleVin: row.vehicle_vin || row.vin || mappedVehicle?.vin || null,
+    serviceId: row.service_id || null,
+    serviceType: row.service_type || row.serviceType || null,
+    serviceName: row.service_name || row.service_type || row.serviceType || null,
+    servicePrice: null,
+    serviceDuration: null,
+    description: row.description || '',
+    mileage: row.mileage ?? 0,
+    serviceDate: row.service_date || row.serviceDate || row.performed_at || null,
+    performedBy: row.performed_by || row.performedBy || '',
+    cost: row.cost ?? 0,
+    parts: Array.isArray(row.parts) ? row.parts : [],
+    Vehicle: mappedVehicle,
+    vehicles: undefined,
+    createdBy: row.user_id || null
+  };
 }
 
 export async function listAdmin() {
-  const { data, error } = await supabase
-    .from('service_history')
-    .select('id, vehicle_id, service_id, service_type, mileage, service_date, description, cost, mechanic_id, created_at')
-    .order('service_date', { ascending: false });
-  if (error) throw error;
-  return attachServiceInfo(data || []);
+  const payload = await requestJson('/api/admin/service-records');
+  const rows = normalizeListPayload(payload);
+  return rows.map(mapServiceRecord);
 }
 
 export async function listForUser(userId) {
-  const { data: vehicles, error: vError } = await supabase
-    .from('vehicles')
-    .select('id')
-    .eq('user_id', userId);
-  if (vError) throw vError;
-  const ids = (vehicles || []).map(v => v.id);
-  if (ids.length === 0) return [];
-  const { data, error } = await supabase
-    .from('service_history')
-    .select('id, vehicle_id, service_id, service_type, mileage, service_date, description, cost, mechanic_id, created_at')
-    .in('vehicle_id', ids)
-    .order('service_date', { ascending: false });
-  if (error) throw error;
-  return attachServiceInfo(data || []);
+  if (!userId) return [];
+  const payload = await requestJson(`/api/service-records?user_id=${encodeURIComponent(userId)}`);
+  const rows = normalizeListPayload(payload);
+  return rows.map(mapServiceRecord);
 }
 
 export async function getById(id) {
-  const { data, error } = await supabase
-    .from('service_history')
-    .select('id, vehicle_id, service_id, service_type, mileage, service_date, description, cost, mechanic_id, created_at')
-    .eq('id', id)
-    .single();
-  if (error) throw error;
-  let service = null;
-  if (data.service_id) {
-    const { data: serviceData, error: sError } = await supabase
-      .from('services')
-      .select('id, name, price, duration')
-      .eq('id', data.service_id)
-      .single();
-    if (sError) throw sError;
-    service = serviceData || null;
+  const row = await requestJson(`/api/service-records/${id}`);
+  if (!row) {
+    throw new Error('Service record not found');
   }
-  return {
-    id: data.id,
-    VehicleId: data.vehicle_id,
-    vehicleId: data.vehicle_id,
-    serviceId: data.service_id || null,
-    serviceType: data.service_type,
-    serviceName: service?.name || null,
-    servicePrice: service?.price ?? null,
-    serviceDuration: service?.duration ?? null,
-    description: data.description || '',
-    mileage: data.mileage || 0,
-    serviceDate: data.service_date,
-    performedBy: '',
-    cost: data.cost || 0,
-    parts: []
-  };
+  return mapServiceRecord(row);
 }
 
 export async function create(payload) {
   const body = {
     vehicle_id: payload.vehicle_id,
-    service_id: payload.service_id || payload.serviceId || null,
     service_type: payload.service_type || payload.serviceType || null,
     description: payload.description || null,
     mileage: payload.mileage != null ? Number(payload.mileage) : null,
     service_date: payload.service_date ? new Date(payload.service_date).toISOString() : null,
-    cost: payload.cost != null ? Number(payload.cost) : null,
+    cost: payload.cost != null ? Number(payload.cost) : null
   };
-  const { data, error } = await supabase
-    .from('service_history')
-    .insert(body)
-    .select('id')
-    .single();
-  if (error) throw error;
-  return data.id;
+
+  const created = await requestJson('/api/service-records', {
+    method: 'POST',
+    body
+  });
+
+  if (created && created.id) {
+    return created.id;
+  }
+
+  return null;
 }
 
 export async function update(id, payload) {
   const body = {
     vehicle_id: payload.vehicle_id,
-    service_id: payload.service_id || payload.serviceId || null,
     service_type: payload.service_type || payload.serviceType || null,
     description: payload.description || null,
     mileage: payload.mileage != null ? Number(payload.mileage) : null,
     service_date: payload.service_date ? new Date(payload.service_date).toISOString() : null,
-    cost: payload.cost != null ? Number(payload.cost) : null,
+    cost: payload.cost != null ? Number(payload.cost) : null
   };
-  const { error } = await supabase
-    .from('service_history')
-    .update(body)
-    .eq('id', id);
-  if (error) throw error;
+
+  await requestJson(`/api/service-records/${id}`, {
+    method: 'PUT',
+    body
+  });
 }

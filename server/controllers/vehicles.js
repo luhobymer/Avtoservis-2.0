@@ -1,5 +1,27 @@
-const supabase = require('../config/supabase.js');
+const crypto = require('crypto');
+const { getDb } = require('../db/d1');
 const logger = require('../middleware/logger.js');
+
+const formatVehicleRow = (vehicle) => {
+  if (!vehicle) return null;
+  return {
+    id: vehicle.id,
+    vin: vehicle.vin,
+    make: vehicle.make || '',
+    model: vehicle.model,
+    year: vehicle.year,
+    bodyType: vehicle.body_type || null,
+    licensePlate:
+      vehicle.license_plate || vehicle.licensePlate || vehicle.registration_number || null,
+    registrationNumber: vehicle.registration_number || null,
+    engineType: vehicle.engine_type || null,
+    engineVolume: vehicle.engine_volume || null,
+    color: vehicle.color,
+    mileage: vehicle.mileage,
+    user_id: vehicle.user_id,
+    created_at: vehicle.created_at,
+  };
+};
 
 const getAllVehicles = async (req, res) => {
   try {
@@ -8,35 +30,13 @@ const getAllVehicles = async (req, res) => {
       return res.status(401).json({ msg: 'Unauthorized' });
     }
 
-    // --- Реальний запит до Supabase ---
     logger.info(`[getAllVehicles] req.user.id: ${req.user.id}`);
-    logger.info(`[getAllVehicles] Запит до БД Supabase для користувача ${req.user.id}`);
-    const { data, error } = await supabase.from('vehicles').select('*').eq('user_id', req.user.id);
-
-    if (error) {
-      logger.error('[getAllVehicles] Помилка отримання транспортних засобів:', error);
-      return res
-        .status(500)
-        .json({ error: 'Помилка отримання транспортних засобів', details: error.message });
-    }
+    logger.info(`[getAllVehicles] Запит до БД D1 для користувача ${req.user.id}`);
+    const db = await getDb();
+    const data = await db.prepare('SELECT * FROM vehicles WHERE user_id = ?').all(req.user.id);
     logger.info(`[getAllVehicles] Отримано з БД: ${JSON.stringify(data)}`);
 
-    const formattedData = (data || []).map((v) => ({
-      id: v.id,
-      vin: v.vin,
-      make: v.brand || v.make || '',
-      model: v.model,
-      year: v.year,
-      bodyType: v.body_type,
-      licensePlate: v.license_plate || v.licensePlate || v.registration_number,
-      registrationNumber: v.registration_number,
-      engineType: v.engine_type,
-      engineVolume: v.engine_volume,
-      color: v.color,
-      mileage: v.mileage,
-      user_id: v.user_id,
-      created_at: v.created_at,
-    }));
+    const formattedData = (data || []).map(formatVehicleRow);
 
     if (formattedData.length > 0) {
       logger.info(
@@ -67,26 +67,10 @@ const getVehicleById = async (req, res) => {
       `[getVehicleById] Запит автомобіля з ID: ${req.params.id} для користувача: ${req.user.id}`
     );
 
-    const { data, error } = await supabase
-      .from('vehicles')
-      .select('*')
-      .eq('id', req.params.id)
-      .eq('user_id', req.user.id)
-      .single();
-
-    if (error) {
-      logger.error(`[getVehicleById] Помилка отримання автомобіля з ID ${req.params.id}:`, error);
-      return res.status(500).json({
-        error: 'Помилка отримання даних автомобіля',
-        details: error.message,
-        code: error.code,
-        request: {
-          id: req.params.id,
-          user_id: req.user.id,
-        },
-      });
-    }
-
+    const db = await getDb();
+    const data = await db
+      .prepare('SELECT * FROM vehicles WHERE id = ? AND user_id = ?')
+      .get(req.params.id, req.user.id);
     logger.info(`[getVehicleById] Отримано з БД: ${JSON.stringify(data)}`);
 
     if (!data) {
@@ -101,24 +85,7 @@ const getVehicleById = async (req, res) => {
     );
 
     // Перетворюємо дані для клієнта (змінюємо назви полів)
-    const formattedData = {
-      id: data.id,
-      vin: data.vin,
-      make: data.brand || data.make || '',
-      model: data.model,
-      year: data.year,
-      bodyType: data.body_type,
-      licensePlate: data.license_plate,
-      registrationNumber: data.registration_number,
-      engineType: data.engine_type,
-      engineVolume: data.engine_volume,
-      color: data.color,
-      mileage: data.mileage,
-      user_id: data.user_id,
-      created_at: data.created_at,
-    };
-
-    res.json(formattedData);
+    res.json(formatVehicleRow(data));
   } catch (err) {
     logger.error('[getVehicleById] Помилка сервера при отриманні автомобіля:', err);
     res.status(500).json({
@@ -141,48 +108,36 @@ const createVehicle = async (req, res) => {
     }
 
     // Отримуємо дані з запиту
-    const {
-      make,
-      model,
-      year,
-      bodyType,
-      vin,
-      registrationNumber,
-      engineType,
-      engineVolume,
-      color,
-      mileage,
-    } = req.body;
+    const { make, model, year, vin, registrationNumber, color, mileage } = req.body;
 
-    logger.info(`Creating vehicle for user ${req.user.id} in Supabase`);
+    logger.info(`Creating vehicle for user ${req.user.id} in D1`);
 
-    // Додаємо автомобіль до бази даних Supabase
-    const { data, error } = await supabase
-      .from('vehicles')
-      .insert([
-        {
-          brand: make,
-          model,
-          year,
-          body_type: bodyType,
-          vin,
-          registration_number: registrationNumber,
-          engine_type: engineType,
-          engine_volume: engineVolume,
-          color,
-          mileage,
-          user_id: req.user.id,
-        },
-      ])
-      .single();
+    const vehicleId = crypto.randomUUID();
+    const now = new Date().toISOString();
+    const db = await getDb();
+    await db
+      .prepare(
+        `INSERT INTO vehicles
+        (id, user_id, vin, make, model, year, color, license_plate, mileage, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        vehicleId,
+        req.user.id,
+        vin,
+        make,
+        model,
+        year,
+        color || null,
+        registrationNumber || req.body.licensePlate || null,
+        mileage ?? null,
+        now,
+        now
+      );
 
-    if (error) {
-      logger.error('Failed to create vehicle:', error);
-      throw error;
-    }
-
+    const createdVehicle = await db.prepare('SELECT * FROM vehicles WHERE id = ?').get(vehicleId);
     logger.info(`Created new vehicle for user ${req.user.id}`);
-    res.status(201).json(data);
+    res.status(201).json(formatVehicleRow(createdVehicle));
   } catch (err) {
     logger.error('Server error in createVehicle:', err);
     res.status(500).json({
@@ -200,52 +155,40 @@ const updateVehicle = async (req, res) => {
       return res.status(401).json({ msg: 'Unauthorized' });
     }
 
-    const {
-      make,
-      model,
-      year,
-      bodyType,
-      vin,
-      registrationNumber,
-      engineType,
-      engineVolume,
-      color,
-      mileage,
-    } = req.body;
+    const { make, model, year, vin, registrationNumber, color, mileage } = req.body;
 
-    const { data, error } = await supabase
-      .from('vehicles')
-      .update([
-        {
-          brand: make,
-          model,
-          year,
-          body_type: bodyType,
-          vin,
-          registration_number: registrationNumber,
-          engine_type: engineType,
-          engine_volume: engineVolume,
-          color,
-          mileage,
-          user_id: req.user.id,
-        },
-      ])
-      .eq('id', req.params.id)
-      .eq('user_id', req.user.id)
-      .single();
+    const now = new Date().toISOString();
+    const db = await getDb();
+    const result = await db
+      .prepare(
+        `UPDATE vehicles
+         SET vin = ?, make = ?, model = ?, year = ?, color = ?, license_plate = ?,
+             mileage = ?, updated_at = ?
+         WHERE id = ? AND user_id = ?`
+      )
+      .run(
+        vin,
+        make,
+        model,
+        year,
+        color || null,
+        registrationNumber || req.body.licensePlate || null,
+        mileage ?? null,
+        now,
+        req.params.id,
+        req.user.id
+      );
 
-    if (error) {
-      logger.error('Failed to update vehicle:', error);
-      throw error;
-    }
-
-    if (!data) {
+    if (result.changes === 0) {
       logger.warn(`Vehicle with ID ${req.params.id} not found for user ${req.user.id}`);
       return res.status(404).json({ msg: 'Vehicle not found' });
     }
 
+    const updatedVehicle = await db
+      .prepare('SELECT * FROM vehicles WHERE id = ?')
+      .get(req.params.id);
     logger.info(`Updated vehicle with ID: ${req.params.id}`);
-    res.json(data);
+    res.json(formatVehicleRow(updatedVehicle));
   } catch (err) {
     logger.error('Server error in updateVehicle:', err);
     res.status(500).json({
@@ -263,24 +206,18 @@ const deleteVehicle = async (req, res) => {
       return res.status(401).json({ msg: 'Unauthorized' });
     }
 
-    // Для тестування, повертаємо повідомлення про успішне видалення, щоб уникнути помилок з базою даних
-    res.json({ msg: 'Vehicle removed' });
+    const db = await getDb();
+    const result = await db
+      .prepare('DELETE FROM vehicles WHERE id = ? AND user_id = ?')
+      .run(req.params.id, req.user.id);
 
-    /* Закоментовано до завершення міграції на Supabase
-    const { error } = await supabase
-      .from('vehicles')
-      .delete()
-      .eq('id', req.params.id)
-      .eq('user_id', req.user.id);
-
-    if (error) {
-      logger.error('Failed to delete vehicle:', error);
-      throw error;
+    if (result.changes === 0) {
+      logger.warn(`Vehicle with ID ${req.params.id} not found for user ${req.user.id}`);
+      return res.status(404).json({ msg: 'Vehicle not found' });
     }
-    
+
     logger.info(`Deleted vehicle with ID: ${req.params.id}`);
     res.json({ msg: 'Vehicle removed' });
-    */
   } catch (err) {
     logger.error('Server error in deleteVehicle:', err);
     res.status(500).json({

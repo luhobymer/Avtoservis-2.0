@@ -1,24 +1,19 @@
-const { supabase } = require('../config/supabase.js');
+const crypto = require('crypto');
+const { getDb, getExistingColumn } = require('../db/d1');
 
 // Отримати всі послуги
 exports.getAllServices = async (req, res) => {
   try {
-    const { data: services, error } = await supabase.from('services').select('*');
-
-    if (error) throw error;
-
-    // Для кожної послуги отримуємо інформацію про станцію
+    const db = await getDb();
+    const stationColumn = await getExistingColumn('services', ['service_station_id', 'station_id']);
+    const services = await db.prepare('SELECT * FROM services').all();
     const servicesWithStations = await Promise.all(
       services.map(async (service) => {
-        if (service.station_id) {
-          const { data: station } = await supabase
-            .from('service_stations')
-            .select('id, name')
-            .eq('id', service.station_id)
-            .single();
-          return { ...service, service_stations: station };
-        }
-        return service;
+        const stationId = service[stationColumn];
+        const station = stationId
+          ? await db.prepare('SELECT id, name FROM service_stations WHERE id = ?').get(stationId)
+          : null;
+        return { ...service, service_stations: station };
       })
     );
 
@@ -33,38 +28,23 @@ exports.getAllServices = async (req, res) => {
 exports.getServiceById = async (req, res) => {
   try {
     const { id } = req.params;
-    const { data: service, error } = await supabase
-      .from('services')
-      .select('*')
-      .eq('id', id)
-      .single();
+    const db = await getDb();
+    const stationColumn = await getExistingColumn('services', ['service_station_id', 'station_id']);
+    const service = await db.prepare('SELECT * FROM services WHERE id = ?').get(id);
 
-    if (error) throw error;
     if (!service) {
       return res.status(404).json({ message: 'Послугу не знайдено' });
     }
 
-    // Отримуємо інформацію про станцію
-    let stationData = null;
-    if (service.station_id) {
-      const { data: station } = await supabase
-        .from('service_stations')
-        .select('id, name')
-        .eq('id', service.station_id)
-        .single();
-      stationData = station;
-    }
-
-    // Отримуємо інформацію про категорію
-    let categoryData = null;
-    if (service.category_id) {
-      const { data: category } = await supabase
-        .from('service_categories')
-        .select('id, name')
-        .eq('id', service.category_id)
-        .single();
-      categoryData = category;
-    }
+    const stationId = service[stationColumn];
+    const stationData = stationId
+      ? await db.prepare('SELECT id, name FROM service_stations WHERE id = ?').get(stationId)
+      : null;
+    const categoryData = service.category_id
+      ? await db
+          .prepare('SELECT id, name FROM service_categories WHERE id = ?')
+          .get(service.category_id)
+      : null;
 
     const result = {
       ...service,
@@ -82,26 +62,45 @@ exports.getServiceById = async (req, res) => {
 // Створити нову послугу
 exports.createService = async (req, res) => {
   try {
-    const { name, description, price, duration, service_station_id, category_id } = req.body;
+    const { name, description, price, duration, service_station_id, category_id, is_active } =
+      req.body;
 
-    const { data, error } = await supabase
-      .from('services')
-      .insert([
-        {
-          name,
-          description,
-          price,
-          duration,
-          service_station_id,
-          category_id,
-        },
-      ])
-      .select()
-      .single();
+    const db = await getDb();
+    const stationColumn = await getExistingColumn('services', ['service_station_id', 'station_id']);
+    const serviceColumns = await db.prepare('PRAGMA table_info(services)').all();
+    const serviceColumnNames = new Set((serviceColumns || []).map((column) => column.name));
+    const serviceId = crypto.randomUUID();
 
-    if (error) throw error;
+    const insertColumns = [
+      'id',
+      'name',
+      'description',
+      'price',
+      'duration',
+      stationColumn,
+      'category_id',
+    ];
+    const insertValues = [
+      serviceId,
+      name,
+      description,
+      price,
+      duration,
+      service_station_id,
+      category_id,
+    ];
+    if (serviceColumnNames.has('is_active')) {
+      insertColumns.push('is_active');
+      insertValues.push(is_active === undefined ? 1 : is_active ? 1 : 0);
+    }
 
-    res.status(201).json(data);
+    const placeholders = insertColumns.map(() => '?').join(', ');
+    await db
+      .prepare(`INSERT INTO services (${insertColumns.join(', ')}) VALUES (${placeholders})`)
+      .run(...insertValues);
+
+    const created = await db.prepare('SELECT * FROM services WHERE id = ?').get(serviceId);
+    res.status(201).json(created);
   } catch (err) {
     console.error('Create service error:', err);
     res.status(500).json({ message: 'Помилка сервера' });
@@ -112,28 +111,44 @@ exports.createService = async (req, res) => {
 exports.updateService = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, description, price, duration, service_station_id, category_id } = req.body;
+    const { name, description, price, duration, service_station_id, category_id, is_active } =
+      req.body;
 
-    const { data, error } = await supabase
-      .from('services')
-      .update({
-        name,
-        description,
-        price,
-        duration,
-        service_station_id,
-        category_id,
-      })
-      .eq('id', id)
-      .select()
-      .single();
+    const db = await getDb();
+    const stationColumn = await getExistingColumn('services', ['service_station_id', 'station_id']);
+    const serviceColumns = await db.prepare('PRAGMA table_info(services)').all();
+    const serviceColumnNames = new Set((serviceColumns || []).map((column) => column.name));
 
-    if (error) throw error;
-    if (!data) {
+    const updateData = {};
+    if (name !== undefined) updateData.name = name;
+    if (description !== undefined) updateData.description = description;
+    if (price !== undefined) updateData.price = price;
+    if (duration !== undefined) updateData.duration = duration;
+    if (serviceColumnNames.has('is_active') && is_active !== undefined) {
+      updateData.is_active = is_active ? 1 : 0;
+    }
+    if (service_station_id !== undefined) updateData[stationColumn] = service_station_id;
+    if (category_id !== undefined) updateData.category_id = category_id;
+
+    const fields = Object.keys(updateData);
+    if (fields.length > 0) {
+      const setClause = fields.map((field) => `${field} = ?`).join(', ');
+      const values = fields.map((field) => updateData[field]);
+      const updateResult = await db
+        .prepare(`UPDATE services SET ${setClause} WHERE id = ?`)
+        .run(...values, id);
+
+      if (updateResult.changes === 0) {
+        return res.status(404).json({ message: 'Послугу не знайдено' });
+      }
+    }
+
+    const updated = await db.prepare('SELECT * FROM services WHERE id = ?').get(id);
+    if (!updated) {
       return res.status(404).json({ message: 'Послугу не знайдено' });
     }
 
-    res.json(data);
+    res.json(updated);
   } catch (err) {
     console.error('Update service error:', err);
     res.status(500).json({ message: 'Помилка сервера' });
@@ -144,9 +159,8 @@ exports.updateService = async (req, res) => {
 exports.deleteService = async (req, res) => {
   try {
     const { id } = req.params;
-    const { error } = await supabase.from('services').delete().eq('id', id);
-
-    if (error) throw error;
+    const db = await getDb();
+    await db.prepare('DELETE FROM services WHERE id = ?').run(id);
 
     res.status(204).send();
   } catch (err) {

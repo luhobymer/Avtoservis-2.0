@@ -1,9 +1,13 @@
 import { Platform } from 'react-native';
 import { optimizeImage } from './imageUtils';
-import * as FileSystem from 'expo-file-system';
+import axiosAuth from '../api/axiosConfig';
 
-// Перевіряємо, чи це мобільна платформа
 const isMobile = Platform.OS !== 'web';
+
+const normalizeLicensePlate = (plate) => {
+  if (!plate) return null;
+  return plate.replace(/[\s-]/g, '').toUpperCase();
+};
 
 // Клас для роботи з OCR
 export class OCRManager {
@@ -12,6 +16,8 @@ export class OCRManager {
     this.useMock = false;
     this.initialized = false;
     this.tesseractLoaded = false;
+    this.nativeTextRecognition = null;
+    this.useNative = false;
     console.log(`OCRManager створено. Платформа: ${Platform.OS}`);
   }
 
@@ -24,8 +30,21 @@ export class OCRManager {
     try {
       console.log('Initializing OCR system...');
       
-      // В мобільній версії завжди використовуємо мок
       if (isMobile) {
+        try {
+          const nativeModule = require('@react-native-ml-kit/text-recognition');
+          const TextRecognition = nativeModule.default || nativeModule;
+          if (TextRecognition && typeof TextRecognition.recognize === 'function') {
+            this.nativeTextRecognition = TextRecognition;
+            this.useNative = true;
+            this.useMock = false;
+            this.initialized = true;
+            console.log('Native OCR initialized successfully');
+            return;
+          }
+        } catch (nativeError) {
+          console.error('Failed to initialize native OCR:', nativeError);
+        }
         console.log('Mobile platform detected, using mock OCR');
         this.worker = this.createMockWorker();
         this.useMock = true;
@@ -116,7 +135,6 @@ export class OCRManager {
         console.warn('УВАГА: Використовується заглушка для OCR. Реальне розпізнавання неможливе.');
       }
       
-      // Оптимізуємо зображення перед розпізнаванням
       const optimizedImageUri = await optimizeImage(imageUri, {
         quality: 0.9,
         maxWidth: 1200,
@@ -125,16 +143,27 @@ export class OCRManager {
       
       console.log('Розпізнавання тексту з оптимізованого зображення...');
       
-      // Розпізнаємо текст
-      const result = await this.worker.recognize(optimizedImageUri);
+      let recognizedText = null;
       
-      // Перевіряємо результат
-      if (!result || !result.data || !result.data.text) {
-        console.warn('Розпізнавання тексту не повернуло результатів');
-        return null;
+      if (this.useNative && this.nativeTextRecognition) {
+        const nativeResult = await this.nativeTextRecognition.recognize(optimizedImageUri);
+        if (nativeResult) {
+          if (typeof nativeResult.text === 'string') {
+            recognizedText = nativeResult.text;
+          } else if (Array.isArray(nativeResult)) {
+            recognizedText = nativeResult.join('\n');
+          } else if (typeof nativeResult === 'string') {
+            recognizedText = nativeResult;
+          }
+        }
+      } else if (this.worker) {
+        const result = await this.worker.recognize(optimizedImageUri);
+        if (!result || !result.data || !result.data.text) {
+          console.warn('Розпізнавання тексту не повернуло результатів');
+          return null;
+        }
+        recognizedText = result.data.text;
       }
-      
-      const recognizedText = result.data.text;
       
       // Перевіряємо, чи текст не порожній
       if (!recognizedText || recognizedText.trim().length === 0) {
@@ -237,8 +266,6 @@ export class OCRManager {
         console.log('Розпізнано VIN:', vehicleData.vin);
       }
       
-      // Розпізнавання номерного знаку (українські номери)
-      // Формат: AA1234BB, AA 1234 BB, АА1234ВВ, АА 1234 ВВ
       const plateRegex = /[A-ZА-ЯІЇЄ]{2}[ ]?[0-9]{4}[ ]?[A-ZА-ЯІЇЄ]{2}/gi;
       const plateMatches = text.match(plateRegex);
       if (plateMatches && plateMatches.length > 0) {
@@ -349,43 +376,49 @@ export class OCRManager {
       // Формат: AA1234BB, AA 1234 BB, АА1234ВВ, АА 1234 ВВ
       const plateRegex = /[A-ZА-ЯІЇЄ]{2}[ ]?[0-9]{4}[ ]?[A-ZА-ЯІЇЄ]{2}/gi;
       const plateMatches = text.match(plateRegex);
-      
+
       if (!plateMatches || plateMatches.length === 0) {
         console.warn('Не вдалося розпізнати номерний знак');
         return null;
       }
-      
-      const licensePlate = plateMatches[0].replace(/\s/g, '').toUpperCase();
+
+      const licensePlate = normalizeLicensePlate(plateMatches[0]);
       console.log('Розпізнано номерний знак:', licensePlate);
-      
-      // Тут можна додати запит до API для отримання даних про автомобіль за номерним знаком
-      // Наприклад, використовуючи сервіс OpenDataBot або інший API
-      
+
+      let registryData = null;
+
       try {
-        // Приклад запиту до API (замініть на реальний API)
-        const apiUrl = `https://api.example.com/vehicle?plate=${encodeURIComponent(licensePlate)}`;
-        const response = await fetch(apiUrl);
-        
-        if (response.ok) {
-          const data = await response.json();
-          return {
-            licensePlate: licensePlate,
-            make: data.make,
-            model: data.model,
-            year: data.year,
-            color: data.color,
-            vin: data.vin,
-            isPartialData: false
-          };
+        const normalizedPlate = normalizeLicensePlate(licensePlate);
+
+        if (normalizedPlate) {
+          const response = await axiosAuth.get('/api/vehicle-registry', {
+            params: {
+              license_plate: normalizedPlate,
+            },
+          });
+
+          if (response && response.data) {
+            registryData = response.data;
+          }
         }
       } catch (apiError) {
-        console.error('Error fetching vehicle data from API:', apiError);
+        console.error('Error fetching vehicle data from registry:', apiError);
       }
-      
-      // Якщо API недоступний або повернув помилку, повертаємо базові дані
+
+      if (registryData) {
+        return {
+          licensePlate: licensePlate,
+          make: registryData.brand || null,
+          model: registryData.model || null,
+          year: registryData.make_year || null,
+          color: registryData.color || null,
+          vin: registryData.vin || null,
+          isPartialData: false
+        };
+      }
+
       return {
         licensePlate: licensePlate,
-        // Якщо це мок, додаємо додаткові дані
         ...(this.useMock ? {
           make: 'Toyota',
           model: 'Camry',

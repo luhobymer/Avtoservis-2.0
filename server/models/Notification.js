@@ -10,7 +10,8 @@ const notificationSchema = Joi.object({
   updated_at: Joi.date().default(() => new Date().toISOString()),
 });
 
-const { supabase } = require('../config/supabase.js');
+const crypto = require('crypto');
+const { getDb, getExistingColumn } = require('../db/d1');
 
 class Notification {
   constructor({ id, user_id, title, message, is_read, created_at, updated_at }) {
@@ -29,35 +30,55 @@ class Notification {
   }
 
   static async create(notificationData) {
-    const { data, error } = await supabase
-      .from('notifications')
-      .insert([notificationData])
-      .select();
+    const db = await getDb();
+    const readColumn = await getExistingColumn('notifications', ['is_read', 'read']);
+    const notificationId = notificationData.id || crypto.randomUUID();
+    const payload = {
+      title: notificationData.title,
+      message: notificationData.message,
+      type: notificationData.type || 'general',
+      status: notificationData.status || 'pending',
+      scheduled_for: notificationData.scheduled_for || null,
+      data:
+        typeof notificationData.data === 'string'
+          ? notificationData.data
+          : JSON.stringify(notificationData.data ?? null),
+    };
 
-    if (error) throw error;
-    return data[0];
+    await db
+      .prepare(
+        `INSERT INTO notifications
+        (id, user_id, title, message, type, status, scheduled_for, data, ${readColumn}, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        notificationId,
+        notificationData.user_id,
+        payload.title,
+        payload.message,
+        payload.type,
+        payload.status,
+        payload.scheduled_for,
+        payload.data,
+        notificationData.is_read ? 1 : 0,
+        notificationData.created_at || new Date().toISOString()
+      );
+
+    return await db.prepare('SELECT * FROM notifications WHERE id = ?').get(notificationId);
   }
 
   static async findByUserId(userId) {
-    const { data, error } = await supabase
-      .from('notifications')
-      .select('*')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false });
-
-    if (error) throw error;
-    return data;
+    const db = await getDb();
+    return await db
+      .prepare('SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC')
+      .all(userId);
   }
 
   static async markAsRead(notificationId) {
-    const { data, error } = await supabase
-      .from('notifications')
-      .update({ is_read: true, updated_at: new Date().toISOString() })
-      .eq('id', notificationId)
-      .select();
-
-    if (error) throw error;
-    return data[0];
+    const db = await getDb();
+    const readColumn = await getExistingColumn('notifications', ['is_read', 'read']);
+    await db.prepare(`UPDATE notifications SET ${readColumn} = 1 WHERE id = ?`).run(notificationId);
+    return await db.prepare('SELECT * FROM notifications WHERE id = ?').get(notificationId);
   }
 }
 

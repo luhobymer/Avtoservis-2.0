@@ -1,13 +1,11 @@
-import { supabase } from './supabaseClient';
 import * as vehiclesDao from './dao/vehiclesDao';
+import axiosAuth from './axiosConfig';
 
 // Отримання всіх транспортних засобів користувача
 export const getAllVehicles = async () => {
   try {
-    const { data } = await supabase.auth.getSession();
-    const userId = data?.user?.id;
-    if (!userId) return [];
-    return await vehiclesDao.listByUser(userId);
+    // userId витягується всередині DAO через токен у axiosAuth (Workers)
+    return await vehiclesDao.listByUser(null);
   } catch (error) {
     console.error('[VehiclesService] Error fetching vehicles:', error);
     throw error;
@@ -27,10 +25,7 @@ export const getVehicleById = async (id) => {
 // Створення нового транспортного засобу
 export const createVehicle = async (vehicleData) => {
   try {
-    const { data } = await supabase.auth.getSession();
-    const userId = data?.user?.id;
-    if (!userId) throw new Error('No user session');
-    return await vehiclesDao.create(vehicleData, userId);
+    return await vehiclesDao.create(vehicleData, null);
   } catch (error) {
     console.error('[VehiclesService] Error creating vehicle:', error);
     throw error;
@@ -61,24 +56,19 @@ export const deleteVehicle = async (id) => {
 // Отримання сервісних записів для транспортного засобу
 export const getVehicleServiceRecords = async (id) => {
   try {
-    const isUuid = /^[0-9a-fA-F-]{36}$/.test(String(id));
-    let vehicleId = isUuid ? id : null;
-    if (!vehicleId) {
-      const { data: v } = await supabase
-        .from('vehicles')
-        .select('id')
-        .eq('vin', id)
-        .single();
-      vehicleId = v?.id || null;
-    }
-    if (!vehicleId) return [];
-    const { data, error } = await supabase
-      .from('service_history')
-      .select('*')
-      .eq('vehicle_id', vehicleId)
-      .order('service_date', { ascending: false });
-    if (error) throw error;
-    return data || [];
+    const response = await axiosAuth.get('/api/service-records', {
+      params: { vehicle_id: id },
+    });
+    const rows = Array.isArray(response.data) ? response.data : [];
+    return rows.map((r) => ({
+      id: r.id,
+      date: r.service_date,
+      type: (r.description || '').split(':')[0] || 'Сервіс',
+      description: r.description || '',
+      mileage: typeof r.mileage === 'number' ? r.mileage : 0,
+      cost: typeof r.cost === 'number' ? r.cost : 0,
+      nextServiceDue: r.next_service_date || null,
+    }));
   } catch (error) {
     console.error(`[VehiclesService] Error fetching service records for vehicle ${id}:`, error);
     throw error;

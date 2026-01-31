@@ -3,17 +3,18 @@
  */
 
 import React from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { renderHook, act } from '@testing-library/react-native';
 import { AuthProvider, useAuth } from '../context/AuthContext';
 
 // Mock AsyncStorage
-jest.mock('@react-native-async-storage/async-storage', () => ({
+const mockAsyncStorage = {
   getItem: jest.fn(),
   setItem: jest.fn(),
   removeItem: jest.fn(),
   clear: jest.fn(),
-}));
+};
+
+jest.mock('@react-native-async-storage/async-storage', () => mockAsyncStorage);
 
 // Mock axios
 jest.mock('../api/axiosConfig', () => {
@@ -39,7 +40,7 @@ jest.mock('../api/axiosConfig', () => {
 describe('Тест контексту автентифікації', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    AsyncStorage.getItem.mockResolvedValue(null);
+    mockAsyncStorage.getItem.mockResolvedValue(null);
   });
 
   const wrapper = ({ children }) => <AuthProvider>{children}</AuthProvider>;

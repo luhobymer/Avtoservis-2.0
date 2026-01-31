@@ -5,7 +5,8 @@ import { Picker } from '@react-native-picker/picker';
 import CustomButton from '../components/CustomButton';
 import PartPhotoInput from '../components/PartPhotoInput';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { supabase } from '../api/supabaseClient';
+import { getUserVehicles } from '../api/vehiclesApi';
+import { addPart, updatePart, getLatestPart } from '../api/partsApi';
 
 export default function AddEditPartScreen({ route, navigation }) {
   const { t } = useTranslation();
@@ -39,23 +40,18 @@ export default function AddEditPartScreen({ route, navigation }) {
           setVehicles(JSON.parse(cachedVehicles));
         }
 
-        const { data: session } = await supabase.auth.getSession();
-        const uid = session?.user?.id || null;
-        if (!uid) return;
-
-        const { data, error } = await supabase
-          .from('vehicles')
-          .select('vin, make, model, year')
-          .eq('user_id', uid);
-
-        if (error) throw error;
-
-        const list = Array.isArray(data)
-          ? data.map(v => ({ id: v.vin, brand: v.make, model: v.model, year: v.year }))
+        const list = await getUserVehicles(null);
+        const normalized = Array.isArray(list)
+          ? list.map(v => ({
+              id: v.vin || v.id,
+              brand: v.make || v.brand,
+              model: v.model,
+              year: v.year
+            }))
           : [];
 
-        setVehicles(list);
-        await AsyncStorage.setItem('vehicles', JSON.stringify(list));
+        setVehicles(normalized);
+        await AsyncStorage.setItem('vehicles', JSON.stringify(normalized));
       } catch (error) {
         console.error('Failed to fetch vehicles:', error);
       } finally {
@@ -92,50 +88,10 @@ export default function AddEditPartScreen({ route, navigation }) {
       let vehicleId = null;
       let vehicleName = '';
 
-      if (vehicleVin) {
-        const { data: vehicle, error: vehicleError } = await supabase
-          .from('vehicles')
-          .select('id, make, model, year, vin')
-          .eq('vin', vehicleVin)
-          .single();
-
-        if (vehicleError) {
-          console.error('Error fetching vehicle for part history:', vehicleError);
-        } else if (vehicle) {
-          vehicleId = vehicle.id;
-          vehicleName = `${vehicle.make} ${vehicle.model}${vehicle.year ? ` (${vehicle.year})` : ''}`;
-        }
-      }
-
-      let records = [];
-
-      if (vehicleId) {
-        const { data, error } = await supabase
-          .from('service_records')
-          .select('id, service_date, description, mileage, cost')
-          .eq('vehicle_id', vehicleId)
-          .order('service_date', { ascending: false });
-
-        if (error) throw error;
-        records = Array.isArray(data) ? data : [];
-      } else {
-        const { data, error } = await supabase
-          .from('service_records')
-          .select('id, service_date, description, mileage, cost')
-          .order('service_date', { ascending: false })
-          .limit(50);
-
-        if (error) throw error;
-        records = Array.isArray(data) ? data : [];
-      }
-
-      const filtered = records.filter(
-        r => typeof r.description === 'string' && r.description.includes(partNumber)
-      );
-
-      const history = filtered.map(record => ({
+      const records = await getServiceRecordsByPart(partNumber, vehicleVin);
+      const history = records.map(record => ({
         date: record.service_date,
-        vehicleName,
+        vehicleName: record.vehicleName || '',
         price: record.cost
       }));
 
@@ -236,20 +192,9 @@ export default function AddEditPartScreen({ route, navigation }) {
       };
 
       if (editingPart) {
-        const { error } = await supabase
-          .from('parts')
-          .update(payload)
-          .eq('id', editingPart.id)
-          .select('*')
-          .single();
-        if (error) throw error;
+        await updatePart(editingPart.id, payload);
       } else {
-        const { error } = await supabase
-          .from('parts')
-          .insert(payload)
-          .select('*')
-          .single();
-        if (error) throw error;
+        await addPart(payload);
       }
 
       const cachedParts = JSON.parse((await AsyncStorage.getItem('parts')) || '[]');
@@ -259,12 +204,8 @@ export default function AddEditPartScreen({ route, navigation }) {
         );
         await AsyncStorage.setItem('parts', JSON.stringify(updatedParts));
       } else {
-        const { data: latest } = await supabase
-          .from('parts')
-          .select('id, name, description, price, quantity, manufacturer, part_number, vehicle_vin, category, specifications')
-          .order('id', { ascending: false })
-          .limit(1);
-        const newPart = Array.isArray(latest) && latest[0] ? latest[0] : { id: Date.now() };
+        const latest = await getLatestPart();
+        const newPart = latest || { id: Date.now() };
         cachedParts.push({ ...payload, id: newPart.id });
         await AsyncStorage.setItem('parts', JSON.stringify(cachedParts));
       }

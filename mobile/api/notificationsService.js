@@ -1,6 +1,6 @@
-import { supabase } from './supabaseClient';
 import * as Notifications from 'expo-notifications';
 import { getUserSettings } from './userSettingsService';
+import axiosAuth from './axiosConfig';
 
 const REQUEST_TIMEOUT = 10000; // 10 секунд таймаут для запитів
 
@@ -14,17 +14,20 @@ const REQUEST_TIMEOUT = 10000; // 10 секунд таймаут для запи
  */
 export const getNotifications = async (userId, token, limit = 20, offset = 0) => {
   try {
-    const { data, error } = await supabase
-      .from('notifications')
-      .select('id, user_id, title, message, type, is_read, created_at, related_entity, related_entity_id, status, data')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false });
-    if (error) throw error;
+    if (!userId) {
+      return [];
+    }
 
-    const rows = Array.isArray(data) ? data : [];
-    const start = offset;
-    const end = offset + limit;
-    return rows.slice(start, end);
+    const response = await axiosAuth.get('/api/notifications', {
+      params: {
+        user_id: userId,
+        limit,
+        offset,
+      },
+    });
+
+    const rows = Array.isArray(response.data) ? response.data : [];
+    return rows;
   } catch (error) {
     console.error('[notificationsService] Помилка отримання сповіщень:', error);
     
@@ -53,11 +56,7 @@ export const getNotifications = async (userId, token, limit = 20, offset = 0) =>
  */
 export const markNotificationAsRead = async (notificationId, token) => {
   try {
-    const { error } = await supabase
-      .from('notifications')
-      .update({ is_read: true })
-      .eq('id', notificationId);
-    if (error) throw error;
+    await axiosAuth.post(`/api/notifications/${notificationId}/read`);
     return true;
   } catch (error) {
     console.error('[notificationsService] Помилка позначення сповіщення як прочитане:', error);
@@ -86,11 +85,9 @@ export const markNotificationAsRead = async (notificationId, token) => {
  */
 export const markAllNotificationsAsRead = async (userId, token) => {
   try {
-    const { error } = await supabase
-      .from('notifications')
-      .update({ is_read: true })
-      .eq('user_id', userId);
-    if (error) throw error;
+    await axiosAuth.post('/api/notifications/mark-all-read', {
+      user_id: userId,
+    });
     return true;
   } catch (error) {
     console.error('[notificationsService] Помилка позначення всіх сповіщень як прочитані:', error);
@@ -119,11 +116,7 @@ export const markAllNotificationsAsRead = async (userId, token) => {
  */
 export const deleteNotification = async (notificationId, token) => {
   try {
-    const { error } = await supabase
-      .from('notifications')
-      .delete()
-      .eq('id', notificationId);
-    if (error) throw error;
+    await axiosAuth.delete(`/api/notifications/${notificationId}`);
     return true;
   } catch (error) {
     console.error('[notificationsService] Помилка видалення сповіщення:', error);
@@ -154,20 +147,16 @@ export const deleteNotification = async (notificationId, token) => {
  */
 export const createAppointmentReminder = async (appointment, userId, token) => {
   try {
-    // Перевіряємо налаштування користувача
     const userSettings = await getUserSettings(userId, token);
     
-    // Якщо нагадування про записи вимкнені, не створюємо нагадування
     if (userSettings.notifications && 
         userSettings.notifications.appointmentReminders === false) {
       console.log('[notificationsService] Нагадування про записи вимкнені в налаштуваннях користувача');
       return false;
     }
     
-    // Отримуємо час нагадування з налаштувань
     const reminderTime = userSettings.notifications?.reminderTime || 'hours_3';
     
-    // Розраховуємо час нагадування
     const appointmentDate = new Date(appointment.scheduled_time);
     let reminderDate = new Date(appointmentDate);
     
@@ -191,17 +180,14 @@ export const createAppointmentReminder = async (appointment, userId, token) => {
         reminderDate.setHours(reminderDate.getHours() - 3);
     }
     
-    // Якщо час нагадування вже минув, не створюємо нагадування
     if (reminderDate <= new Date()) {
       console.log('[notificationsService] Час нагадування вже минув');
       return false;
     }
     
-    // Форматуємо дату та час запису
     const formattedDate = appointmentDate.toLocaleDateString();
     const formattedTime = appointmentDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     
-    // Створюємо нагадування
     const reminder = {
       user_id: userId,
       title: 'Нагадування про запис',
@@ -213,19 +199,15 @@ export const createAppointmentReminder = async (appointment, userId, token) => {
       },
       scheduled_for: reminderDate.toISOString()
     };
-    await supabase
-      .from('scheduled_notifications')
-      .delete()
-      .eq('user_id', userId)
-      .eq('is_sent', false)
-      .contains('data', { appointment_id: appointment.id });
+    await axiosAuth.post('/api/notifications', {
+      user_id: reminder.user_id,
+      title: reminder.title,
+      message: reminder.message,
+      type: reminder.type,
+      status: 'pending',
+      data: reminder.data,
+    });
 
-    const { error } = await supabase
-      .from('scheduled_notifications')
-      .insert(reminder);
-    if (error) throw error;
-    
-    // Плануємо локальне сповіщення
     await Notifications.scheduleNotificationAsync({
       content: {
         title: reminder.title,
@@ -247,47 +229,7 @@ export const createAppointmentReminder = async (appointment, userId, token) => {
 
 export const processScheduledNotifications = async (userId, token) => {
   try {
-    const nowIso = new Date().toISOString();
-    const { data: due, error } = await supabase
-      .from('scheduled_notifications')
-      .select('id, title, message, type, data, scheduled_for')
-      .eq('user_id', userId)
-      .eq('is_sent', false)
-      .lte('scheduled_for', nowIso)
-      .order('scheduled_for', { ascending: true });
-    if (error) throw error;
-    const rows = Array.isArray(due) ? due : [];
-    let processed = 0;
-    for (const n of rows) {
-      try {
-        await Notifications.scheduleNotificationAsync({
-          content: {
-            title: n.title,
-            body: n.message,
-            data: { data: n }
-          },
-          trigger: null
-        });
-        await supabase
-          .from('scheduled_notifications')
-          .update({ is_sent: true, updated_at: new Date().toISOString() })
-          .eq('id', n.id);
-        await supabase
-          .from('notifications')
-          .insert({
-            user_id: userId,
-            title: n.title,
-            message: n.message,
-            type: n.type,
-            status: 'sent',
-            data: n.data || {}
-          });
-        processed += 1;
-      } catch (innerErr) {
-        console.error('[notificationsService] Помилка обробки сповіщення:', innerErr);
-      }
-    }
-    return processed;
+    return 0;
   } catch (error) {
     console.error('[notificationsService] Помилка вибірки запланованих сповіщень:', error);
     return 0;

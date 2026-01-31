@@ -1,4 +1,5 @@
-require('dotenv').config();
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '..', '.env') });
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -22,9 +23,13 @@ const serviceRoutes = require('./routes/services');
 const appointmentRoutes = require('./routes/appointments');
 const mechanicRoutes = require('./routes/mechanics');
 const vehicleRoutes = require('./routes/vehicles');
+const serviceRecordRoutes = require('./routes/serviceRecords');
 const reminderRoutes = require('./routes/reminders');
 const notificationRoutes = require('./routes/notifications');
+const interactionRoutes = require('./routes/interactions');
 const deviceRoutes = require('./routes/deviceTokens');
+const registryRoutes = require('./routes/registry');
+const { getDb } = require('./db/d1');
 
 const app = express();
 
@@ -65,9 +70,12 @@ app.use('/api/services', serviceRoutes);
 app.use('/api/appointments', appointmentRoutes);
 app.use('/api/mechanics', mechanicRoutes);
 app.use('/api/vehicles', vehicleRoutes);
+app.use('/api/service-records', serviceRecordRoutes);
 app.use('/api/reminders', reminderRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/interactions', interactionRoutes);
 app.use('/api/devices', deviceRoutes);
+app.use('/api/vehicle-registry', registryRoutes);
 
 // Роут для Telegram-бота
 const telegramRoutes = require('./routes/telegram');
@@ -85,35 +93,42 @@ app.use((req, res) => {
 app.use(errorHandler);
 
 // Запуск сервера
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5001;
 const NODE_ENV = process.env.NODE_ENV || 'development';
 const SCHEDULER_ENABLED = String(process.env.SCHEDULER_ENABLED || 'false').toLowerCase() === 'true';
 
-app.listen(PORT, '0.0.0.0', () => {
-  logger.info(
-    `Сервер запущено в режимі ${NODE_ENV} на порту ${PORT} (доступний з усіх інтерфейсів)`
-  );
+if (require.main === module) {
+  Promise.resolve()
+    .then(() => getDb())
+    .catch((err) => {
+      logger.error('Помилка ініціалізації D1:', err);
+    });
 
-  // Керування планувальником нагадувань через змінну середовища
-  if (SCHEDULER_ENABLED) {
-    try {
-      startReminderScheduler();
-      logger.info('Планувальник нагадувань увімкнено через SCHEDULER_ENABLED=true');
-    } catch (err) {
-      logger.error('Помилка запуску планувальника нагадувань:', err);
+  app.listen(PORT, '0.0.0.0', () => {
+    logger.info(
+      `Сервер запущено в режимі ${NODE_ENV} на порту ${PORT} (доступний з усіх інтерфейсів)`
+    );
+
+    if (SCHEDULER_ENABLED) {
+      try {
+        startReminderScheduler();
+        logger.info('Планувальник нагадувань увімкнено через SCHEDULER_ENABLED=true');
+      } catch (err) {
+        logger.error('Помилка запуску планувальника нагадувань:', err);
+      }
+    } else {
+      logger.info('Планувальник нагадувань вимкнено (SCHEDULER_ENABLED=false)');
     }
-  } else {
-    logger.info('Планувальник нагадувань вимкнено (SCHEDULER_ENABLED=false)');
-  }
-});
+  });
 
-// Обробка необроблених помилок
-process.on('unhandledRejection', (err) => {
-  logger.error('Необроблена Promise помилка:', err);
-  // В продакшені тут можна додати сповіщення адміністратора
-});
+  process.on('unhandledRejection', (err) => {
+    logger.error('Необроблена Promise помилка:', err);
+  });
 
-process.on('uncaughtException', (err) => {
-  console.error('Необроблена помилка:', err);
-  process.exit(1);
-});
+  process.on('uncaughtException', (err) => {
+    console.error('Необроблена помилка:', err);
+    process.exit(1);
+  });
+}
+
+module.exports = app;

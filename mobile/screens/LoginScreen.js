@@ -20,14 +20,12 @@ export default function LoginScreen() {
   }, [email, password]);
 
   const handleLogin = async () => {
-    // Валідація полів
     if (!identifier || !password) {
       setLocalError(t('validation.please_fill_all_fields'));
       Alert.alert(t('common.error'), t('validation.please_fill_all_fields'));
       return;
     }
 
-    // Валідація email або телефону
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     const phoneRegex = /^(\+?380|0)\d{9}$/;
     if (!emailRegex.test(identifier) && !phoneRegex.test(identifier)) {
@@ -36,7 +34,6 @@ export default function LoginScreen() {
       return;
     }
 
-    // Якщо телефон, привести до формату +380XXXXXXXXX
     let loginValue = identifier;
     if (phoneRegex.test(identifier)) {
       let cleanedPhone = identifier.trim().replace(/\s+/g, '');

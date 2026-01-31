@@ -3,30 +3,22 @@
  */
 
 const express = require('express');
+const crypto = require('crypto');
 const { check, validationResult } = require('express-validator');
 const bcrypt = require('bcryptjs');
 const auth = require('../middleware/auth.js');
-const supabase = require('../config/supabase.js');
-const User = require('../models/User.js');
-const Vehicle = require('../models/Vehicle.js');
-const Appointment = require('../models/Appointment.js');
-const ServiceRecord = require('../models/ServiceRecord.js');
+const { getDb } = require('../db/d1');
 
 const router = express.Router();
 
-// Middleware to check if user is admin
+// Middleware to check if user is master-mechanic (єдиний тип адміністратора)
 const adminAuth = async (req, res, next) => {
   try {
-    // u0412u0438u043au043eu0440u0438u0441u0442u043eu0432u0443u0454u043cu043e u043cu0435u0442u043eu0434 findOne u0437u0430u043cu0456u0441u0442u044c findByPk u0434u043bu044f Supabase
-    const { data: user, error } = await User.findOne({ id: req.user.id });
+    const db = await getDb();
+    const user = await db.prepare('SELECT id, role FROM users WHERE id = ?').get(req.user.id);
 
-    if (error) {
-      console.error('Error fetching user:', error);
-      return res.status(500).json({ msg: 'Server error', details: error.message });
-    }
-
-    if (!user || user.role !== 'admin') {
-      return res.status(403).json({ msg: 'Access denied. Admin privileges required.' });
+    if (!user || user.role !== 'master') {
+      return res.status(403).json({ msg: 'Access denied. Master privileges required.' });
     }
     next();
   } catch (err) {
@@ -40,10 +32,12 @@ const adminAuth = async (req, res, next) => {
 // @access  Admin
 router.get('/users', [auth, adminAuth], async (req, res) => {
   try {
-    const users = await User.findAll({
-      attributes: { exclude: ['password'] },
-      order: [['createdAt', 'DESC']],
-    });
+    const db = await getDb();
+    const users = await db
+      .prepare(
+        'SELECT id, email, name, phone, role, created_at, updated_at FROM users ORDER BY created_at DESC'
+      )
+      .all();
     res.json(users);
   } catch (err) {
     console.error(err.message);
@@ -56,14 +50,16 @@ router.get('/users', [auth, adminAuth], async (req, res) => {
 // @access  Admin
 router.get('/users/:id', [auth, adminAuth], async (req, res) => {
   try {
-    const { data: user, error } = await User.findOne({ id: req.params.id });
-    if (error || !user) {
+    const db = await getDb();
+    const user = await db
+      .prepare(
+        'SELECT id, email, name, phone, role, created_at, updated_at FROM users WHERE id = ?'
+      )
+      .get(req.params.id);
+    if (!user) {
       return res.status(404).json({ msg: 'User not found' });
     }
-    // Remove password_hash from response
-    const { password_hash, ...userWithoutPassword } = user;
-
-    res.json(userWithoutPassword);
+    res.json(user);
   } catch (err) {
     console.error(err.message);
     res.status(500).send('Server error');
@@ -82,7 +78,7 @@ router.post(
     check('email', 'Please include a valid email').isEmail(),
     check('password', 'Please enter a password with 6 or more characters').isLength({ min: 6 }),
     check('phone', 'Phone number is required').not().isEmpty(),
-    check('role', 'Role is required').isIn(['client', 'admin']),
+    check('role', 'Role is required').isIn(['client', 'master']),
   ],
   async (req, res) => {
     const errors = validationResult(req);
@@ -94,20 +90,28 @@ router.post(
 
     try {
       // Check if user exists
-      let user = await User.findOne({ where: { email } });
+      const db = await getDb();
+      const existingUser = await db.prepare('SELECT id FROM users WHERE email = ?').get(email);
 
-      if (user) {
+      if (existingUser) {
         return res.status(400).json({ msg: 'User already exists' });
       }
 
-      // Create new user
-      user = await User.create({
-        name,
-        email,
-        password,
-        phone,
-        role,
-      });
+      const userId = crypto.randomUUID();
+      const now = new Date().toISOString();
+      const hashedPassword = await bcrypt.hash(password, 10);
+      await db
+        .prepare(
+          `INSERT INTO users (id, name, email, password, phone, role, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+        )
+        .run(userId, name, email, hashedPassword, phone, role, now, now);
+
+      const user = await db
+        .prepare(
+          'SELECT id, name, email, phone, role, created_at, updated_at FROM users WHERE id = ?'
+        )
+        .get(userId);
 
       res.json({
         id: user.id,
@@ -134,7 +138,7 @@ router.put(
     check('name', 'Name is required').optional(),
     check('email', 'Please include a valid email').optional().isEmail(),
     check('phone', 'Phone number is required').optional(),
-    check('role', 'Role must be client or admin').optional().isIn(['client', 'admin']),
+    check('role', 'Role must be client or master').optional().isIn(['client', 'master']),
   ],
   async (req, res) => {
     const errors = validationResult(req);
@@ -145,9 +149,10 @@ router.put(
     const { name, email, phone, role, password } = req.body;
 
     try {
-      const { data: user, error: findError } = await User.findOne({ id: req.params.id });
+      const db = await getDb();
+      const user = await db.prepare('SELECT id FROM users WHERE id = ?').get(req.params.id);
 
-      if (findError || !user) {
+      if (!user) {
         return res.status(404).json({ msg: 'User not found' });
       }
 
@@ -157,18 +162,25 @@ router.put(
       if (email) updateData.email = email;
       if (phone) updateData.phone = phone;
       if (role) updateData.role = role;
-      if (password) updateData.password_hash = await bcrypt.hash(password, 10);
+      if (password) updateData.password = await bcrypt.hash(password, 10);
 
-      // Update user in Supabase
-      const { data: updatedUser, error: updateError } = await supabaseAdmin
-        .from('users')
-        .update(updateData)
-        .eq('id', req.params.id)
-        .select('id, email, name, phone, role, created_at')
-        .single();
+      const fields = Object.keys(updateData);
+      if (fields.length > 0) {
+        const setClause = fields.map((field) => `${field} = ?`).join(', ');
+        const values = fields.map((field) => updateData[field]);
+        await db
+          .prepare(`UPDATE users SET ${setClause}, updated_at = ? WHERE id = ?`)
+          .run(...values, new Date().toISOString(), req.params.id);
+      }
 
-      if (updateError) {
-        return res.status(500).json({ msg: 'Error updating user', details: updateError.message });
+      const updatedUser = await db
+        .prepare(
+          'SELECT id, email, name, phone, role, created_at, updated_at FROM users WHERE id = ?'
+        )
+        .get(req.params.id);
+
+      if (!updatedUser) {
+        return res.status(404).json({ msg: 'User not found' });
       }
 
       res.json(updatedUser);
@@ -184,8 +196,9 @@ router.put(
 // @access  Admin
 router.delete('/users/:id', [auth, adminAuth], async (req, res) => {
   try {
-    const { data: user, error } = await User.findOne({ id: req.params.id });
-    if (error || !user) {
+    const db = await getDb();
+    const user = await db.prepare('SELECT id FROM users WHERE id = ?').get(req.params.id);
+    if (!user) {
       return res.status(404).json({ msg: 'User not found' });
     }
 
@@ -194,15 +207,7 @@ router.delete('/users/:id', [auth, adminAuth], async (req, res) => {
       return res.status(400).json({ msg: 'Cannot delete your own account' });
     }
 
-    // Delete user from Supabase
-    const { error: deleteError } = await supabaseAdmin
-      .from('users')
-      .delete()
-      .eq('id', req.params.id);
-
-    if (deleteError) {
-      return res.status(500).json({ msg: 'Error deleting user', details: deleteError.message });
-    }
+    await db.prepare('DELETE FROM users WHERE id = ?').run(req.params.id);
 
     res.json({ msg: 'User removed' });
   } catch (err) {
@@ -216,35 +221,49 @@ router.delete('/users/:id', [auth, adminAuth], async (req, res) => {
 // @access  Admin
 router.get('/stats', [auth, adminAuth], async (req, res) => {
   try {
-    const userCount = await User.count();
-    const vehicleCount = await Vehicle.count();
-    const appointmentCount = await Appointment.count();
-    const serviceRecordCount = await ServiceRecord.count();
+    const db = await getDb();
+    const userCount = (await db.prepare('SELECT COUNT(*) as count FROM users').get()).count;
+    const vehicleCount = (await db.prepare('SELECT COUNT(*) as count FROM vehicles').get()).count;
+    const appointmentCount = (await db.prepare('SELECT COUNT(*) as count FROM appointments').get())
+      .count;
+    const serviceRecordCount = (
+      await db.prepare('SELECT COUNT(*) as count FROM service_records').get()
+    ).count;
 
-    // Get counts by status
-    const appointmentsByStatusRaw = await Appointment.count({
-      group: ['status'],
-    });
+    const appointmentsByStatusRaw = await db
+      .prepare('SELECT status, COUNT(*) as count FROM appointments GROUP BY status')
+      .all();
 
-    // Convert to a more usable format
     const appointmentsByStatus = {};
     appointmentsByStatusRaw.forEach((item) => {
       appointmentsByStatus[item.status] = item.count;
     });
 
-    // Get recent appointments
-    const recentAppointments = await Appointment.findAll({
-      limit: 5,
-      order: [['createdAt', 'DESC']],
-      attributes: ['id', 'serviceType', 'status', 'scheduledDate'],
-    });
+    const recentAppointments = (
+      await db
+        .prepare(
+          'SELECT id, service_type, status, scheduled_time, appointment_date, created_at FROM appointments ORDER BY created_at DESC LIMIT 5'
+        )
+        .all()
+    ).map((row) => ({
+      id: row.id,
+      serviceType: row.service_type ?? row.serviceType ?? null,
+      status: row.status,
+      scheduledDate: row.scheduled_time ?? row.appointment_date ?? null,
+    }));
 
-    // Get recent service records
-    const recentServiceRecords = await ServiceRecord.findAll({
-      limit: 5,
-      order: [['createdAt', 'DESC']],
-      attributes: ['id', 'serviceType', 'mileage', 'serviceDate'],
-    });
+    const recentServiceRecords = (
+      await db
+        .prepare(
+          'SELECT id, service_type, service_date, mileage, description, created_at FROM service_records ORDER BY service_date DESC LIMIT 5'
+        )
+        .all()
+    ).map((row) => ({
+      id: row.id,
+      serviceType: row.service_type ?? row.description ?? null,
+      mileage: row.mileage,
+      serviceDate: row.service_date,
+    }));
 
     res.json({
       userCount,
@@ -266,10 +285,23 @@ router.get('/stats', [auth, adminAuth], async (req, res) => {
 // @access  Admin
 router.get('/vehicles', [auth, adminAuth], async (req, res) => {
   try {
-    const vehicles = await Vehicle.findAll({
-      include: [{ model: User, attributes: ['name', 'email'] }],
-      order: [['createdAt', 'DESC']],
-    });
+    const db = await getDb();
+    const vehicles = (
+      await db
+        .prepare(
+          `SELECT v.*, u.name as user_name, u.email as user_email
+         FROM vehicles v
+         LEFT JOIN users u ON u.id = v.user_id
+         ORDER BY v.created_at DESC`
+        )
+        .all()
+    ).map((vehicle) => ({
+      ...vehicle,
+      users:
+        vehicle.user_name || vehicle.user_email
+          ? { name: vehicle.user_name, email: vehicle.user_email }
+          : null,
+    }));
     res.json(vehicles);
   } catch (err) {
     console.error(err.message);
@@ -282,13 +314,33 @@ router.get('/vehicles', [auth, adminAuth], async (req, res) => {
 // @access  Admin
 router.get('/appointments', [auth, adminAuth], async (req, res) => {
   try {
-    const appointments = await Appointment.findAll({
-      include: [
-        { model: Vehicle, attributes: ['make', 'model', 'licensePlate'] },
-        { model: User, attributes: ['name', 'email'] },
-      ],
-      order: [['scheduledDate', 'DESC']],
-    });
+    const db = await getDb();
+    const appointments = (
+      await db
+        .prepare(
+          `SELECT a.*, v.make as vehicle_make, v.model as vehicle_model, v.license_plate as vehicle_license_plate,
+                u.name as user_name, u.email as user_email
+         FROM appointments a
+         LEFT JOIN vehicles v ON v.vin = a.vehicle_vin
+         LEFT JOIN users u ON u.id = a.user_id
+         ORDER BY a.scheduled_time DESC`
+        )
+        .all()
+    ).map((appointment) => ({
+      ...appointment,
+      vehicles:
+        appointment.vehicle_make || appointment.vehicle_model || appointment.vehicle_license_plate
+          ? {
+              make: appointment.vehicle_make,
+              model: appointment.vehicle_model,
+              licensePlate: appointment.vehicle_license_plate,
+            }
+          : null,
+      users:
+        appointment.user_name || appointment.user_email
+          ? { name: appointment.user_name, email: appointment.user_email }
+          : null,
+    }));
     res.json(appointments);
   } catch (err) {
     console.error(err.message);
@@ -301,10 +353,27 @@ router.get('/appointments', [auth, adminAuth], async (req, res) => {
 // @access  Admin
 router.get('/service-records', [auth, adminAuth], async (req, res) => {
   try {
-    const serviceRecords = await ServiceRecord.findAll({
-      include: [{ model: Vehicle, attributes: ['make', 'model', 'licensePlate'] }],
-      order: [['serviceDate', 'DESC']],
-    });
+    const db = await getDb();
+    const serviceRecords = (
+      await db
+        .prepare(
+          `SELECT sr.*, v.make as vehicle_make, v.model as vehicle_model, v.license_plate as vehicle_license_plate
+         FROM service_records sr
+         LEFT JOIN vehicles v ON v.id = sr.vehicle_id
+         ORDER BY sr.service_date DESC`
+        )
+        .all()
+    ).map((record) => ({
+      ...record,
+      vehicles:
+        record.vehicle_make || record.vehicle_model || record.vehicle_license_plate
+          ? {
+              make: record.vehicle_make,
+              model: record.vehicle_model,
+              licensePlate: record.vehicle_license_plate,
+            }
+          : null,
+    }));
     res.json(serviceRecords);
   } catch (err) {
     console.error(err.message);

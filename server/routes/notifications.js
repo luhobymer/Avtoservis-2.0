@@ -4,9 +4,8 @@
 
 const express = require('express');
 const router = express.Router();
-const Notification = require('../models/Notification.js');
 const auth = require('../middleware/auth.js');
-const { supabase } = require('../config/supabase.js');
+const { getDb, getExistingColumn } = require('../db/d1');
 const logger = require('../middleware/logger.js');
 
 // Get all notifications for the authenticated user
@@ -17,19 +16,15 @@ router.get('/', auth, async (req, res) => {
       return res.status(401).json({ msg: 'Unauthorized' });
     }
 
-    const { data, error } = await supabase
-      .from('notifications')
-      .select('*')
-      .eq('user_id', req.user.id)
-      .order('created_at', { ascending: false });
+    const db = await getDb();
+    const notifications = await db
+      .prepare('SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC')
+      .all(req.user.id);
 
-    if (error) {
-      logger.error('Supabase notification fetch error:', error);
-      throw error;
-    }
-
-    logger.info(`Successfully fetched ${data?.length || 0} notifications for user ${req.user.id}`);
-    res.json(data || []);
+    logger.info(
+      `Successfully fetched ${notifications?.length || 0} notifications for user ${req.user.id}`
+    );
+    res.json(notifications || []);
   } catch (err) {
     logger.error('Notification fetch error:', err);
     res.status(500).json({
@@ -48,25 +43,20 @@ router.put('/:id/read', auth, async (req, res) => {
       return res.status(401).json({ msg: 'Unauthorized' });
     }
 
-    const { data, error } = await supabase
-      .from('notifications')
-      .update({ is_read: true, updated_at: new Date().toISOString() })
-      .eq('id', req.params.id)
-      .eq('user_id', req.user.id)
-      .select();
+    const db = await getDb();
+    const readColumn = await getExistingColumn('notifications', ['is_read', 'read']);
+    const updateResult = await db
+      .prepare(`UPDATE notifications SET ${readColumn} = 1 WHERE id = ? AND user_id = ?`)
+      .run(req.params.id, req.user.id);
 
-    if (error) {
-      logger.error('Failed to mark notification as read:', error);
-      throw error;
-    }
-
-    if (!data || data.length === 0) {
+    if (updateResult.changes === 0) {
       logger.warn(`Notification with ID ${req.params.id} not found for user ${req.user.id}`);
       return res.status(404).json({ msg: 'Notification not found' });
     }
 
     logger.info(`Marked notification with ID: ${req.params.id} as read for user ${req.user.id}`);
-    res.json(data[0]);
+    const updated = await db.prepare('SELECT * FROM notifications WHERE id = ?').get(req.params.id);
+    res.json(updated);
   } catch (err) {
     logger.error('Server error in markAsRead:', err);
     res.status(500).json({
@@ -80,14 +70,11 @@ router.put('/:id/read', auth, async (req, res) => {
 // Mark all notifications as read
 router.put('/read-all', auth, async (req, res) => {
   try {
-    const { data, error } = await supabase
-      .from('notifications')
-      .update({ is_read: true, updated_at: new Date().toISOString() })
-      .eq('user_id', req.user.id)
-      .eq('is_read', false)
-      .select();
-
-    if (error) throw error;
+    const db = await getDb();
+    const readColumn = await getExistingColumn('notifications', ['is_read', 'read']);
+    await db
+      .prepare(`UPDATE notifications SET ${readColumn} = 1 WHERE user_id = ? AND ${readColumn} = 0`)
+      .run(req.user.id);
 
     res.json({ msg: 'All notifications marked as read' });
   } catch (err) {
@@ -104,16 +91,10 @@ router.delete('/:id', auth, async (req, res) => {
       return res.status(401).json({ msg: 'Unauthorized' });
     }
 
-    const { error } = await supabase
-      .from('notifications')
-      .delete()
-      .eq('id', req.params.id)
-      .eq('user_id', req.user.id);
-
-    if (error) {
-      logger.error('Failed to delete notification:', error);
-      throw error;
-    }
+    const db = await getDb();
+    await db
+      .prepare('DELETE FROM notifications WHERE id = ? AND user_id = ?')
+      .run(req.params.id, req.user.id);
 
     logger.info(`Deleted notification with ID: ${req.params.id} for user ${req.user.id}`);
     res.json({ msg: 'Notification removed' });
@@ -135,12 +116,8 @@ router.delete('/', auth, async (req, res) => {
       return res.status(401).json({ msg: 'Unauthorized' });
     }
 
-    const { error } = await supabase.from('notifications').delete().eq('user_id', req.user.id);
-
-    if (error) {
-      logger.error('Failed to delete all notifications:', error);
-      throw error;
-    }
+    const db = await getDb();
+    await db.prepare('DELETE FROM notifications WHERE user_id = ?').run(req.user.id);
 
     logger.info(`Deleted all notifications for user ${req.user.id}`);
     res.json({ msg: 'All notifications removed' });

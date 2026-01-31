@@ -21,7 +21,10 @@ const VehicleForm = ({
   handleSubmit, 
   saving, 
   isNewVehicle,
-  onDeleteClick 
+  onDeleteClick,
+  onLookupByPlate,
+  lookupLoading,
+  lookupError
 }) => {
   const { t } = useTranslation();
   const [errors, setErrors] = useState({});
@@ -178,16 +181,32 @@ const VehicleForm = ({
         </Grid>
 
         <Grid item xs={12} sm={6}>
-          <TextField
-            fullWidth
-            label={t('vehicle.licensePlate', 'Державний номер')}
-            name="licensePlate"
-            value={formData.licensePlate}
-            onChange={handleChange}
-            error={!!errors.licensePlate}
-            helperText={errors.licensePlate || t('validation.license_plate_format')}
-            inputProps={{ maxLength: 10 }}
-          />
+          <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
+            <TextField
+              fullWidth
+              label={t('vehicle.licensePlate', 'Державний номер')}
+              name="licensePlate"
+              value={formData.licensePlate}
+              onChange={handleChange}
+              error={!!errors.licensePlate || !!lookupError}
+              helperText={
+                errors.licensePlate ||
+                lookupError ||
+                t('validation.license_plate_format')
+              }
+              inputProps={{ maxLength: 10 }}
+            />
+            {onLookupByPlate && (
+              <Button
+                variant="outlined"
+                sx={{ mt: 1 }}
+                onClick={onLookupByPlate}
+                disabled={lookupLoading || !formData.licensePlate}
+              >
+                {lookupLoading ? <CircularProgress size={20} /> : t('vehicle.lookup', 'Знайти')}
+              </Button>
+            )}
+          </Box>
         </Grid>
 
         <Grid item xs={12} sm={6}>

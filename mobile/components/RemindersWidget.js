@@ -11,7 +11,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
-import { getUserReminders } from '../api/reminderService';
+import { getUserReminders, updateReminder } from '../api/reminderService';
 import { REMINDER_TYPES } from '../api/reminderService';
 import { getMileageRequests, submitMileageResponse } from '../api/mileageRequestService';
 import MileageRequestModal from './MileageRequestModal';
@@ -172,7 +172,26 @@ const RemindersWidget = ({ onReminderPress, onViewAllPress, maxItems = 3 }) => {
   const renderReminderItem = ({ item }) => (
     <TouchableOpacity 
       style={styles.reminderItem}
-      onPress={() => onReminderPress && onReminderPress(item)}
+      onPress={async () => {
+        if (onReminderPress) {
+          onReminderPress(item);
+          return;
+        }
+        const updated = await updateReminder(item.id, {
+          title: item.title,
+          description: item.message,
+          reminder_type: item.type,
+          due_date: item.due_date,
+          due_mileage: item.due_mileage,
+          is_completed: true,
+          is_recurring: item.is_recurring,
+          recurrence_interval: item.recurrence_interval,
+          priority: item.priority,
+        });
+        if (updated) {
+          setReminders((prev) => prev.filter((r) => r.id !== item.id));
+        }
+      }}
     >
       <View style={[styles.iconContainer, { backgroundColor: getReminderColor(item.type) }]}>
         <Ionicons name={getReminderIcon(item.type)} size={20} color="#fff" />

@@ -1,37 +1,30 @@
-import { supabase } from '../supabaseClient'
+import axiosAuth from '../axiosConfig'
 
-const KEY = 'admin_users'
+const normalizeListPayload = payload => {
+  if (!payload) return []
+  if (Array.isArray(payload)) return payload
+  if (Array.isArray(payload.data)) return payload.data
+  return []
+}
 
 export async function listAll() {
-  const { data, error } = await supabase
-    .from('users')
-    .select('id, name, email, role, active')
-    .order('name')
-  if (error) throw error
-  const mapped = (data || []).map(u => ({
+  const response = await axiosAuth.get('/api/users')
+  const rows = normalizeListPayload(response.data)
+  return rows.map(u => ({
     id: u.id,
     name: u.name || u.email,
     email: u.email,
     role: u.role || 'client',
     status: u.active ? 'active' : 'inactive'
   }))
-  return mapped
 }
 
 export async function updateStatus(userId, status) {
-  const { error } = await supabase
-    .from('users')
-    .update({ active: status === 'active' })
-    .eq('id', userId)
-  if (error) throw error
+  await axiosAuth.put(`/api/users/${userId}`, { active: status === 'active' })
   return true
 }
 
 export async function updateRole(userId, role) {
-  const { error } = await supabase
-    .from('users')
-    .update({ role })
-    .eq('id', userId)
-  if (error) throw error
+  await axiosAuth.put(`/api/users/${userId}`, { role })
   return true
 }

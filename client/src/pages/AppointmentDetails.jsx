@@ -5,6 +5,8 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/useAuth';
 import { getById as getAppointmentById, create as createAppointment, update as updateAppointment } from '../api/dao/appointmentsDao';
 import { list as listVehicles } from '../api/dao/vehiclesDao';
+import { list as listServices } from '../api/dao/servicesDao';
+import { list as listMechanics } from '../api/dao/mechanicsDao';
 import {
   Container,
   Typography,
@@ -44,10 +46,16 @@ const AppointmentDetails = ({ isNew }) => {
   const [error, setError] = useState(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [vehicles, setVehicles] = useState([]);
+  const [services, setServices] = useState([]);
+  const [mechanics, setMechanics] = useState([]);
   const [success, setSuccess] = useState(false);
+
+  const [mechanicCity, setMechanicCity] = useState('');
   
   const [formData, setFormData] = useState({
     vehicle_vin: '',
+    service_id: null,
+    mechanic_id: null,
     serviceType: '',
     description: '',
     status: 'scheduled',
@@ -59,25 +67,48 @@ const AppointmentDetails = ({ isNew }) => {
 
   useEffect(() => {
     const fetchVehicles = async () => {
-  try {
-    const rows = await listVehicles();
-    setVehicles(rows);
-    // If it's a new appointment and vehicle_vin is in query params, set it
-    if (isNewAppointment) {
-      const urlParams = new URLSearchParams(window.location.search);
-      const vehicleVin = urlParams.get('vehicle_vin') || urlParams.get('vehicleId');
-      if (vehicleVin) {
-        const found = rows.find(v => v.vin === vehicleVin || v.licensePlate === vehicleVin || v.license_plate === vehicleVin);
-        setFormData(prev => ({
-          ...prev,
-          vehicle_vin: found ? found.vin : ''
-        }));
+      try {
+        const rows = await listVehicles();
+        setVehicles(rows);
+        if (isNewAppointment) {
+          const urlParams = new URLSearchParams(window.location.search);
+          const vehicleVin = urlParams.get('vehicle_vin') || urlParams.get('vehicleId');
+          if (vehicleVin) {
+            const found = rows.find(
+              (v) =>
+                v.vin === vehicleVin ||
+                v.licensePlate === vehicleVin ||
+                v.license_plate === vehicleVin
+            );
+            setFormData((prev) => ({
+              ...prev,
+              vehicle_vin: found ? found.vin : ''
+            }));
+          }
+        }
+      } catch (err) {
+        setError(err.message || t('errors.failedToLoadVehicles', 'Не вдалося завантажити авто'));
       }
-    }
-  } catch (err) {
-    setError(err.message || t('errors.failedToLoadVehicles', 'Не вдалося завантажити авто'));
-  }
-};
+    };
+
+    const fetchServices = async () => {
+      try {
+        const rows = await listServices();
+        setServices(rows);
+      } catch (err) {
+        setError(err.message || t('errors.failedToLoadServices', 'Не вдалося завантажити послуги'));
+      }
+    };
+
+    const fetchMechanics = async () => {
+      try {
+        const city = mechanicCity || (isNewAppointment ? user?.city : '') || '';
+        const rows = await listMechanics(city ? { city } : undefined);
+        setMechanics(rows);
+      } catch (err) {
+        setError(err.message || t('errors.failedToLoadMechanics', 'Не вдалося завантажити механіків'));
+      }
+    };
 
     const fetchAppointment = async () => {
   if (isNewAppointment) {
@@ -88,6 +119,8 @@ const AppointmentDetails = ({ isNew }) => {
     const appointment = await getAppointmentById(id);
     setFormData({
       vehicle_vin: appointment.vehicle_vin || '',
+      service_id: appointment.service_id || appointment.serviceId || null,
+      mechanic_id: appointment.mechanic_id || null,
       serviceType: appointment.serviceType || '',
       description: appointment.description || '',
       status: appointment.status || 'scheduled',
@@ -104,8 +137,19 @@ const AppointmentDetails = ({ isNew }) => {
 };
 
     fetchVehicles();
+    fetchServices();
+    fetchMechanics();
     fetchAppointment();
-  }, [id, isNewAppointment, t]);
+  }, [id, isNewAppointment, t, mechanicCity, user?.city]);
+
+  useEffect(() => {
+    if (!isNewAppointment) return;
+    if (mechanicCity) return;
+    const nextCity = (user?.city || '').trim();
+    if (nextCity) {
+      setMechanicCity(nextCity);
+    }
+  }, [isNewAppointment, mechanicCity, user?.city]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -120,6 +164,32 @@ const AppointmentDetails = ({ isNew }) => {
       ...formData,
       [name]: date
     });
+  };
+
+  const handleServiceChange = (e) => {
+    const { value } = e.target;
+    const selected = services.find((s) => s.id === value);
+    setFormData((prev) => ({
+      ...prev,
+      service_id: value || null,
+      serviceType: selected ? selected.name || '' : prev.serviceType
+    }));
+  };
+
+  const handleMechanicChange = (e) => {
+    const { value } = e.target;
+    setFormData((prev) => ({
+      ...prev,
+      mechanic_id: value || null
+    }));
+  };
+
+  const handleMechanicCityChange = (e) => {
+    setMechanicCity(e.target.value);
+    setFormData((prev) => ({
+      ...prev,
+      mechanic_id: null
+    }));
   };
 
   const handleSubmit = async (e) => {
@@ -145,9 +215,19 @@ const AppointmentDetails = ({ isNew }) => {
       if (actual && actual < scheduled) {
         throw new Error(t('errors.actualBeforeScheduled', 'Фактична дата не може бути раніше запланованої'));
       }
+      if (!formData.service_id) {
+        throw new Error(t('errors.serviceRequired', 'Оберіть послугу'));
+      }
+      if (!formData.mechanic_id) {
+        throw new Error(t('errors.mechanicRequired', 'Оберіть механіка'));
+      }
+      const selectedService = services.find((s) => s.id === formData.service_id);
+      const serviceTypeText = formData.serviceType || (selectedService ? selectedService.name || '' : '');
       const payload = {
         user_id: user?.id || null,
-        service_type: formData.serviceType,
+        service_id: formData.service_id || null,
+        mechanic_id: formData.mechanic_id || null,
+        service_type: serviceTypeText,
         scheduled_time: formData.scheduledDate.toISOString(),
         vehicle_vin: formData.vehicle_vin,
         status: formData.status,
@@ -238,38 +318,61 @@ const AppointmentDetails = ({ isNew }) => {
               <Grid item xs={12} sm={6}>
                 <FormControl fullWidth required>
                   <InputLabel id="service-type-label">{t('appointment.serviceType')}</InputLabel>
-                  <Select
-                    labelId="service-type-label"
-                    name="serviceType"
-                    value={formData.serviceType || ''}
-                    onChange={handleChange}
-                    label={t('appointment.serviceType')}
-                  >
-                    {[
-                      'air_conditioning',
-                      'alignment',
-                      'battery_check',
-                      'brake_service',
-                      'cooling_system',
-                      'electrical',
-                      'engine_diagnostics',
-                      'exhaust',
-                      'filter_replacement',
-                      'fluid_change',
-                      'inspection',
-                      'lights',
-                      'oil_change',
-                      'suspension',
-                      'tire_rotation',
-                      'transmission_service',
-                      'wipers',
-                      'other'
-                    ].sort((a, b) => t(`serviceTypes.${a}`).localeCompare(t(`serviceTypes.${b}`))).map(type => (
-                      <MenuItem key={type} value={type}>
-                        {t(`serviceTypes.${type}`)}
-                      </MenuItem>
-                    ))}
-                  </Select>
+                  {services.length === 0 ? (
+                    <Alert severity="warning" sx={{ mb: 2 }}>
+                      {t('errors.noServices', 'Послуги не знайдено')}
+                    </Alert>
+                  ) : (
+                    <Select
+                      labelId="service-type-label"
+                      name="service_id"
+                      value={formData.service_id || ''}
+                      onChange={handleServiceChange}
+                      label={t('appointment.serviceType')}
+                    >
+                      {services.map((service) => (
+                        <MenuItem key={service.id} value={service.id}>
+                          {service.name}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  )}
+                </FormControl>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  label={t('auth.city', 'Місто')}
+                  value={mechanicCity}
+                  onChange={handleMechanicCityChange}
+                  placeholder={t('auth.city', 'Місто')}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <FormControl fullWidth required>
+                  <InputLabel id="mechanic-label">{t('appointment.mechanic', 'Механік')}</InputLabel>
+                  {mechanics.length === 0 ? (
+                    <Alert severity="warning" sx={{ mb: 2 }}>
+                      {t('errors.noMechanics', 'Механіки не знайдені')}
+                    </Alert>
+                  ) : (
+                    <Select
+                      labelId="mechanic-label"
+                      name="mechanic_id"
+                      value={formData.mechanic_id || ''}
+                      onChange={handleMechanicChange}
+                      label={t('appointment.mechanic', 'Механік')}
+                    >
+                      {mechanics.map((mechanic) => (
+                        <MenuItem key={mechanic.id} value={mechanic.id}>
+                          {mechanic.fullName ||
+                            [mechanic.first_name, mechanic.last_name].filter(Boolean).join(' ') ||
+                            mechanic.email ||
+                            mechanic.id}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  )}
                 </FormControl>
               </Grid>
               <Grid item xs={12} sm={6}>

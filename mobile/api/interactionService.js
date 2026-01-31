@@ -1,4 +1,5 @@
-import { supabase } from './supabaseClient';
+import axiosAuth from './axiosConfig';
+import secureStorage, { SECURE_STORAGE_KEYS } from '../utils/secureStorage';
 
 /**
  * Сервіс для взаємодії між різними ролями (клієнт, майстер, адмін)
@@ -7,16 +8,14 @@ import { supabase } from './supabaseClient';
 // Отримання всіх взаємодій для користувача
 export const getUserInteractions = async (token) => {
   try {
-    const { data } = await supabase.auth.getSession();
-    const uid = data?.user?.id;
+    const storedUser = await secureStorage.secureGet(SECURE_STORAGE_KEYS.USER_DATA, true);
+    const uid = storedUser?.id;
     if (!uid) return [];
-    const { data: rows, error } = await supabase
-      .from('interactions')
-      .select('*')
-      .or(`recipient_id.eq.${uid},sender_id.eq.${uid}`)
-      .order('created_at', { ascending: false });
-    if (error) throw error;
-    return rows || [];
+    const response = await axiosAuth.get('/api/interactions', {
+      params: { user_id: uid }
+    });
+    const rows = Array.isArray(response.data) ? response.data : [];
+    return rows;
   } catch (error) {
     console.error('[InteractionService] Помилка при отриманні взаємодій:', error);
     return [];
@@ -26,8 +25,8 @@ export const getUserInteractions = async (token) => {
 // Створення нової взаємодії
 export const createInteraction = async (interactionData, token) => {
   try {
-    const { data } = await supabase.auth.getSession();
-    const uid = data?.user?.id;
+    const storedUser = await secureStorage.secureGet(SECURE_STORAGE_KEYS.USER_DATA, true);
+    const uid = storedUser?.id;
     const payload = {
       sender_id: interactionData.senderId || uid,
       sender_role: interactionData.senderRole,
@@ -41,13 +40,8 @@ export const createInteraction = async (interactionData, token) => {
       related_entity: interactionData.relatedEntity || null,
       related_entity_id: interactionData.relatedEntityId || null
     };
-    const { data: rows, error } = await supabase
-      .from('interactions')
-      .insert(payload)
-      .select('*')
-      .single();
-    if (error) throw error;
-    return rows;
+    const response = await axiosAuth.post('/api/interactions', payload);
+    return response.data;
   } catch (error) {
     console.error('[InteractionService] Помилка при створенні взаємодії:', error);
     throw error;
@@ -57,14 +51,8 @@ export const createInteraction = async (interactionData, token) => {
 // Оновлення статусу взаємодії (прочитано/не прочитано)
 export const updateInteractionStatus = async (interactionId, status, token) => {
   try {
-    const { data: rows, error } = await supabase
-      .from('interactions')
-      .update({ status })
-      .eq('id', interactionId)
-      .select('*')
-      .single();
-    if (error) throw error;
-    return rows;
+    const response = await axiosAuth.put(`/api/interactions/${interactionId}`, { status });
+    return response.data;
   } catch (error) {
     console.error('[InteractionService] Помилка при оновленні статусу взаємодії:', error);
     throw error;
@@ -74,14 +62,11 @@ export const updateInteractionStatus = async (interactionId, status, token) => {
 // Отримання всіх взаємодій для конкретної сутності (наприклад, для запису на сервіс)
 export const getEntityInteractions = async (entityType, entityId, token) => {
   try {
-    const { data: rows, error } = await supabase
-      .from('interactions')
-      .select('*')
-      .eq('related_entity', entityType)
-      .eq('related_entity_id', entityId)
-      .order('created_at', { ascending: false });
-    if (error) throw error;
-    return rows || [];
+    const response = await axiosAuth.get('/api/interactions', {
+      params: { related_entity: entityType, related_entity_id: entityId }
+    });
+    const rows = Array.isArray(response.data) ? response.data : [];
+    return rows;
   } catch (error) {
     console.error('[InteractionService] Помилка при отриманні взаємодій для сутності:', error);
     return [];
@@ -93,13 +78,11 @@ export const getUnreadInteractionsCount = async (userId, token) => {
   try {
     const uid = userId;
     if (!uid) return 0;
-    const { count, error } = await supabase
-      .from('interactions')
-      .select('*', { count: 'exact', head: true })
-      .eq('recipient_id', uid)
-      .eq('status', 'unread');
-    if (error) throw error;
-    return count || 0;
+    const response = await axiosAuth.get('/api/interactions', {
+      params: { recipient_id: uid, status: 'unread' }
+    });
+    const rows = Array.isArray(response.data) ? response.data : [];
+    return rows.length;
   } catch (error) {
     console.error('[InteractionService] Помилка при отриманні кількості непрочитаних взаємодій:', error);
     return 0;

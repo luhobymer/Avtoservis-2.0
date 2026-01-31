@@ -5,7 +5,6 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
 import { getUserNotifications, markNotificationAsRead, deleteNotification as removeNotification } from '../api/notificationsApi';
-import { supabase } from '../api/supabaseClient';
 import { getUserReminders, deleteReminder, REMINDER_TYPES } from '../api/reminderService';
 
 export default function NotificationsScreen({ navigation }) {
@@ -69,22 +68,22 @@ export default function NotificationsScreen({ navigation }) {
 
   const markAllAsRead = async () => {
     try {
-      const { data } = await supabase.auth.getSession();
-      const uid = data?.user?.id;
-      if (!uid) throw new Error('Токен авторизації відсутній');
-      await supabase
-        .from('notifications')
-        .update({ is_read: true })
-        .eq('user_id', uid);
-      
-      // Оновлюємо локальний стан
+      const token = await getToken();
+      if (!token) {
+        throw new Error('Токен авторизації відсутній');
+      }
+
+      const unread = notifications.filter(n => !n.read);
+      for (const n of unread) {
+        await markNotificationAsRead(n.id, token);
+      }
+
       setNotifications(prevNotifications =>
         prevNotifications.map(notification => ({ ...notification, read: true }))
       );
-      
-      // Оновлюємо комбінований список
+
       updateCombinedItems();
-      
+
       Alert.alert(t('common.success'), t('notifications.mark_all_read_success'));
     } catch (error) {
       console.error('Failed to mark all as read:', error);
@@ -94,23 +93,25 @@ export default function NotificationsScreen({ navigation }) {
 
   const deleteAllNotifications = async () => {
     try {
-      const { data } = await supabase.auth.getSession();
-      const uid = data?.user?.id;
-      if (!uid) throw new Error('Токен авторизації відсутній');
-      await supabase
-        .from('notifications')
-        .delete()
-        .eq('user_id', uid);
-      await supabase
-        .from('reminders')
-        .delete()
-        .eq('user_id', uid);
-      
-      // Оновлюємо локальний стан
+      const token = await getToken();
+      if (!token) {
+        throw new Error('Токен авторизації відсутній');
+      }
+
+      const all = [...notifications];
+      for (const n of all) {
+        await removeNotification(n.id, token);
+      }
+
+      const allReminders = [...reminders];
+      for (const r of allReminders) {
+        await deleteReminder(r.id, token);
+      }
+
       setNotifications([]);
       setReminders([]);
       setCombinedItems([]);
-      
+
       Alert.alert(t('common.success'), t('notifications.delete_all_success'));
     } catch (error) {
       console.error('Failed to delete all notifications:', error);

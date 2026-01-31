@@ -1,72 +1,45 @@
 const request = require('supertest');
 const app = require('../index');
-const supabase = require('../config/supabase');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
+const { getDb } = require('../db/d1');
 
 describe('API Tests', () => {
   let authToken;
   let userId;
+  let hashedPassword;
+  const email = 'test@example.com';
+  const password = 'password123';
 
   beforeAll(async () => {
-    try {
-      // Хешуємо пароль
-      const hashedPassword = await bcrypt.hash('password123', 10);
-
-      // Створюємо тестового користувача
-      const { data: user, error } = await supabase
-        .from('users')
-        .insert([
-          {
-            email: 'test@example.com',
-            password: hashedPassword,
-            role: 'client',
-          },
-        ])
-        .select()
-        .single();
-
-      if (error) {
-        console.error('Error creating test user:', error);
-        throw error;
-      }
-
-      if (!user) {
-        throw new Error('Failed to create test user');
-      }
-
-      userId = user.id;
-      authToken = jwt.sign(
-        { id: user.id, email: user.email, role: user.role },
-        process.env.JWT_SECRET || 'test-secret',
-        { expiresIn: '1h' }
-      );
-    } catch (error) {
-      console.error('Setup error:', error);
-      throw error;
-    }
+    hashedPassword = await bcrypt.hash(password, 10);
   });
 
-  afterAll(async () => {
-    try {
-      // Видаляємо тестового користувача
-      if (userId) {
-        await supabase.from('users').delete().eq('id', userId);
-      }
-    } catch (error) {
-      console.error('Cleanup error:', error);
-    }
+  beforeEach(() => {
+    const db = getDb();
+    const now = new Date().toISOString();
+    userId = crypto.randomUUID();
+    db.prepare(
+      'INSERT INTO users (id, email, password, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
+    ).run(userId, email, hashedPassword, 'client', now, now);
+
+    authToken = jwt.sign(
+      { id: userId, email, role: 'client' },
+      process.env.JWT_SECRET || 'test-secret',
+      { expiresIn: '1h' }
+    );
   });
 
   describe('Auth Routes', () => {
     test('POST /api/auth/login - успішний вхід', async () => {
       const res = await request(app).post('/api/auth/login').send({
-        email: 'test@example.com',
-        password: 'password123',
+        email,
+        password,
       });
 
       expect(res.status).toBe(200);
-      expect(res.body).toHaveProperty('access_token');
+      expect(res.body).toHaveProperty('token');
     });
 
     test('GET /api/auth/me - отримання даних користувача', async () => {
@@ -75,7 +48,8 @@ describe('API Tests', () => {
         .set('Authorization', `Bearer ${authToken}`);
 
       expect(res.status).toBe(200);
-      expect(res.body).toHaveProperty('email', 'test@example.com');
+      expect(res.body).toHaveProperty('user');
+      expect(res.body.user).toHaveProperty('email', email);
     });
   });
 
@@ -98,20 +72,32 @@ describe('API Tests', () => {
   });
 
   describe('Appointments Routes', () => {
-    let appointmentId;
-
     test('POST /api/appointments - створення запису', async () => {
+      const db = getDb();
+      const serviceId = crypto.randomUUID();
+      const mechanicId = crypto.randomUUID();
+      const now = new Date().toISOString();
+      db.prepare(
+        'INSERT INTO services (id, name, price, duration, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
+      ).run(serviceId, 'Test Service', 100, 30, now, now);
+      db.prepare(
+        'INSERT INTO mechanics (id, first_name, last_name, created_at, updated_at) VALUES (?, ?, ?, ?, ?)'
+      ).run(mechanicId, 'Test', 'Mechanic', now, now);
+
       const res = await request(app)
         .post('/api/appointments')
         .set('Authorization', `Bearer ${authToken}`)
         .send({
-          service_id: 'test-service-id',
+          service_id: serviceId,
+          mechanic_id: mechanicId,
           scheduled_time: '2025-05-01T10:00:00Z',
         });
 
+      if (res.status !== 201) {
+        throw new Error(`Unexpected response: ${res.status} ${JSON.stringify(res.body)}`);
+      }
       expect(res.status).toBe(201);
       expect(res.body).toHaveProperty('id');
-      appointmentId = res.body.id;
     });
 
     test('GET /api/appointments - отримання списку записів', async () => {
@@ -119,11 +105,35 @@ describe('API Tests', () => {
         .get('/api/appointments')
         .set('Authorization', `Bearer ${authToken}`);
 
+      if (res.status !== 200) {
+        throw new Error(`Unexpected response: ${res.status} ${JSON.stringify(res.body)}`);
+      }
       expect(res.status).toBe(200);
       expect(Array.isArray(res.body)).toBe(true);
     });
 
     test('PUT /api/appointments/:id - оновлення запису', async () => {
+      const db = getDb();
+      const serviceId = crypto.randomUUID();
+      const mechanicId = crypto.randomUUID();
+      const now = new Date().toISOString();
+      db.prepare(
+        'INSERT INTO services (id, name, price, duration, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
+      ).run(serviceId, 'Test Service', 100, 30, now, now);
+      db.prepare(
+        'INSERT INTO mechanics (id, first_name, last_name, created_at, updated_at) VALUES (?, ?, ?, ?, ?)'
+      ).run(mechanicId, 'Test', 'Mechanic', now, now);
+
+      const createRes = await request(app)
+        .post('/api/appointments')
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({
+          service_id: serviceId,
+          mechanic_id: mechanicId,
+          scheduled_time: '2025-05-01T10:00:00Z',
+        });
+      const appointmentId = createRes.body.id;
+
       const res = await request(app)
         .put(`/api/appointments/${appointmentId}`)
         .set('Authorization', `Bearer ${authToken}`)
@@ -137,8 +147,6 @@ describe('API Tests', () => {
   });
 
   describe('Vehicles Routes', () => {
-    let vehicleId;
-
     test('POST /api/vehicles - додавання автомобіля', async () => {
       const res = await request(app)
         .post('/api/vehicles')
@@ -152,7 +160,6 @@ describe('API Tests', () => {
 
       expect(res.status).toBe(201);
       expect(res.body).toHaveProperty('id');
-      vehicleId = res.body.id;
     });
 
     test('GET /api/vehicles - отримання списку автомобілів', async () => {
@@ -165,8 +172,15 @@ describe('API Tests', () => {
     });
 
     test('PUT /api/vehicles/:id - оновлення автомобіля', async () => {
+      await request(app).post('/api/vehicles').set('Authorization', `Bearer ${authToken}`).send({
+        vin: 'TEST1234567890',
+        make: 'Toyota',
+        model: 'Camry',
+        year: 2020,
+      });
+
       const res = await request(app)
-        .put(`/api/vehicles/${vehicleId}`)
+        .put('/api/vehicles/TEST1234567890')
         .set('Authorization', `Bearer ${authToken}`)
         .send({
           mileage: 50000,

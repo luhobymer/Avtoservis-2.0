@@ -94,12 +94,13 @@ class UserManager {
     return user;
   }
 
-  async linkUserToServer(telegramId, serverUserId, token) {
+  async linkUserToServer(telegramId, serverUserId, token, expiresAt) {
+    const tokenExpiry = expiresAt || this.calculateTokenExpiry(token);
     await this.saveUser(telegramId, {
       serverUserId,
       token,
       tokenIssued: new Date().toISOString(),
-      tokenExpires: this.calculateTokenExpiry()
+      tokenExpires: tokenExpiry
     });
   }
 
@@ -219,17 +220,45 @@ class UserManager {
     };
   }
 
-  calculateTokenExpiry() {
-    // Термін дії токена: 1 година
+  calculateTokenExpiry(token) {
+    const expiryFromToken = this.getTokenExpiry(token);
+    if (expiryFromToken) {
+      return expiryFromToken;
+    }
     const expiry = new Date();
     expiry.setHours(expiry.getHours() + 1);
     return expiry.toISOString();
   }
 
+  getTokenExpiry(token) {
+    if (!token || typeof token !== 'string') {
+      return null;
+    }
+    const parts = token.split('.');
+    if (parts.length !== 3) {
+      return null;
+    }
+    try {
+      const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+      const payload = JSON.parse(Buffer.from(base64, 'base64').toString('utf8'));
+      if (payload && payload.exp) {
+        return new Date(payload.exp * 1000).toISOString();
+      }
+    } catch (error) {
+      return null;
+    }
+    return null;
+  }
+
   async verifyTokenOnServer(token) {
     try {
-      const res = await axios.get('http://localhost:3000/api/telegram/me', {
-        headers: { Authorization: `Bearer ${token}` }
+      const baseUrl = process.env.SERVER_API_URL || 'http://localhost:5001';
+      const headers = { Authorization: `Bearer ${token}` };
+      if (process.env.SERVER_API_KEY) {
+        headers['x-api-key'] = process.env.SERVER_API_KEY;
+      }
+      const res = await axios.get(`${baseUrl}/api/telegram/me`, {
+        headers
       });
       return res.status === 200;
     } catch (error) {

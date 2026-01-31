@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Alert } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
-import { supabase } from '../api/supabaseClient';
 import { createMaintenanceReminder } from '../api/reminderService';
 import { Picker } from '@react-native-picker/picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -31,14 +30,11 @@ export default function CreateReminderScreen({ navigation }) {
 
   const fetchVehicles = async () => {
     try {
-      const { data: session } = await supabase.auth.getSession();
-      const uid = session?.user?.id || null;
-      const { data, error } = await supabase
-        .from('vehicles')
-        .select('vin, make, model')
-        .eq('user_id', uid);
-      if (error) throw error;
-      const list = (data || []).map(v => ({ id: v.vin, brand: v.make, model: v.model }));
+      const token = await getToken();
+      if (!token) {
+        throw new Error('Token is required');
+      }
+      const list = await getUserVehicles(token);
       setVehicles(list);
       if (list.length > 0) {
         setFormData(prev => ({ ...prev, vehicleId: list[0].id }));

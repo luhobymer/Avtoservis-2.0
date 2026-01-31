@@ -72,7 +72,7 @@ const Vehicles = () => {
         </Typography>
         <Button 
           component={Link} 
-          to="/vehicles/new" 
+          to="/vehicles/add" 
           variant="contained" 
           color="primary"
         >
@@ -131,7 +131,7 @@ const Vehicles = () => {
                     <Button 
                       size="small" 
                       component={Link} 
-                      to={`/vehicles/${vehicle.id || index}`}
+                      to={`/vehicles/${vehicle.vin}`}
                     >
                       {t('common.edit')}
                     </Button>

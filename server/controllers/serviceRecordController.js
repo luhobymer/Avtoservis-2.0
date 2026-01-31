@@ -1,5 +1,47 @@
-const { supabase } = require('../config/supabase.js');
+const crypto = require('crypto');
+const { getDb } = require('../db/d1');
 const logger = require('../middleware/logger.js');
+
+const normalizeParts = (parts) => {
+  if (parts === undefined) return undefined;
+  if (parts === null) return null;
+  return typeof parts === 'string' ? parts : JSON.stringify(parts);
+};
+
+const getVehicleColumnMap = async (db) => {
+  const columns = await db.prepare('PRAGMA table_info(vehicles)').all();
+  const names = new Set(columns.map((column) => column.name));
+  return {
+    vinColumn: names.has('vin') ? 'vin' : null,
+    brandColumn: names.has('brand') ? 'brand' : names.has('make') ? 'make' : null,
+    makeColumn: names.has('make') ? 'make' : names.has('brand') ? 'brand' : null,
+    modelColumn: names.has('model') ? 'model' : null,
+    yearColumn: names.has('year') ? 'year' : null,
+    licenseColumn: names.has('license_plate')
+      ? 'license_plate'
+      : names.has('licensePlate')
+        ? 'licensePlate'
+        : null,
+  };
+};
+
+const getVehicleSelectParts = (columns) => {
+  const vinSelect = columns.vinColumn ? `v.${columns.vinColumn}` : 'NULL';
+  const brandSelect = columns.brandColumn ? `v.${columns.brandColumn}` : 'NULL';
+  const makeSelect = columns.makeColumn ? `v.${columns.makeColumn}` : 'NULL';
+  const modelSelect = columns.modelColumn ? `v.${columns.modelColumn}` : 'NULL';
+  const yearSelect = columns.yearColumn ? `v.${columns.yearColumn}` : 'NULL';
+  const licenseSelect = columns.licenseColumn ? `v.${columns.licenseColumn}` : 'NULL';
+
+  return {
+    vin: `${vinSelect} AS vehicle_vin`,
+    brand: `${brandSelect} AS vehicle_brand`,
+    make: `${makeSelect} AS vehicle_make`,
+    model: `${modelSelect} AS vehicle_model`,
+    year: `${yearSelect} AS vehicle_year`,
+    license: `${licenseSelect} AS vehicle_license_plate`,
+  };
+};
 
 // Отримати всі записи про обслуговування для автомобілів користувача
 exports.getAllServiceRecords = async (req, res) => {
@@ -9,33 +51,86 @@ exports.getAllServiceRecords = async (req, res) => {
       return res.status(401).json({ msg: 'Unauthorized' });
     }
 
-    logger.info(`Отримуємо сервісні записи для користувача ${req.user.id}`);
+    const db = await getDb();
+    const where = [];
+    const params = [];
+    const vehicleColumns = await getVehicleColumnMap(db);
 
-    const { data: serviceRecords, error: recordsError } = await supabase
-      .from('service_records')
-      .select('*, vehicles (vin, brand, make, model, year)')
-      .eq('user_id', req.user.id)
-      .order('service_date', { ascending: false });
-
-    if (recordsError) {
-      logger.error('Помилка отримання записів:', recordsError);
-      return res.status(500).json({ error: 'Помилка сервера' });
+    if (req.query.vehicle_id) {
+      where.push('sr.vehicle_id = ?');
+      params.push(req.query.vehicle_id);
     }
 
-    logger.info(`Знайдено ${serviceRecords.length} сервісних записів`);
-    return res.json(
-      serviceRecords.map((record) => ({
-        id: record.id,
-        serviceType: record.service_type,
-        description: record.description,
-        mileage: record.mileage,
-        serviceDate: record.service_date,
-        performedBy: record.performed_by,
-        cost: record.cost,
-        vehicle: record.vehicles,
-        createdAt: record.created_at,
-      }))
+    if (req.query.vehicle_vin && vehicleColumns.vinColumn) {
+      where.push(`v.${vehicleColumns.vinColumn} = ?`);
+      params.push(req.query.vehicle_vin);
+    }
+
+    if (req.query.part_number) {
+      where.push('sr.parts LIKE ?');
+      params.push(`%${req.query.part_number}%`);
+    }
+
+    const requestedUserId = req.query.user_id ? String(req.query.user_id) : null;
+    const isMaster = String(req.user.role || '').toLowerCase() === 'master';
+    if (requestedUserId) {
+      if (!isMaster && String(requestedUserId) !== String(req.user.id)) {
+        return res.status(403).json({ msg: 'Forbidden' });
+      }
+      where.push('sr.user_id = ?');
+      params.push(requestedUserId);
+    } else {
+      where.push('sr.user_id = ?');
+      params.push(req.user.id);
+    }
+
+    logger.info(
+      `Отримуємо сервісні записи для користувача ${req.user.id} з фільтрами: ${JSON.stringify(
+        req.query
+      )}`
     );
+
+    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+    const vehicleSelect = getVehicleSelectParts(vehicleColumns);
+
+    const serviceRecords = (
+      await db
+        .prepare(
+          `SELECT sr.*,
+          ${vehicleSelect.vin},
+          ${vehicleSelect.brand},
+          ${vehicleSelect.make},
+          ${vehicleSelect.model},
+          ${vehicleSelect.year},
+          ${vehicleSelect.license}
+        FROM service_records sr
+        LEFT JOIN vehicles v ON v.id = sr.vehicle_id
+        ${whereSql}
+        ORDER BY sr.service_date DESC`
+        )
+        .all(...params)
+    ).map((record) => ({
+      ...record,
+      service_name: record.service_type,
+      vehicle:
+        record.vehicle_vin ||
+        record.vehicle_brand ||
+        record.vehicle_model ||
+        record.vehicle_year ||
+        record.vehicle_license_plate
+          ? {
+              vin: record.vehicle_vin,
+              brand: record.vehicle_brand,
+              make: record.vehicle_make,
+              model: record.vehicle_model,
+              year: record.vehicle_year,
+              licensePlate: record.vehicle_license_plate,
+            }
+          : null,
+    }));
+
+    logger.info(`Знайдено ${serviceRecords.length} сервісних записів`);
+    return res.json(serviceRecords);
   } catch (err) {
     logger.error('Server error in getAllServiceRecords:', err);
     res.status(500).json({
@@ -54,20 +149,22 @@ exports.getServiceRecordById = async (req, res) => {
       return res.status(401).json({ msg: 'Unauthorized' });
     }
 
-    const { data: serviceRecord, error: recordError } = await supabase
-      .from('service_records')
-      .select('*, vehicles(brand, model, year, license_plate)')
-      .eq('id', req.params.id)
-      .eq('user_id', req.user.id) // Ensure the record belongs to the user
-      .single();
-
-    if (recordError) {
-      logger.error('Failed to fetch service record:', recordError);
-      return res.status(404).json({
-        msg: 'Service record not found',
-        details: recordError.message,
-      });
-    }
+    const db = await getDb();
+    const vehicleColumns = await getVehicleColumnMap(db);
+    const vehicleSelect = getVehicleSelectParts(vehicleColumns);
+    const serviceRecord = await db
+      .prepare(
+        `SELECT sr.*,
+          ${vehicleSelect.brand},
+          ${vehicleSelect.model},
+          ${vehicleSelect.year},
+          ${vehicleSelect.license}
+        FROM service_records sr
+        LEFT JOIN vehicles v ON v.id = sr.vehicle_id
+        WHERE sr.id = ? AND sr.user_id = ?
+        LIMIT 1`
+      )
+      .get(req.params.id, req.user.id);
 
     if (!serviceRecord) {
       logger.warn(`Service record with ID ${req.params.id} not found for user ${req.user.id}`);
@@ -75,7 +172,20 @@ exports.getServiceRecordById = async (req, res) => {
     }
 
     logger.info(`Successfully fetched service record ${req.params.id} for user ${req.user.id}`);
-    res.json(serviceRecord);
+    const { vehicle_brand, vehicle_model, vehicle_year, vehicle_license_plate, ...record } =
+      serviceRecord;
+    res.json({
+      ...record,
+      vehicles:
+        vehicle_brand || vehicle_model || vehicle_year || vehicle_license_plate
+          ? {
+              brand: vehicle_brand,
+              model: vehicle_model,
+              year: vehicle_year,
+              license_plate: vehicle_license_plate,
+            }
+          : null,
+    });
   } catch (err) {
     logger.error('Server error in getServiceRecordById:', err);
     res.status(500).json({
@@ -88,54 +198,70 @@ exports.getServiceRecordById = async (req, res) => {
 
 // Додати новий запис про обслуговування
 exports.addServiceRecord = async (req, res) => {
-  const { vehicleId, serviceType, description, mileage, serviceDate, performedBy, cost, parts } =
-    req.body;
+  const body = req.body || {};
+  const vehicleId = body.vehicleId || body.vehicle_id;
+  const serviceType = body.serviceType || body.service_type || null;
+  const description = body.description ?? '';
+  const mileage = body.mileage !== undefined && body.mileage !== null ? Number(body.mileage) : null;
+  const serviceDate =
+    body.serviceDate || body.service_date || body.performed_at || new Date().toISOString();
+  const performedBy = body.performedBy || body.performed_by || null;
+  const cost = body.cost !== undefined && body.cost !== null ? Number(body.cost) : 0;
+  const parts = body.parts;
+  const requestedUserId = body.user_id || body.userId || null;
 
   try {
     // Check if vehicle belongs to user
-    const { data: vehicle, error: vehicleError } = await supabase
-      .from('vehicles')
-      .select('id, mileage')
-      .eq('id', vehicleId)
-      .eq('user_id', req.user.id)
-      .single();
+    const db = await getDb();
+    const isMaster = String(req.user?.role || '').toLowerCase() === 'master';
+    const targetUserId = isMaster && requestedUserId ? String(requestedUserId) : req.user.id;
+    const vehicle = await db
+      .prepare('SELECT id, mileage FROM vehicles WHERE id = ? AND user_id = ?')
+      .get(vehicleId, targetUserId);
 
-    if (vehicleError || !vehicle) {
-      logger.error('Vehicle not found or does not belong to user:', vehicleError);
+    if (!vehicle) {
+      logger.error('Vehicle not found or does not belong to user');
       return res.status(404).json({ msg: 'Vehicle not found or unauthorized' });
     }
 
-    const { data: newServiceRecord, error: insertError } = await supabase
-      .from('service_records')
-      .insert({
-        vehicle_id: vehicleId,
-        user_id: req.user.id,
-        service_type: serviceType,
+    const recordId = crypto.randomUUID();
+    const normalizedParts = normalizeParts(parts);
+    await db
+      .prepare(
+        `INSERT INTO service_records
+        (id, vehicle_id, user_id, appointment_id, service_type, description, mileage, service_date, performed_by, cost, parts)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        recordId,
+        vehicleId,
+        targetUserId,
+        body.appointment_id || body.appointmentId || null,
+        serviceType,
         description,
         mileage,
-        service_date: serviceDate,
-        performed_by: performedBy,
+        serviceDate,
+        performedBy,
         cost,
-        parts,
-      })
-      .select()
-      .single();
+        normalizedParts
+      );
 
-    if (insertError) {
-      logger.error('Error inserting service record:', insertError);
-      throw insertError;
-    }
+    const newServiceRecord = await db
+      .prepare('SELECT * FROM service_records WHERE id = ?')
+      .get(recordId);
 
     // Update vehicle's mileage if new mileage is higher
-    if (mileage > vehicle.mileage) {
-      const { error: updateError } = await supabase
-        .from('vehicles')
-        .update({ mileage: mileage })
-        .eq('id', vehicleId);
+    const nextMileage = mileage !== undefined ? Number(mileage) : undefined;
+    if (
+      Number.isFinite(nextMileage) &&
+      (vehicle.mileage === null || nextMileage > vehicle.mileage)
+    ) {
+      const updateResult = await db
+        .prepare('UPDATE vehicles SET mileage = ? WHERE id = ?')
+        .run(nextMileage, vehicleId);
 
-      if (updateError) {
-        logger.error('Error updating vehicle mileage:', updateError);
-        // Do not throw, as service record was already created
+      if (updateResult.changes === 0) {
+        logger.error('Error updating vehicle mileage');
       }
     }
 
@@ -153,37 +279,56 @@ exports.updateServiceRecord = async (req, res) => {
 
   try {
     // First, check if the service record exists and belongs to the user
-    const { data: existingRecord, error: fetchError } = await supabase
-      .from('service_records')
-      .select('id, vehicle_id')
-      .eq('id', id)
-      .eq('user_id', req.user.id)
-      .single();
+    const db = await getDb();
+    const existingRecord = await db
+      .prepare('SELECT id, vehicle_id, user_id FROM service_records WHERE id = ?')
+      .get(id);
 
-    if (fetchError || !existingRecord) {
-      logger.error('Service record not found or unauthorized:', fetchError);
+    const isMaster = req.user && req.user.role === 'master';
+    if (!existingRecord || (!isMaster && existingRecord.user_id !== req.user.id)) {
+      logger.error('Service record not found or unauthorized');
       return res.status(404).json({ msg: 'Service record not found or unauthorized' });
     }
 
-    const { data: updatedRecord, error: updateError } = await supabase
-      .from('service_records')
-      .update({
-        service_type: serviceType,
-        description,
-        mileage,
-        service_date: serviceDate,
-        performed_by: performedBy,
-        cost,
-        parts,
-      })
-      .eq('id', id)
-      .select()
-      .single();
+    const updates = [];
+    const values = [];
 
-    if (updateError) {
-      logger.error('Error updating service record:', updateError);
-      throw updateError;
+    if (serviceType !== undefined || req.body.service_type !== undefined) {
+      updates.push('service_type = ?');
+      values.push(serviceType || req.body.service_type);
     }
+    if (description !== undefined) {
+      updates.push('description = ?');
+      values.push(description);
+    }
+    if (mileage !== undefined) {
+      updates.push('mileage = ?');
+      values.push(mileage);
+    }
+    if (serviceDate !== undefined || req.body.service_date !== undefined) {
+      updates.push('service_date = ?');
+      values.push(serviceDate || req.body.service_date);
+    }
+    if (performedBy !== undefined || req.body.performed_by !== undefined) {
+      updates.push('performed_by = ?');
+      values.push(performedBy || req.body.performed_by);
+    }
+    if (cost !== undefined) {
+      updates.push('cost = ?');
+      values.push(cost);
+    }
+    if (parts !== undefined) {
+      updates.push('parts = ?');
+      values.push(normalizeParts(parts));
+    }
+
+    if (updates.length > 0) {
+      await db
+        .prepare(`UPDATE service_records SET ${updates.join(', ')} WHERE id = ?`)
+        .run(...values, id);
+    }
+
+    const updatedRecord = await db.prepare('SELECT * FROM service_records WHERE id = ?').get(id);
 
     res.json(updatedRecord);
   } catch (err) {
@@ -198,24 +343,17 @@ exports.deleteServiceRecord = async (req, res) => {
 
   try {
     // First, check if the service record exists and belongs to the user
-    const { data: existingRecord, error: fetchError } = await supabase
-      .from('service_records')
-      .select('id')
-      .eq('id', id)
-      .eq('user_id', req.user.id)
-      .single();
+    const db = await getDb();
+    const existingRecord = await db
+      .prepare('SELECT id FROM service_records WHERE id = ? AND user_id = ?')
+      .get(id, req.user.id);
 
-    if (fetchError || !existingRecord) {
-      logger.error('Service record not found or unauthorized:', fetchError);
+    if (!existingRecord) {
+      logger.error('Service record not found or unauthorized');
       return res.status(404).json({ msg: 'Service record not found or unauthorized' });
     }
 
-    const { error: deleteError } = await supabase.from('service_records').delete().eq('id', id);
-
-    if (deleteError) {
-      logger.error('Error deleting service record:', deleteError);
-      throw deleteError;
-    }
+    await db.prepare('DELETE FROM service_records WHERE id = ?').run(id);
 
     res.json({ msg: 'Service record removed' });
   } catch (err) {

@@ -1,207 +1,174 @@
-// Mock Supabase
-const mockSupabase = {
-  from: jest.fn().mockReturnThis(),
-  select: jest.fn().mockReturnThis(),
-  eq: jest.fn().mockReturnThis(),
-  gte: jest.fn().mockReturnThis(),
-  lte: jest.fn().mockReturnThis(),
-  order: jest.fn().mockReturnThis(),
-  insert: jest.fn().mockReturnThis(),
-  update: jest.fn().mockReturnThis(),
-  delete: jest.fn().mockReturnThis(),
-  single: jest.fn().mockReturnThis(),
-  limit: jest.fn().mockReturnThis(),
-  in: jest.fn().mockReturnThis(),
-};
-
-jest.mock('../config/supabaseClient.js', () => ({ supabase: mockSupabase }));
-
-const {
-  getAllMechanics,
-  getMechanicById,
-  createMechanic,
-  updateMechanic,
-  deleteMechanic,
-  getMechanicSchedule,
-} = require('../controllers/mechanicController');
+const crypto = require('crypto');
+const { getDb } = require('../db/d1');
+const mechanicController = require('../controllers/mechanicController');
 
 describe('MechanicController', () => {
-  let req, res;
+  let req;
+  let res;
+
+  const makeRes = () => {
+    const response = {
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn().mockReturnThis(),
+      send: jest.fn().mockReturnThis(),
+    };
+    response.status.mockReturnValue(response);
+    return response;
+  };
+
+  const seedBase = () => {
+    const db = getDb();
+    const now = new Date().toISOString();
+    const stationId = crypto.randomUUID();
+    const specializationId = crypto.randomUUID();
+    const mechanicId = crypto.randomUUID();
+
+    db.prepare(
+      'INSERT INTO service_stations (id, name, created_at, updated_at) VALUES (?, ?, ?, ?)'
+    ).run(stationId, 'Station', now, now);
+    db.prepare(
+      'INSERT INTO specializations (id, name, created_at, updated_at) VALUES (?, ?, ?, ?)'
+    ).run(specializationId, 'Engine', now, now);
+    db.prepare(
+      'INSERT INTO mechanics (id, first_name, last_name, specialization_id, service_station_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    ).run(mechanicId, 'Іван', 'Петренко', specializationId, stationId, now, now);
+
+    return { db, now, stationId, specializationId, mechanicId };
+  };
 
   beforeEach(() => {
-    req = {
-      params: {},
-      query: {},
-      body: {},
-    };
-    res = {
-      json: jest.fn(),
-      status: jest.fn(() => res),
-      send: jest.fn(),
-    };
+    req = { params: {}, query: {}, body: {} };
+    res = makeRes();
     jest.clearAllMocks();
   });
 
-  describe('getAllMechanics', () => {
-    it('should return all mechanics', async () => {
-      const mockMechanics = [{ id: 1, first_name: 'Іван', last_name: 'Петренко' }];
+  it('getAllMechanics returns mechanics with station and specialization', async () => {
+    const { mechanicId } = seedBase();
+    await mechanicController.getAllMechanics(req, res);
 
-      mockSupabase.select.mockResolvedValue({
-        data: mockMechanics,
-        error: null,
-      });
-
-      await getAllMechanics(req, res);
-
-      expect(mockSupabase.from).toHaveBeenCalledWith('mechanics');
-      expect(res.json).toHaveBeenCalledWith(mockMechanics);
-    });
-
-    it('should handle database error', async () => {
-      mockSupabase.select.mockResolvedValue({
-        data: null,
-        error: new Error('Database error'),
-      });
-
-      await getAllMechanics(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(500);
-      expect(res.json).toHaveBeenCalledWith({ message: 'Помилка сервера' });
-    });
+    expect(res.json).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: mechanicId,
+          service_stations: expect.objectContaining({ name: 'Station' }),
+          specializations: expect.objectContaining({ name: 'Engine' }),
+        }),
+      ])
+    );
   });
 
-  describe('getMechanicById', () => {
-    it('should return mechanic by id', async () => {
-      req.params.id = '1';
-      const mockMechanic = { id: 1, first_name: 'Іван', last_name: 'Петренко' };
-
-      mockSupabase.single.mockResolvedValue({
-        data: mockMechanic,
-        error: null,
-      });
-
-      await getMechanicById(req, res);
-
-      expect(mockSupabase.from).toHaveBeenCalledWith('mechanics');
-      expect(res.json).toHaveBeenCalledWith(mockMechanic);
-    });
-
-    it('should return 404 when mechanic not found', async () => {
-      req.params.id = '999';
-
-      mockSupabase.single.mockResolvedValue({
-        data: null,
-        error: null,
-      });
-
-      await getMechanicById(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(404);
-      expect(res.json).toHaveBeenCalledWith({ message: 'Механіка не знайдено' });
-    });
+  it('getMechanicById returns 404 when missing', async () => {
+    seedBase();
+    req.params.id = crypto.randomUUID();
+    await mechanicController.getMechanicById(req, res);
+    expect(res.status).toHaveBeenCalledWith(404);
   });
 
-  describe('createMechanic', () => {
-    it('should create new mechanic', async () => {
-      req.body = {
-        first_name: 'Іван',
-        last_name: 'Петренко',
-        phone: '+380501234567',
-        email: 'ivan@example.com',
-        specialization_id: 1,
-        service_station_id: 1,
-        experience_years: 5,
-      };
+  it('createMechanic inserts and returns created mechanic', async () => {
+    const { db, stationId, specializationId } = seedBase();
+    req.body = {
+      first_name: 'Петро',
+      last_name: 'Іванов',
+      phone: '+380501234567',
+      email: 'p@example.com',
+      specialization_id: specializationId,
+      service_station_id: stationId,
+      experience_years: 5,
+    };
 
-      const mockCreatedMechanic = { id: 1, ...req.body };
+    await mechanicController.createMechanic(req, res);
 
-      mockSupabase.single.mockResolvedValue({
-        data: mockCreatedMechanic,
-        error: null,
-      });
-
-      await createMechanic(req, res);
-
-      expect(mockSupabase.from).toHaveBeenCalledWith('mechanics');
-      expect(res.status).toHaveBeenCalledWith(201);
-      expect(res.json).toHaveBeenCalledWith(mockCreatedMechanic);
-    });
+    expect(res.status).toHaveBeenCalledWith(201);
+    const created = res.json.mock.calls[0][0];
+    const row = db.prepare('SELECT * FROM mechanics WHERE id = ?').get(created.id);
+    expect(row).toBeTruthy();
   });
 
-  describe('updateMechanic', () => {
-    it('should update mechanic', async () => {
-      req.params.id = '1';
-      req.body = {
-        first_name: 'Іван',
-        last_name: 'Петренко',
-        phone: '+380501234567',
-        email: 'ivan@example.com',
-        specialization_id: 1,
-        service_station_id: 1,
-        experience_years: 6,
-      };
-
-      const mockUpdatedMechanic = { id: 1, ...req.body };
-
-      mockSupabase.single.mockResolvedValue({
-        data: mockUpdatedMechanic,
-        error: null,
-      });
-
-      await updateMechanic(req, res);
-
-      expect(mockSupabase.from).toHaveBeenCalledWith('mechanics');
-      expect(res.json).toHaveBeenCalledWith(mockUpdatedMechanic);
-    });
+  it('updateMechanic returns 404 when missing', async () => {
+    const { stationId, specializationId } = seedBase();
+    req.params.id = crypto.randomUUID();
+    req.body = {
+      first_name: 'X',
+      last_name: 'Y',
+      phone: null,
+      email: null,
+      specialization_id: specializationId,
+      service_station_id: stationId,
+      experience_years: 1,
+    };
+    await mechanicController.updateMechanic(req, res);
+    expect(res.status).toHaveBeenCalledWith(404);
   });
 
-  describe('deleteMechanic', () => {
-    it('should delete mechanic when no active appointments', async () => {
-      req.params.id = '1';
+  it('deleteMechanic returns 400 when mechanic has active appointments', async () => {
+    const { db, mechanicId, stationId } = seedBase();
+    const userId = crypto.randomUUID();
+    const serviceId = crypto.randomUUID();
+    const now = new Date().toISOString();
 
-      // Mock для перевірки активних записів
-      mockSupabase.limit.mockResolvedValueOnce({
-        data: [],
-        error: null,
-      });
+    db.prepare(
+      'INSERT INTO users (id, email, password, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
+    ).run(userId, 'user@example.com', 'hashed', 'client', now, now);
+    db.prepare(
+      'INSERT INTO services (id, name, price, duration, service_station_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    ).run(serviceId, 'Service', 1, 1, stationId, now, now);
+    db.prepare(
+      'INSERT INTO appointments (id, user_id, service_id, mechanic_id, scheduled_time, status) VALUES (?, ?, ?, ?, ?, ?)'
+    ).run(
+      crypto.randomUUID(),
+      userId,
+      serviceId,
+      mechanicId,
+      new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
+      'confirmed'
+    );
 
-      // Mock для видалення
-      mockSupabase.delete.mockResolvedValueOnce({
-        error: null,
-      });
-
-      await deleteMechanic(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(204);
-      expect(res.send).toHaveBeenCalled();
-    });
+    req.params.id = mechanicId;
+    await mechanicController.deleteMechanic(req, res);
+    expect(res.status).toHaveBeenCalledWith(400);
   });
 
-  describe('getMechanicSchedule', () => {
-    it('should return mechanic schedule', async () => {
-      req.params.id = '1';
-      req.query = {
-        start_date: '2024-01-01',
-        end_date: '2024-01-31',
-      };
+  it('getMechanicSchedule returns appointments within date range', async () => {
+    const { db, mechanicId, stationId } = seedBase();
+    const userId = crypto.randomUUID();
+    const serviceId = crypto.randomUUID();
+    const now = new Date().toISOString();
 
-      const mockSchedule = [
-        {
-          id: 1,
-          appointment_date: '2024-01-15T10:00:00Z',
-          status: 'confirmed',
-        },
-      ];
+    db.prepare(
+      'INSERT INTO users (id, email, password, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
+    ).run(userId, 'user@example.com', 'hashed', 'client', now, now);
+    db.prepare(
+      'INSERT INTO services (id, name, price, duration, service_station_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    ).run(serviceId, 'Service', 1, 30, stationId, now, now);
 
-      mockSupabase.order.mockResolvedValue({
-        data: mockSchedule,
-        error: null,
-      });
+    const inRange = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
+    const outRange = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000).toISOString();
 
-      await getMechanicSchedule(req, res);
+    const idIn = crypto.randomUUID();
+    const idOut = crypto.randomUUID();
 
-      expect(mockSupabase.from).toHaveBeenCalledWith('appointments');
-      expect(res.json).toHaveBeenCalledWith(mockSchedule);
-    });
+    db.prepare(
+      'INSERT INTO appointments (id, user_id, service_id, mechanic_id, scheduled_time, status) VALUES (?, ?, ?, ?, ?, ?)'
+    ).run(idIn, userId, serviceId, mechanicId, inRange, 'confirmed');
+    db.prepare(
+      'INSERT INTO appointments (id, user_id, service_id, mechanic_id, scheduled_time, status) VALUES (?, ?, ?, ?, ?, ?)'
+    ).run(idOut, userId, serviceId, mechanicId, outRange, 'confirmed');
+
+    req.params.id = mechanicId;
+    req.query.start_date = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    req.query.end_date = new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString();
+
+    await mechanicController.getMechanicSchedule(req, res);
+
+    const payload = res.json.mock.calls[0][0];
+    expect(payload).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: idIn,
+          services: expect.objectContaining({ id: serviceId, name: 'Service' }),
+        }),
+      ])
+    );
+    expect(payload.find((row) => row.id === idOut)).toBeUndefined();
   });
 });

@@ -1,15 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, Alert, ActivityIndicator, Dimensions } from 'react-native';
 import { useTranslation } from 'react-i18next';
-import { useAuth } from '../context/AuthContext';
-import { supabase } from '../api/supabaseClient';
+import { getUserVehicles } from '../api/vehiclesApi';
+import { getUserServiceRecords } from '../api/servicesApi';
 import { LineChart, BarChart } from 'react-native-chart-kit';
 import { Picker } from '@react-native-picker/picker';
 import { Ionicons } from '@expo/vector-icons';
 
 export default function StatisticsScreen() {
   const { t } = useTranslation();
-  const { getToken } = useAuth();
   const [loading, setLoading] = useState(false);
   const [vehicles, setVehicles] = useState([]);
   const [selectedVehicle, setSelectedVehicle] = useState(null);
@@ -28,15 +27,7 @@ export default function StatisticsScreen() {
 
   const fetchVehicles = async () => {
     try {
-      const { data: session } = await supabase.auth.getSession();
-      const uid = session?.user?.id || null;
-      const { data, error } = await supabase
-        .from('vehicles')
-        .select('vin, make, model')
-        .eq('user_id', uid)
-        .order('make');
-      if (error) throw error;
-      const list = (data || []).map(v => ({ id: v.vin, brand: v.make, model: v.model }));
+      const list = await getUserVehicles(null);
       setVehicles(list);
       if (list.length > 0) {
         setSelectedVehicle(list[0].id);
@@ -56,22 +47,20 @@ export default function StatisticsScreen() {
       else if (timeRange === 'month') start.setMonth(now.getMonth() - 1);
       else if (timeRange === 'week') start.setDate(now.getDate() - 7);
 
-      const { data, error } = await supabase
-        .from('service_records')
-        .select('cost, service_details, service_date')
-        .eq('vehicle_vin', selectedVehicle)
-        .gte('service_date', start.toISOString())
-        .lte('service_date', now.toISOString());
-      if (error) throw error;
-
-      const rows = data || [];
-      const totalSpent = rows.reduce((s, r) => s + (Number(r.cost) || 0), 0);
-      const servicesCount = rows.length;
+      const rows = await getUserServiceRecords(null);
+      const filtered = (rows || []).filter(r => {
+        if (!r.service_date) return false;
+        if (r.vehicle_vin !== selectedVehicle && r.vehicle_id !== selectedVehicle) return false;
+        const d = new Date(r.service_date);
+        return d >= start && d <= now;
+      });
+      const totalSpent = filtered.reduce((s, r) => s + (Number(r.cost) || 0), 0);
+      const servicesCount = filtered.length;
       const totalMileage = 0; // якщо є джерело пробігу, додамо пізніше
 
       const expensesOverTime = {};
       const servicesByType = {};
-      rows.forEach(r => {
+      filtered.forEach(r => {
         const d = r.service_date ? new Date(r.service_date) : now;
         const label = `${d.getFullYear()}-${(d.getMonth()+1).toString().padStart(2,'0')}`;
         expensesOverTime[label] = (expensesOverTime[label] || 0) + (Number(r.cost) || 0);

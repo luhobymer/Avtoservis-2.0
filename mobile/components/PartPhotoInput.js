@@ -5,7 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { pickImage, checkGalleryPermissions, checkCameraPermissions, optimizeImage } from '../utils/imageUtils';
 import { ocrManager } from '../utils/ocrUtils';
-import { supabase } from '../api/supabaseClient';
+import { getServiceRecordsByPart } from '../api/serviceRecordsApi';
 
 export default function PartPhotoInput({ onPhotoSelect, onDetailsRecognized, vehicleId }) {
   const { t } = useTranslation();
@@ -64,56 +64,12 @@ export default function PartPhotoInput({ onPhotoSelect, onDetailsRecognized, veh
     try {
       if (!partNumber) return null;
 
-      let vehicleId = null;
-      let vehicleName = '';
-
-      if (vehicleVin) {
-        const { data: vehicle, error: vehicleError } = await supabase
-          .from('vehicles')
-          .select('id, make, model, year, vin')
-          .eq('vin', vehicleVin)
-          .single();
-
-        if (vehicleError) {
-          console.error('Error fetching vehicle for part history:', vehicleError);
-        } else if (vehicle) {
-          vehicleId = vehicle.id;
-          vehicleName = `${vehicle.make} ${vehicle.model}${vehicle.year ? ` (${vehicle.year})` : ''}`;
-        }
-      }
-
-      let records = [];
-
-      if (vehicleId) {
-        const { data, error } = await supabase
-          .from('service_records')
-          .select('id, service_date, description, mileage, cost')
-          .eq('vehicle_id', vehicleId)
-          .order('service_date', { ascending: false });
-
-        if (error) throw error;
-        records = Array.isArray(data) ? data : [];
-      } else {
-        const { data, error } = await supabase
-          .from('service_records')
-          .select('id, service_date, description, mileage, cost')
-          .order('service_date', { ascending: false })
-          .limit(50);
-
-        if (error) throw error;
-        records = Array.isArray(data) ? data : [];
-      }
-
-      const filtered = records.filter(
-        r => typeof r.description === 'string' && r.description.includes(partNumber)
-      );
-
-      const history = filtered.map(record => ({
+      const records = await getServiceRecordsByPart(partNumber, vehicleVin);
+      const history = records.map(record => ({
         date: record.service_date,
-        vehicleName,
+        vehicleName: record.vehicleName || '',
         price: record.cost
       }));
-
       return history;
     } catch (error) {
       console.error('Error fetching part history:', error);

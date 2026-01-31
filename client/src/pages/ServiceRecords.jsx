@@ -3,6 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import * as serviceRecordsDao from '../api/dao/serviceRecordsDao';
 import * as vehiclesDao from '../api/dao/vehiclesDao';
+import useAuth from '../context/useAuth';
 import {
   Container,
   Typography,
@@ -19,7 +20,7 @@ import {
   Box,
   
 } from '@mui/material';
-import { format } from 'date-fns';
+import dayjs from 'dayjs';
 import ServiceBookExport from '../components/ServiceBookExport';
 
 const ServiceRecords = () => {
@@ -27,6 +28,7 @@ const ServiceRecords = () => {
   const location = useLocation();
   const queryParams = new URLSearchParams(location.search);
   const vehicleIdParam = queryParams.get('vehicleId');
+  const { user } = useAuth();
   
   const [records, setRecords] = useState([]);
   const [vehicles, setVehicles] = useState([]);
@@ -39,15 +41,28 @@ const ServiceRecords = () => {
       setLoading(true);
       setError(null);
       try {
+        if (!user || !user.id) {
+          setRecords([]);
+          setVehicles([]);
+          setError(
+            t(
+              'errors.unauthorized',
+              'Будь ласка, увійдіть в систему для перегляду сервісних записів.'
+            )
+          );
+          return;
+        }
+
         const [recordsList, vehiclesList] = await Promise.all([
-          serviceRecordsDao.listAdmin(),
-          vehiclesDao.list()
+          serviceRecordsDao.listForUser(user.id),
+          vehiclesDao.listForUser(user.id)
         ]);
         let filteredRecords = recordsList;
         if (filteredVehicleId) {
-          filteredRecords = filteredRecords.filter(record => 
-            record.VehicleId?.toString() === filteredVehicleId || record.vehicle_id?.toString() === filteredVehicleId
-          );
+          filteredRecords = filteredRecords.filter(record => {
+            const recordVehicleId = record.vehicleId || record.VehicleId || record.vehicle_id;
+            return recordVehicleId?.toString() === filteredVehicleId;
+          });
         }
         setRecords(filteredRecords);
         setVehicles(vehiclesList);
@@ -75,7 +90,7 @@ const ServiceRecords = () => {
       }
     };
     fetchData();
-  }, [filteredVehicleId, t]);
+  }, [filteredVehicleId, t, user]);
 
   if (loading) {
     return (
@@ -93,14 +108,24 @@ const ServiceRecords = () => {
     );
   }
 
+  const headerVehicle =
+    records[0]?.Vehicle || records[0]?.vehicles || records[0]?.vehicle || null;
+  const selectedVehicle =
+    filteredVehicleId ? vehicles.find(v => v.id?.toString() === filteredVehicleId) : null;
+  const headerVehicleLabel = headerVehicle
+    ? `${headerVehicle.make || headerVehicle.brand || ''} ${headerVehicle.model || ''} (${
+        headerVehicle.licensePlate || headerVehicle.license_plate || ''
+      })`.trim()
+    : null;
+
   return (
     <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Typography variant="h4">
           {t('serviceRecord.title')}
-          {filteredVehicleId && records.length > 0 && (records[0].Vehicle || records[0].vehicles) && (
+          {filteredVehicleId && records.length > 0 && headerVehicleLabel && (
             <Typography component="span" variant="subtitle1" sx={{ ml: 2 }}>
-              - {records[0].Vehicle?.make || records[0].vehicles?.brand} {records[0].Vehicle?.model || records[0].vehicles?.model} ({records[0].Vehicle?.licensePlate || records[0].vehicles?.license_plate})
+              - {headerVehicleLabel}
             </Typography>
           )}
         </Typography>
@@ -113,7 +138,11 @@ const ServiceRecords = () => {
           )}
           <Button 
             component={Link} 
-            to={filteredVehicleId ? `/service-records/new?vehicle_vin=${filteredVehicleId}` : '/service-records/new'} 
+            to={
+              filteredVehicleId && selectedVehicle?.vin
+                ? `/service-records/new?vehicle_vin=${selectedVehicle.vin}`
+                : '/service-records/new'
+            } 
             variant="contained" 
             color="primary"
             sx={{ ml: 1 }}
@@ -140,23 +169,41 @@ const ServiceRecords = () => {
               </TableRow>
             </TableHead>
             <TableBody>
-              {records.map((record) => (
-                <TableRow key={record.id}>
+              {records.map((record, index) => {
+                const recordVehicleId = record.vehicleId || record.VehicleId || record.vehicle_id;
+                const recordVehicleVin = record.vehicleVin || record.vehicle_vin;
+                const inlineVehicle =
+                  record.Vehicle || record.vehicles || record.vehicle || null;
+                const vehicle = vehicles.find(v => {
+                  if (recordVehicleId) return v.id?.toString() === recordVehicleId?.toString();
+                  if (recordVehicleVin) return v.vin === recordVehicleVin;
+                  return false;
+                });
+                const resolvedVehicle = vehicle || inlineVehicle;
+                const vehicleVin =
+                  resolvedVehicle?.vin ||
+                  recordVehicleVin ||
+                  record.vehicle_vin ||
+                  record.vehicleVin;
+                const serviceDate = record.serviceDate || record.service_date;
+                const formattedServiceDate = serviceDate
+                  ? dayjs(serviceDate).isValid()
+                    ? dayjs(serviceDate).format('DD.MM.YYYY')
+                    : t('common.notAvailable')
+                  : t('common.notAvailable');
+                return (
+                <TableRow key={record.id || `record-${index}`}>
                   <TableCell component="th" scope="row">
-                    {format(new Date(record.serviceDate || record.service_date), 'dd.MM.yyyy')}
+                    {formattedServiceDate}
                   </TableCell>
                   {!filteredVehicleId && (
                     <TableCell>
                       {(() => {
-                        const vehicle = vehicles.find(v => {
-                          if (record.VehicleId) return v.id === record.VehicleId;
-                          if (record.vehicle_id) return v.id === record.vehicle_id;
-                          if (record.vehicle_vin) return v.vin === record.vehicle_vin;
-                          return false;
-                        });
-                        return vehicle ? (
-                          <Link to={`/vehicles/${vehicle.id}`}>
-                            {vehicle.brand || vehicle.make} {vehicle.model} ({vehicle.year})
+                        return resolvedVehicle ? (
+                          <Link to={`/vehicles/${vehicleVin || ''}`}>
+                            {resolvedVehicle.brand || resolvedVehicle.make}{' '}
+                            {resolvedVehicle.model}{' '}
+                            {resolvedVehicle.year ? `(${resolvedVehicle.year})` : ''}
                           </Link>
                         ) : (
                           <span style={{color: 'red'}}>{t('vehicle.notFound', 'Авто не знайдено')}</span>
@@ -178,7 +225,8 @@ const ServiceRecords = () => {
                     </Button>
                   </TableCell>
                 </TableRow>
-              ))}
+                );
+              })}
             </TableBody>
           </Table>
         </TableContainer>

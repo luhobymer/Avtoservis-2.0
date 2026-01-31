@@ -136,36 +136,40 @@ const AppointmentsManagement = () => {
 
   const mapStatusToTranslation = (status) => {
     switch (status) {
-      case 'scheduled':
-        return 'scheduled';
-      case 'in-progress':
-        return 'in-progress';
+      case 'pending':
+        return 'pending';
+      case 'confirmed':
+        return 'confirmed';
+      case 'in_progress':
+        return 'in_progress';
       case 'completed':
         return 'completed';
       case 'cancelled':
         return 'cancelled';
-      case 'pending':
-        return 'scheduled';
-      case 'confirmed':
-        return 'in-progress';
+      case 'scheduled':
+        return 'pending';
+      case 'in-progress':
+        return 'in_progress';
       default:
-        return 'scheduled';
+        return 'pending';
     }
   };
 
   const getStatusChipColor = (status) => {
     switch (status) {
-      case 'scheduled':
+      case 'pending':
         return 'primary';
-      case 'in-progress':
+      case 'confirmed':
+        return 'warning';
+      case 'in_progress':
         return 'warning';
       case 'completed':
         return 'success';
       case 'cancelled':
         return 'error';
-      case 'pending':
+      case 'scheduled':
         return 'primary';
-      case 'confirmed':
+      case 'in-progress':
         return 'warning';
       default:
         return 'default';
@@ -276,8 +280,9 @@ const AppointmentsManagement = () => {
                   onChange={handleChange}
                   label={t('appointment.status')}
                 >
-                  <MenuItem value="scheduled">{t('appointment.statuses.scheduled')}</MenuItem>
-                  <MenuItem value="in-progress">{t('appointment.statuses.in-progress')}</MenuItem>
+                  <MenuItem value="pending">{t('appointment.statuses.pending')}</MenuItem>
+                  <MenuItem value="confirmed">{t('appointment.statuses.confirmed')}</MenuItem>
+                  <MenuItem value="in_progress">{t('appointment.statuses.in_progress')}</MenuItem>
                   <MenuItem value="completed">{t('appointment.statuses.completed')}</MenuItem>
                   <MenuItem value="cancelled">{t('appointment.statuses.cancelled')}</MenuItem>
                 </Select>

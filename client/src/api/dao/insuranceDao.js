@@ -1,12 +1,46 @@
-import { supabase } from '../supabaseClient'
+async function requestJson(url, options = {}) {
+  const token = localStorage.getItem('auth_token');
+  const response = await fetch(url, {
+    method: options.method || 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(options.headers || {}),
+    },
+    body: options.body ? JSON.stringify(options.body) : undefined,
+  })
+
+  if (!response.ok) {
+    let message = `Request failed with status ${response.status}`
+    try {
+      const errorBody = await response.json()
+      if (errorBody && typeof errorBody.message === 'string') {
+        message = errorBody.message
+      }
+    } catch (error) {
+      void error
+    }
+    throw new Error(message)
+  }
+
+  const contentType = response.headers.get('content-type') || ''
+  if (contentType.includes('application/json')) {
+    return response.json()
+  }
+  return null
+}
+
+function normalizeListPayload(payload) {
+  if (!payload) return []
+  if (Array.isArray(payload)) return payload
+  if (Array.isArray(payload.data)) return payload.data
+  return []
+}
 
 export async function listAll() {
-  const { data, error } = await supabase
-    .from('insurance')
-    .select('id, vehicle_vin, policy_number, insurance_company, start_date, end_date, created_at, updated_at')
-    .order('updated_at', { ascending: false })
-  if (error) throw error
-  return Array.isArray(data) ? data : []
+  const payload = await requestJson('/api/insurance')
+  const data = normalizeListPayload(payload)
+  return data
 }
 
 export async function create(payload) {
@@ -17,13 +51,11 @@ export async function create(payload) {
     start_date: payload.start_date ? new Date(payload.start_date).toISOString() : null,
     end_date: payload.end_date ? new Date(payload.end_date).toISOString() : null,
   }
-  const { data, error } = await supabase
-    .from('insurance')
-    .insert(body)
-    .select('*')
-    .single()
-  if (error) throw error
-  return data
+
+  return requestJson('/api/insurance', {
+    method: 'POST',
+    body,
+  })
 }
 
 export async function updateById(id, payload) {
@@ -34,21 +66,16 @@ export async function updateById(id, payload) {
     start_date: payload.start_date ? new Date(payload.start_date).toISOString() : null,
     end_date: payload.end_date ? new Date(payload.end_date).toISOString() : null,
   }
-  const { data, error } = await supabase
-    .from('insurance')
-    .update(body)
-    .eq('id', id)
-    .select('*')
-    .single()
-  if (error) throw error
-  return data
+
+  return requestJson(`/api/insurance/${id}`, {
+    method: 'PUT',
+    body,
+  })
 }
 
 export async function deleteById(id) {
-  const { error } = await supabase
-    .from('insurance')
-    .delete()
-    .eq('id', id)
-  if (error) throw error
+  await requestJson(`/api/insurance/${id}`, {
+    method: 'DELETE',
+  })
   return true
 }

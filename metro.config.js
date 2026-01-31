@@ -5,7 +5,6 @@ const defaultConfig = getDefaultConfig(__dirname);
 defaultConfig.resolver.blockList = exclusionList([
   /server\/.*/,
   /mysql_export\/.*/,
-  /supabase\/.*/,
   /logs\/.*/,
 ]);
 

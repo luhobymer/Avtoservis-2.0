@@ -97,7 +97,7 @@ const Appointments = () => {
         </Typography>
         <Button 
           component={Link} 
-          to="/appointments/new" 
+          to="/appointments/schedule" 
           variant="contained" 
           color="primary"
         >
@@ -130,17 +130,17 @@ const Appointments = () => {
                       t('common.notAvailable')}
                   </TableCell>
                   <TableCell>
-  {(() => {
-    const vehicle = vehicles.find(v => v.vin === appointment.vehicle_vin);
-    return vehicle ? (
-      <Link to={`/vehicles/${vehicle.id || vehicle.vin}`}>
-        {vehicle.brand || vehicle.make} {vehicle.model} ({vehicle.year})
-      </Link>
-    ) : (
-      <span style={{color: 'red'}}>{t('vehicle.notFound', 'Авто не знайдено')}</span>
-    );
-  })()}
-</TableCell>
+                    {(() => {
+                      const vehicle = vehicles.find(v => v.vin === appointment.vehicle_vin);
+                      return vehicle ? (
+                        <Link to={`/vehicles/${vehicle.vin}`}>
+                          {vehicle.brand || vehicle.make} {vehicle.model} ({vehicle.year})
+                        </Link>
+                      ) : (
+                        <span style={{color: 'red'}}>{t('vehicle.notFound', 'Авто не знайдено')}</span>
+                      );
+                    })()}
+                  </TableCell>
                   <TableCell>{appointment.serviceType || appointment.service_type || t('common.notAvailable')}</TableCell>
                   <TableCell>
                     <Chip 

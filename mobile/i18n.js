@@ -7,6 +7,12 @@ import { Platform } from 'react-native';
 // Завантажуємо файли локалізації
 import uk from './locales/uk/translation.json';
 import ukAdmin from './locales/uk/admin.json';
+import ru from './locales/ru/translation.json';
+import ruAdmin from './locales/ru/admin.json';
+import en from './locales/en/translation.json';
+import enAdmin from './locales/en/admin.json';
+
+const supportedLanguages = ['uk', 'ru', 'en'];
 
 // Функція для завантаження збереженої мови
 const loadSavedLanguage = async () => {
@@ -14,7 +20,7 @@ const loadSavedLanguage = async () => {
     const savedLanguage = await AsyncStorage.getItem('userLanguage');
     console.log('Збережена мова:', savedLanguage);
     
-    if (savedLanguage && ['uk'].includes(savedLanguage)) {
+    if (savedLanguage && supportedLanguages.includes(savedLanguage)) {
       return savedLanguage;
     }
     
@@ -23,7 +29,7 @@ const loadSavedLanguage = async () => {
     console.log('Мова пристрою:', deviceLang);
     
     // Перевіряємо, чи підтримується мова пристрою
-    if (['uk'].includes(deviceLang)) {
+    if (supportedLanguages.includes(deviceLang)) {
       return deviceLang;
     }
     
@@ -41,7 +47,9 @@ const initI18n = async () => {
   
   console.log('Ініціалізація i18n з мовою:', language);
   console.log('Перевірка перекладів:', {
-    uk: Object.keys(uk).length
+    uk: Object.keys(uk).length,
+    ru: Object.keys(ru).length,
+    en: Object.keys(en).length
   });
   
   i18n
@@ -52,6 +60,8 @@ const initI18n = async () => {
       fallbackLng: 'uk',
       resources: {
         uk: { translation: uk, admin: ukAdmin },
+        ru: { translation: ru, admin: ruAdmin },
+        en: { translation: en, admin: enAdmin },
       },
       ns: ['translation', 'admin'],
       defaultNS: 'translation',
@@ -79,7 +89,7 @@ initI18n();
 // Функція для зміни мови
 export const changeLanguage = async (language) => {
   try {
-    if (!['uk'].includes(language)) {
+    if (!supportedLanguages.includes(language)) {
       console.error('Непідтримувана мова:', language);
       return false;
     }
@@ -93,20 +103,6 @@ export const changeLanguage = async (language) => {
     await i18n.changeLanguage(language);
     
     console.log('Поточна мова після зміни:', i18n.language);
-    
-    // Перевіряємо, чи змінилась мова
-    if (i18n.language !== language) {
-      console.warn('Мова не змінилась, примусово встановлюємо');
-      i18n.language = language;
-      
-      // Примусово оновлюємо ресурси
-      i18n.services.resourceStore.data = {
-        uk: { translation: uk, admin: ukAdmin },
-      };
-      
-      // Викликаємо подію зміни мови
-      i18n.emit('languageChanged', language);
-    }
     
     return true;
   } catch (error) {

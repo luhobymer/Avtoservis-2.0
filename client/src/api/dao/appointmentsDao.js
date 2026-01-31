@@ -1,151 +1,157 @@
-import { supabase } from '../supabaseClient';
+async function requestJson(url, options = {}) {
+  const token = localStorage.getItem('auth_token');
+  const response = await fetch(url, {
+    method: options.method || 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(options.headers || {})
+    },
+    body: options.body ? JSON.stringify(options.body) : undefined
+  });
+
+  if (!response.ok) {
+    let message = `Request failed with status ${response.status}`;
+    try {
+      const errorBody = await response.json();
+      if (errorBody && typeof errorBody.message === 'string') {
+        message = errorBody.message;
+      }
+    } catch (error) {
+      void error;
+    }
+    throw new Error(message);
+  }
+
+  const contentType = response.headers.get('content-type') || '';
+  if (contentType.includes('application/json')) {
+    return response.json();
+  }
+  return null;
+}
 
 function mapStatus(status) {
-  if (status === 'pending') return 'scheduled';
-  if (status === 'confirmed') return 'in-progress';
-  if (status === 'canceled') return 'cancelled';
-  return status || 'scheduled';
+  const value = (status || '').toLowerCase();
+  if (value === 'pending') return 'pending';
+  if (value === 'confirmed') return 'confirmed';
+  if (value === 'in_progress') return 'in_progress';
+  if (value === 'completed') return 'completed';
+  if (value === 'cancelled' || value === 'canceled') return 'cancelled';
+  if (value === 'scheduled') return 'pending';
+  if (value === 'in-progress') return 'in_progress';
+  return 'pending';
+}
+
+function normalizeListPayload(payload) {
+  if (!payload) return [];
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload.data)) return payload.data;
+  return [];
+}
+
+function mapAppointment(row) {
+  const service = row.services || null;
+  const mechanic = row.mechanics || null;
+  const servicesList = Array.isArray(row.services_list) ? row.services_list : [];
+  const serviceIds = Array.isArray(row.service_ids)
+    ? row.service_ids
+    : Array.isArray(row.service_ids_list)
+      ? row.service_ids_list
+      : [];
+  const serviceId = row.service_id || (service && service.id) || null;
+  const serviceName =
+    (servicesList[0] && servicesList[0].name) || (service && service.name) || row.service_type || null;
+  const servicePrice =
+    service && service.price != null ? Number(service.price) : null;
+  const serviceDuration =
+    service && service.duration != null ? Number(service.duration) : null;
+
+  return {
+    id: row.id,
+    UserId: row.user_id,
+    service_id: serviceId,
+    service_ids: serviceIds,
+    mechanic_id: row.mechanic_id || (mechanic && mechanic.id) || null,
+    vehicle_vin: row.vehicle_vin,
+    serviceId,
+    serviceType: row.service_type || serviceName || '',
+    serviceName,
+    servicePrice,
+    serviceDuration,
+    scheduledDate: row.scheduled_time,
+    estimatedCompletionDate: row.estimated_completion_date || row.appointment_date || null,
+    actualCompletionDate: row.actual_completion_date || null,
+    status: mapStatus(row.status),
+    description: row.description || '',
+    notes: row.notes || '',
+    services: service,
+    services_list: servicesList,
+    mechanics: mechanic
+  };
 }
 
 export async function listAdmin() {
-  const { data, error } = await supabase
-    .from('appointments')
-    .select(
-      'id, user_id, vehicle_vin, service_id, service_type, scheduled_time, status, updated_at, description, notes, estimated_completion_date, actual_completion_date'
-    )
-    .order('scheduled_time', { ascending: false });
-  if (error) throw error;
-  const rows = Array.isArray(data) ? data : [];
-  const serviceIds = [...new Set(rows.map(a => a.service_id).filter(Boolean))];
-  let servicesMap = {};
-  if (serviceIds.length > 0) {
-    const { data: servicesData } = await supabase
-      .from('services')
-      .select('id, name, price, duration')
-      .in('id', serviceIds);
-    (servicesData || []).forEach(s => {
-      servicesMap[s.id] = s;
-    });
-  }
-  return rows.map(a => ({
-    id: a.id,
-    UserId: a.user_id,
-    vehicle_vin: a.vehicle_vin,
-    serviceId: a.service_id || null,
-    serviceType: a.service_type,
-    serviceName: servicesMap[a.service_id]?.name || null,
-    servicePrice: servicesMap[a.service_id]?.price ?? null,
-    serviceDuration: servicesMap[a.service_id]?.duration ?? null,
-    scheduledDate: a.scheduled_time,
-    estimatedCompletionDate: a.estimated_completion_date || null,
-    actualCompletionDate: a.actual_completion_date || null,
-    status: mapStatus(a.status),
-    description: a.description || '',
-    notes: a.notes || ''
-  }));
+  const payload = await requestJson('/api/appointments?admin=1');
+  const rows = normalizeListPayload(payload);
+  return rows.map(mapAppointment);
 }
 
 export async function update(id, payload) {
-  const { error } = await supabase
-    .from('appointments')
-    .update(payload)
-    .eq('id', id);
-  if (error) throw error;
+  const body = {
+    service_id: payload.service_id ?? payload.serviceId ?? null,
+    service_ids: payload.service_ids || payload.serviceIds || null,
+    mechanic_id: payload.mechanic_id ?? payload.mechanicId ?? null,
+    vehicle_vin: payload.vehicle_vin,
+    service_type: payload.service_type || payload.serviceType,
+    scheduled_time: payload.scheduled_time || payload.scheduledTime,
+    status: payload.status || null,
+    notes: payload.notes,
+    appointment_date: payload.estimated_completion_date || null
+  };
+
+  await requestJson(`/api/appointments/${id}`, {
+    method: 'PUT',
+    body
+  });
 }
 
 export async function listForUser(userId) {
-  const { data, error } = await supabase
-    .from('appointments')
-    .select(
-      'id, user_id, vehicle_vin, service_id, service_type, scheduled_time, status, updated_at, description, notes, estimated_completion_date, actual_completion_date'
-    )
-    .eq('user_id', userId)
-    .order('scheduled_time', { ascending: false });
-  if (error) throw error;
-  const rows = Array.isArray(data) ? data : [];
-  const serviceIds = [...new Set(rows.map(a => a.service_id).filter(Boolean))];
-  let servicesMap = {};
-  if (serviceIds.length > 0) {
-    const { data: servicesData } = await supabase
-      .from('services')
-      .select('id, name, price, duration')
-      .in('id', serviceIds);
-    (servicesData || []).forEach(s => {
-      servicesMap[s.id] = s;
-    });
-  }
-  return rows.map(a => ({
-    id: a.id,
-    UserId: a.user_id,
-    vehicle_vin: a.vehicle_vin,
-    serviceId: a.service_id || null,
-    serviceType: a.service_type,
-    serviceName: servicesMap[a.service_id]?.name || null,
-    servicePrice: servicesMap[a.service_id]?.price ?? null,
-    serviceDuration: servicesMap[a.service_id]?.duration ?? null,
-    scheduledDate: a.scheduled_time,
-    estimatedCompletionDate: a.estimated_completion_date || null,
-    actualCompletionDate: a.actual_completion_date || null,
-    status: mapStatus(a.status),
-    description: a.description || '',
-    notes: a.notes || ''
-  }));
+  if (!userId) return [];
+  const payload = await requestJson(`/api/appointments?user_id=${encodeURIComponent(userId)}`);
+  const rows = normalizeListPayload(payload);
+  return rows.map(mapAppointment);
 }
 
 export async function getById(id) {
-  const { data, error } = await supabase
-    .from('appointments')
-    .select(
-      'id, user_id, vehicle_vin, service_id, service_type, scheduled_time, status, updated_at, description, notes, estimated_completion_date, actual_completion_date'
-    )
-    .eq('id', id)
-    .single();
-  if (error) throw error;
-  let service = null;
-  if (data.service_id) {
-    const { data: serviceData } = await supabase
-      .from('services')
-      .select('id, name, price, duration')
-      .eq('id', data.service_id)
-      .single();
-    service = serviceData || null;
+  const row = await requestJson(`/api/appointments/${id}`);
+  if (!row) {
+    throw new Error('Appointment not found');
   }
-  return {
-    id: data.id,
-    UserId: data.user_id,
-    vehicle_vin: data.vehicle_vin,
-    serviceId: data.service_id || null,
-    serviceType: data.service_type,
-    serviceName: service?.name || null,
-    servicePrice: service?.price ?? null,
-    serviceDuration: service?.duration ?? null,
-    scheduledDate: data.scheduled_time,
-    status: mapStatus(data.status),
-    description: data.description || '',
-    notes: data.notes || '',
-    estimatedCompletionDate: data.estimated_completion_date || null,
-    actualCompletionDate: data.actual_completion_date || null
-  };
+  return mapAppointment(row);
 }
 
 export async function create(payload) {
   const body = {
     user_id: payload.user_id,
+    service_id: payload.service_id ?? payload.serviceId,
+    service_ids: payload.service_ids || payload.serviceIds || null,
+    mechanic_id: payload.mechanic_id ?? payload.mechanicId,
     vehicle_vin: payload.vehicle_vin,
-    service_id: payload.service_id || payload.serviceId || null,
-    service_type: payload.service_type || payload.serviceType || null,
+    service_type: payload.service_type || payload.serviceType,
     scheduled_time: payload.scheduled_time,
     status: payload.status || 'pending',
-    description: payload.description || null,
     notes: payload.notes || null,
-    estimated_completion_date: payload.estimated_completion_date || null,
-    actual_completion_date: payload.actual_completion_date || null
+    appointment_date: payload.estimated_completion_date || null
   };
-  const { data, error } = await supabase
-    .from('appointments')
-    .insert(body)
-    .select('id')
-    .single();
-  if (error) throw error;
-  return data.id;
+
+  const created = await requestJson('/api/appointments', {
+    method: 'POST',
+    body
+  });
+
+  if (created && created.id) {
+    return created.id;
+  }
+
+  return null;
 }

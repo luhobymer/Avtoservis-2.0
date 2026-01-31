@@ -44,24 +44,7 @@ jest.mock('../api/axiosConfig', () => {
   };
 });
 
-jest.mock('../api/supabaseClient', () => {
-  const auth = {
-    getSession: jest.fn(() => Promise.resolve({ data: { session: { access_token: 'mock-token', refresh_token: 'mock-refresh', user: { id: '1', email: 'test@example.com' } } } })),
-    signInWithPassword: jest.fn(() => Promise.resolve({ data: { session: { access_token: 'mock-token', refresh_token: 'mock-refresh' }, user: { id: '1', email: 'test@example.com' } }, error: null })),
-    signOut: jest.fn(() => Promise.resolve({ error: null })),
-    signUp: jest.fn(() => Promise.resolve({ data: { user: { id: '1', email: 'test@example.com' } }, error: null }))
-  };
-  const tableApi = {
-    select: jest.fn(() => ({
-      eq: jest.fn(() => ({ single: jest.fn(() => Promise.resolve({ data: { id: '1', email: 'test@example.com', name: 'Test User', role: 'client', phone: '' }, error: null })) }))
-    })),
-    insert: jest.fn(() => ({ select: jest.fn(() => ({ single: jest.fn(() => Promise.resolve({ data: null, error: null })) })) })),
-    update: jest.fn(() => ({ eq: jest.fn(() => ({ select: jest.fn(() => ({ single: jest.fn(() => Promise.resolve({ data: null, error: null })) })) })) })),
-    delete: jest.fn(() => ({ eq: jest.fn(() => Promise.resolve({ error: null })) })),
-    order: jest.fn(() => Promise.resolve({ data: [], error: null })),
-  };
-  return { supabase: { auth, from: jest.fn(() => tableApi) } };
-});
+// Supabase більше не використовується в AuthContext
 
 // Mock Alert
 jest.spyOn(Alert, 'alert').mockImplementation(() => {});
@@ -215,18 +198,12 @@ describe('Тестування інтеграції автентифікації
 
   describe('Сценарії помилок', () => {
     test('Обробка недійсної сесії Supabase', async () => {
-      const { supabase } = require('../api/supabaseClient');
-      supabase.auth.getSession.mockResolvedValueOnce({ data: { session: null, user: null } });
-
       const { result } = renderHook(() => useAuth(), { wrapper });
-
       await waitFor(() => {
         expect(result.current.loading).toBe(false);
       });
-
       expect(result.current.isAuthenticated).toBe(false);
       expect(result.current.user).toBeNull();
-      // Очищення AsyncStorage не викликається в цьому сценарії
     });
 
     test('Оновлення стану без axios-рефрешу', async () => {

@@ -12,7 +12,7 @@ try {
   };
 }
 import secureStorage, { SECURE_STORAGE_KEYS } from '../utils/secureStorage';
-import { supabase } from '../api/supabaseClient';
+import axiosAuth from '../api/axiosConfig';
 import { registerForPushNotifications, sendPushTokenToServer } from '../api/pushNotificationsService';
 
 const APP_STATE_KEY = 'app_state';
@@ -77,37 +77,9 @@ export function AuthProvider({ children }) {
       try {
         setLoading(true);
         await ensureAppStateMigrated();
-        const { data } = await supabase.auth.getSession();
-        const session = data?.session;
-        const authUser = session?.user;
-        if (session?.access_token && authUser?.id) {
-          await secureStorage.secureSet(SECURE_STORAGE_KEYS.TOKEN, session.access_token);
-          if (session.refresh_token) {
-            await secureStorage.secureSet(SECURE_STORAGE_KEYS.REFRESH_TOKEN, session.refresh_token);
-          }
-          await secureStorage.secureSet(SECURE_STORAGE_KEYS.USER_ID, authUser.id.toString());
-          let userData = await secureStorage.secureGet(SECURE_STORAGE_KEYS.USER_DATA, true);
-          if (!userData) {
-            const { data: dbUser } = await supabase
-              .from('users')
-              .select('id, name, email, role, phone')
-              .eq('id', authUser.id)
-              .single();
-            if (dbUser) {
-              await secureStorage.secureSet(SECURE_STORAGE_KEYS.USER_DATA, dbUser);
-              userData = dbUser;
-            } else {
-              userData = {
-                id: authUser.id,
-                name: 'Користувач',
-                email: authUser.email,
-                role: 'client',
-                phone: ''
-              };
-              await secureStorage.secureSet(SECURE_STORAGE_KEYS.USER_DATA, userData);
-            }
-          }
-          if (userData) setUser(userData);
+        const storedUser = await secureStorage.secureGet(SECURE_STORAGE_KEYS.USER_DATA, true);
+        if (storedUser && storedUser.id) {
+          setUser(storedUser);
         }
       } catch (err) {
         console.error('[Auth] Error loading authentication data:', err);
@@ -128,10 +100,8 @@ export function AuthProvider({ children }) {
       try {
         if (!user) return;
         const expoToken = await registerForPushNotifications();
-        const { data } = await supabase.auth.getSession();
-        const authToken = data?.session?.access_token || null;
         if (expoToken) {
-          await sendPushTokenToServer(expoToken, authToken);
+          await sendPushTokenToServer(expoToken, null);
         }
       } catch {}
     };
@@ -143,47 +113,61 @@ export function AuthProvider({ children }) {
     setLoading(true);
     setError(null);
     try {
-      let payload = { password };
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      const phoneRegex = /^(\+?380)\d{9}$/;
-      if (emailRegex.test(identifier)) {
-        payload.email = identifier;
-        console.log('[Auth] Attempting login with email:', identifier);
-      } else if (phoneRegex.test(identifier)) {
-        payload.phone = identifier;
-        console.log('[Auth] Attempting login with phone:', identifier);
-      } else {
+      const phoneRegex = /^(\+?380|0)\d{9}$/;
+      if (!identifier || (!emailRegex.test(identifier) && !phoneRegex.test(identifier))) {
         throw new Error('Невірний формат email або телефону');
       }
-      if (emailRegex.test(identifier)) {
-        const { data, error } = await supabase.auth.signInWithPassword({ email: identifier, password });
-        if (error) throw error;
-        const session = data?.session;
-        const authUser = data?.user;
-        if (!session || !authUser) throw new Error('Помилка автентифікації');
-        await secureStorage.secureSet(SECURE_STORAGE_KEYS.TOKEN, session.access_token);
-        if (session.refresh_token) {
-          await secureStorage.secureSet(SECURE_STORAGE_KEYS.REFRESH_TOKEN, session.refresh_token);
+
+      let loginValue = identifier.trim();
+      if (phoneRegex.test(identifier)) {
+        let cleanedPhone = identifier.trim().replace(/\s+/g, '');
+        if (cleanedPhone.startsWith('0')) {
+          loginValue = '+380' + cleanedPhone.slice(1);
+        } else if (cleanedPhone.startsWith('380')) {
+          loginValue = '+' + cleanedPhone;
+        } else {
+          loginValue = cleanedPhone;
         }
-        await secureStorage.secureSet(SECURE_STORAGE_KEYS.USER_ID, authUser.id.toString());
-        const { data: dbUser } = await supabase
-          .from('users')
-          .select('id, name, email, role, phone')
-          .eq('id', authUser.id)
-          .single();
-        const userData = dbUser || { id: authUser.id, name: 'Користувач', email: authUser.email, role: 'client', phone: '' };
-        await secureStorage.secureSet(SECURE_STORAGE_KEYS.USER_DATA, userData);
-        setUser(userData);
-        return true;
-      } else if (phoneRegex.test(identifier)) {
-        throw new Error('Вхід за телефоном недоступний');
-      } else {
-        throw new Error('Невірний формат email або телефону');
       }
+      const response = await axiosAuth.post('/api/auth/login', {
+        identifier: loginValue,
+        password,
+      });
+      const userData =
+        response?.data?.user ||
+        {
+          id: null,
+          name: 'Користувач',
+          email: emailRegex.test(loginValue) ? loginValue : '',
+          role: 'client',
+          phone: phoneRegex.test(loginValue) ? loginValue : '',
+        };
+      const token = response?.data?.token || null;
+      const refreshToken =
+        response?.data?.refresh_token ||
+        response?.data?.refreshToken ||
+        null;
+      if (token) {
+        await secureStorage.secureSet(SECURE_STORAGE_KEYS.TOKEN, token);
+      } else {
+        await secureStorage.secureSet(SECURE_STORAGE_KEYS.TOKEN, 'local');
+      }
+      if (refreshToken) {
+        await secureStorage.secureSet(SECURE_STORAGE_KEYS.REFRESH_TOKEN, refreshToken);
+      }
+      if (userData.id) {
+        await secureStorage.secureSet(SECURE_STORAGE_KEYS.USER_ID, userData.id.toString());
+      }
+      await secureStorage.secureSet(SECURE_STORAGE_KEYS.USER_DATA, userData);
+      setUser(userData);
+      return true;
     } catch (err) {
       console.error('[Auth] Login error:', err);
       let errorMessage = 'Помилка входу';
-      if (err.isAuthError) {
+      if (err.response && err.response.data && err.response.data.message) {
+        errorMessage = err.response.data.message;
+      } else if (err.isAuthError) {
         errorMessage = err.customMessage || 'Помилка автентифікації';
       } else if (err.isNetworkError) {
         errorMessage = err.customMessage || 'Проблеми з мережею';
@@ -212,18 +196,32 @@ export function AuthProvider({ children }) {
     setLoading(true);
     setError(null);
     try {
-      const { data, error } = await supabase.auth.signUp({
+      const response = await axiosAuth.post('/api/auth/register', {
+        name: payload.name,
         email: payload.email,
-        password: payload.password
+        phone: payload.phone,
+        password: payload.password,
+        role: payload.role || 'client',
       });
-      if (error) return { success: false, error: error.message };
-      const user = data?.user;
-      const uid = user?.id;
-      if (uid) {
-        await supabase.from('users').insert({ id: uid, email: payload.email, name: payload.name, role: payload.role, phone: payload.phone }).select().single();
+      if (!response || !response.data || !response.data.user) {
+        return { success: false, error: 'Помилка реєстрації' };
       }
-      const requiresEmailConfirmation = !user?.email_confirmed_at;
-      return { success: true, requiresEmailConfirmation };
+
+      const token = response?.data?.token || null;
+      const refreshToken =
+        response?.data?.refresh_token ||
+        response?.data?.refreshToken ||
+        null;
+      if (token) {
+        await secureStorage.secureSet(SECURE_STORAGE_KEYS.TOKEN, token);
+      }
+      if (refreshToken) {
+        await secureStorage.secureSet(SECURE_STORAGE_KEYS.REFRESH_TOKEN, refreshToken);
+      }
+      return {
+        success: true,
+        requiresEmailConfirmation: !!response.data.requiresEmailConfirmation,
+      };
     } catch (err) {
       let errorMessage = 'Помилка реєстрації';
       if (err.isAuthError) {
@@ -248,7 +246,6 @@ export function AuthProvider({ children }) {
   // Функція для виходу з системи
   const logout = async () => {
     try {
-      await supabase.auth.signOut();
       await secureStorage.secureRemove(SECURE_STORAGE_KEYS.TOKEN);
       await secureStorage.secureRemove(SECURE_STORAGE_KEYS.REFRESH_TOKEN);
       await secureStorage.secureRemove(SECURE_STORAGE_KEYS.USER_ID);
@@ -266,9 +263,8 @@ export function AuthProvider({ children }) {
   // Функція для отримання токена з перевіркою терміну дії
   const getToken = async () => {
     try {
-      const { data } = await supabase.auth.getSession();
-      const token = data?.session?.access_token || null;
-      return token;
+      const token = await secureStorage.secureGet(SECURE_STORAGE_KEYS.TOKEN, false);
+      return token || null;
     } catch (error) {
       console.error('[Auth] Error getting token:', error);
       return null;
@@ -329,14 +325,14 @@ export function AuthProvider({ children }) {
     return user.role === requiredRole;
   };
 
-  // Функція для перевірки, чи є користувач адміністратором
+  // Функція для перевірки, чи є користувач майстром-механіком (адміністратор системи)
   const isAdmin = () => {
-    return hasRole(['admin', 'master_admin']);
+    return hasRole('master');
   };
 
   // Функція для перевірки, чи є користувач майстром
   const isMaster = () => {
-    return hasRole(['master', 'master_admin']);
+    return hasRole('master');
   };
 
   // Функція для перевірки, чи є користувач клієнтом
@@ -347,13 +343,14 @@ export function AuthProvider({ children }) {
   // Функція для отримання даних користувача з сервера
   const getUserData = async (token, userId) => {
     try {
-      const { data, error } = await supabase
-        .from('users')
-        .select('id, name, email, phone, role, created_at')
-        .eq('id', userId)
-        .single();
-      if (error) throw error;
-      return { user: data };
+      if (!userId) {
+        throw new Error('User id is required');
+      }
+      const response = await axiosAuth.get(`/api/users/${userId}`);
+      if (!response || !response.data) {
+        throw new Error('User not found');
+      }
+      return { user: response.data };
     } catch (error) {
       console.error('[Auth] Error fetching user data:', error);
       throw error;

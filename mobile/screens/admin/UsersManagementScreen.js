@@ -29,7 +29,11 @@ export default function UsersManagementScreen({ navigation }) {
     try {
       setLoading(true);
       const list = await usersDao.listAll();
-      setUsers(list);
+      const normalized = list.map((u) => ({
+        ...u,
+        role: u.role === 'admin' || u.role === 'master_admin' ? 'master' : u.role,
+      }));
+      setUsers(normalized);
     } catch (error) {
       console.error('Failed to fetch users:', error);
       Alert.alert(t('common.error'), t('admin.users.fetch_error'));
@@ -85,10 +89,36 @@ export default function UsersManagementScreen({ navigation }) {
       t('admin.users.change_role'),
       t('admin.users.change_role_confirm'),
       [
-        { text: t('admin.users.roles.admin'), onPress: async () => { try { setUpdating(true); await usersDao.updateRole(user.id, 'admin'); await fetchUsers(); } catch (e) { console.error(e); Alert.alert(t('common.error'), t('admin.users.update_error')); } finally { setUpdating(false); } } },
-        { text: t('admin.users.roles.master'), onPress: async () => { try { setUpdating(true); await usersDao.updateRole(user.id, 'master'); await fetchUsers(); } catch (e) { console.error(e); Alert.alert(t('common.error'), t('admin.users.update_error')); } finally { setUpdating(false); } } },
-        { text: t('admin.users.roles.master_admin') || 'Майстер+адміністратор', onPress: async () => { try { setUpdating(true); await usersDao.updateRole(user.id, 'master_admin'); await fetchUsers(); } catch (e) { console.error(e); Alert.alert(t('common.error'), t('admin.users.update_error')); } finally { setUpdating(false); } } },
-        { text: t('admin.users.roles.client'), onPress: async () => { try { setUpdating(true); await usersDao.updateRole(user.id, 'client'); await fetchUsers(); } catch (e) { console.error(e); Alert.alert(t('common.error'), t('admin.users.update_error')); } finally { setUpdating(false); } } },
+        {
+          text: t('admin.users.roles.master'),
+          onPress: async () => {
+            try {
+              setUpdating(true);
+              await usersDao.updateRole(user.id, 'master');
+              await fetchUsers();
+            } catch (e) {
+              console.error(e);
+              Alert.alert(t('common.error'), t('admin.users.update_error'));
+            } finally {
+              setUpdating(false);
+            }
+          },
+        },
+        {
+          text: t('admin.users.roles.client'),
+          onPress: async () => {
+            try {
+              setUpdating(true);
+              await usersDao.updateRole(user.id, 'client');
+              await fetchUsers();
+            } catch (e) {
+              console.error(e);
+              Alert.alert(t('common.error'), t('admin.users.update_error'));
+            } finally {
+              setUpdating(false);
+            }
+          },
+        },
         { text: t('common.cancel'), style: 'cancel' }
       ]
     );
@@ -201,9 +231,7 @@ export default function UsersManagementScreen({ navigation }) {
           <View style={{ borderWidth: 1, borderColor: '#ddd', borderRadius: 8, overflow: 'hidden' }}>
             <Picker selectedValue={roleFilter} onValueChange={(v) => setRoleFilter(v)}>
               <Picker.Item label={t('admin.filters.all')} value="all" />
-              <Picker.Item label={t('admin.users.roles.admin')} value="admin" />
               <Picker.Item label={t('admin.users.roles.master')} value="master" />
-              <Picker.Item label={t('admin.users.roles.master_admin') || 'Майстер+адміністратор'} value="master_admin" />
               <Picker.Item label={t('admin.users.roles.client')} value="client" />
             </Picker>
           </View>

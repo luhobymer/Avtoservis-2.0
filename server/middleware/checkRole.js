@@ -17,21 +17,21 @@ const checkRole = (roles) => {
   };
 };
 
-// Middleware для перевірки прав адміністратора
+// Middleware для перевірки прав майстра-механіка (єдиний привілейований тип користувача)
 const checkAdmin = (req, res, next) => {
-  if (!req.user || req.user.role !== 'admin') {
+  if (!req.user || req.user.role !== 'master') {
     return res.status(403).json({
-      message: 'Ця дія доступна тільки для адміністраторів',
+      message: 'Ця дія доступна тільки для майстрів-механіків',
     });
   }
   next();
 };
 
-// Middleware для перевірки прав механіка
+// Middleware для перевірки прав механіка (майстра)
 const checkMechanic = (req, res, next) => {
-  if (!req.user || !['admin', 'mechanic'].includes(req.user.role)) {
+  if (!req.user || req.user.role !== 'master') {
     return res.status(403).json({
-      message: 'Ця дія доступна тільки для механіків',
+      message: 'Ця дія доступна тільки для майстрів-механіків',
     });
   }
   next();

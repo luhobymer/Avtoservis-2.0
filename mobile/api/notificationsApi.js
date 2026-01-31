@@ -1,27 +1,55 @@
-import { supabase } from './supabaseClient';
+import axiosAuth from './axiosConfig';
+import secureStorage, { SECURE_STORAGE_KEYS } from '../utils/secureStorage';
 
 // Функція для отримання сповіщень користувача
 export const getUserNotifications = async (token) => {
   try {
-    const { data } = await supabase.auth.getSession();
-    const uid = data?.user?.id;
-    if (!uid) return [];
-    const { data: rows, error } = await supabase
-      .from('notifications')
-      .select('id, title, message, created_at, is_read, type, user_id, data')
-      .eq('user_id', uid)
-      .order('created_at', { ascending: false });
-    if (error) throw error;
-    const normalized = (rows || []).map(r => ({
-      id: r.id,
-      title: r.title,
-      message: r.message,
-      createdAt: r.created_at,
-      read: !!r.is_read,
-      type: r.type,
-      user_id: r.user_id,
-      data: r.data || null
-    }));
+    let userId = null;
+    try {
+      const storedUser = await secureStorage.secureGet(SECURE_STORAGE_KEYS.USER_DATA, true);
+      if (storedUser && storedUser.id) {
+        userId = storedUser.id;
+      }
+    } catch {}
+
+    if (!userId) {
+      return [];
+    }
+
+    const response = await axiosAuth.get('/api/notifications', {
+      params: {
+        user_id: userId,
+      },
+    });
+
+    const rows = Array.isArray(response.data) ? response.data : [];
+
+    const normalized = (rows || []).map((r) => {
+      let parsedData = null;
+      if (r && r.data != null) {
+        if (typeof r.data === 'string') {
+          try {
+            parsedData = JSON.parse(r.data);
+          } catch {
+            parsedData = null;
+          }
+        } else {
+          parsedData = r.data;
+        }
+      }
+
+      return {
+        id: r.id,
+        title: r.title,
+        message: r.message,
+        createdAt: r.created_at,
+        read: !!r.is_read,
+        type: r.type,
+        user_id: r.user_id,
+        data: parsedData,
+      };
+    });
+
     return normalized;
   } catch (error) {
     console.error('[API] Критична помилка при отриманні сповіщень:', error);
@@ -34,14 +62,8 @@ export const getUserNotifications = async (token) => {
 // Функція для позначення сповіщення як прочитаного
 export const markNotificationAsRead = async (notificationId, token) => {
   try {
-    const { data, error } = await supabase
-      .from('notifications')
-      .update({ is_read: true })
-      .eq('id', notificationId)
-      .select('*')
-      .single();
-    if (error) throw error;
-    return data;
+    const response = await axiosAuth.post(`/api/notifications/${notificationId}/read`);
+    return response.data;
   } catch (error) {
     console.error(`Помилка при позначенні сповіщення (ID: ${notificationId}) як прочитаного:`, error);
     throw error;
@@ -51,11 +73,7 @@ export const markNotificationAsRead = async (notificationId, token) => {
 // Функція для видалення сповіщення
 export const deleteNotification = async (notificationId, token) => {
   try {
-    const { error } = await supabase
-      .from('notifications')
-      .delete()
-      .eq('id', notificationId);
-    if (error) throw error;
+    await axiosAuth.delete(`/api/notifications/${notificationId}`);
     return { success: true };
   } catch (error) {
     console.error(`Помилка при видаленні сповіщення (ID: ${notificationId}):`, error);
@@ -66,16 +84,30 @@ export const deleteNotification = async (notificationId, token) => {
 // Функція для отримання кількості непрочитаних сповіщень
 export const getUnreadNotificationsCount = async (token) => {
   try {
-    const { data } = await supabase.auth.getSession();
-    const uid = data?.user?.id;
-    if (!uid) return 0;
-    const { count, error } = await supabase
-      .from('notifications')
-      .select('*', { count: 'exact', head: true })
-      .eq('user_id', uid)
-      .eq('is_read', false);
-    if (error) throw error;
-    return count || 0;
+    let userId = null;
+    try {
+      const storedUser = await secureStorage.secureGet(SECURE_STORAGE_KEYS.USER_DATA, true);
+      if (storedUser && storedUser.id) {
+        userId = storedUser.id;
+      }
+    } catch {}
+
+    if (!userId) {
+      return 0;
+    }
+
+    const response = await axiosAuth.get('/api/notifications', {
+      params: {
+        user_id: userId,
+        limit: 100,
+        offset: 0,
+      },
+    });
+
+    const rows = Array.isArray(response.data) ? response.data : [];
+    const unread = rows.filter((r) => !r.is_read);
+
+    return unread.length;
   } catch (error) {
     console.error('Помилка при отриманні кількості непрочитаних сповіщень:', error);
     throw error;

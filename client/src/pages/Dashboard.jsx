@@ -19,6 +19,11 @@ import {
   CircularProgress,
   Alert
 } from '@mui/material';
+import {
+  DirectionsCar as CarIcon,
+  EventNote as AppointmentIcon,
+  Build as ServiceIcon
+} from '@mui/icons-material';
 import { format } from 'date-fns';
 
 const Dashboard = () => {
@@ -73,9 +78,11 @@ const Dashboard = () => {
           cost: r.cost
         }));
         const recentServiceRecords = normalizedServiceRecords
+          .filter(r => r.serviceDate)
           .sort((a, b) => new Date(b.serviceDate) - new Date(a.serviceDate))
           .slice(0, 3);
         setServiceRecords(recentServiceRecords);
+
       } catch (error) {
         setError(error?.message || t('errors.unknownError', 'Виникла невідома помилка. Спробуйте пізніше.'));
       } finally {
@@ -106,7 +113,78 @@ const Dashboard = () => {
       <Typography variant="h4" gutterBottom>
         {t('dashboard.title')}
       </Typography>
-      
+      <Box sx={{ mb: 3 }}>
+        <Typography variant="subtitle1" color="text.secondary">
+          {t('dashboard.greeting', 'Вітаємо,')} {user?.name || user?.email}
+        </Typography>
+      </Box>
+
+      <Grid container spacing={3} sx={{ mb: 3 }}>
+        <Grid item xs={12} md={4}>
+          <Paper
+            elevation={3}
+            sx={{
+              p: 2,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between'
+            }}
+          >
+            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+              <CarIcon color="primary" sx={{ mr: 1 }} />
+              <Typography variant="subtitle1">
+                {t('dashboard.vehicleStatus')}
+              </Typography>
+            </Box>
+            <Typography variant="h5">
+              {vehicles.length}
+            </Typography>
+          </Paper>
+        </Grid>
+        <Grid item xs={12} md={4}>
+          <Paper
+            elevation={3}
+            sx={{
+              p: 2,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between'
+            }}
+          >
+            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+              <AppointmentIcon color="primary" sx={{ mr: 1 }} />
+              <Typography variant="subtitle1">
+                {t('dashboard.upcomingAppointments')}
+              </Typography>
+            </Box>
+            <Typography variant="h5">
+              {appointments.length}
+            </Typography>
+          </Paper>
+        </Grid>
+        <Grid item xs={12} md={4}>
+          <Paper
+            elevation={3}
+            sx={{
+              p: 2,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between'
+            }}
+          >
+            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+              <ServiceIcon color="primary" sx={{ mr: 1 }} />
+              <Typography variant="subtitle1">
+                {t('dashboard.recentServiceRecords')}
+              </Typography>
+            </Box>
+            <Typography variant="h5">
+              {serviceRecords.length}
+            </Typography>
+          </Paper>
+        </Grid>
+      </Grid>
+
       <Grid container spacing={3}>
         {/* Vehicle Status */}
         <Grid item xs={12} md={4}>
@@ -126,7 +204,7 @@ const Dashboard = () => {
                   <ListItem 
                     key={vehicle.id || `vehicle-${index}`} 
                     component={Link} 
-                    to={`/vehicles/${vehicle.id || index}`} 
+                    to={`/vehicles/${vehicle.vin}`} 
                     sx={{ textDecoration: 'none', color: 'inherit' }}
                   >
                     <ListItemText 
@@ -314,6 +392,7 @@ const Dashboard = () => {
           </Paper>
         </Grid>
       </Grid>
+
     </Container>
   );
 };

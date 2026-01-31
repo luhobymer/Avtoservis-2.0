@@ -1,9 +1,42 @@
 const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
-const { supabase, supabaseAdmin } = require('../config/supabaseClient');
+const crypto = require('crypto');
 const speakeasy = require('speakeasy');
 const QRCode = require('qrcode');
 const { generateTokenPair, verifyRefreshToken } = require('../config/jwt');
+const { getDb } = require('../db/d1');
+const mailer = require('../services/mailer');
+
+const allowedUserFields = new Set(['email', 'phone', 'id']);
+
+const getUserByField = async (field, value) => {
+  if (!allowedUserFields.has(field)) {
+    throw new Error('Invalid user field');
+  }
+  const db = await getDb();
+  if (field === 'email') {
+    return db.prepare('SELECT * FROM users WHERE lower(email) = lower(?) LIMIT 1').get(value);
+  }
+  return db.prepare(`SELECT * FROM users WHERE ${field} = ? LIMIT 1`).get(value);
+};
+
+const getRefreshTokenExpiry = (refreshToken) => {
+  const decoded = verifyRefreshToken(refreshToken);
+  if (decoded?.exp) {
+    return new Date(decoded.exp * 1000).toISOString();
+  }
+  return new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+};
+
+const insertRefreshToken = async (userId, token, expiresAt) => {
+  const resolvedExpiry = expiresAt || getRefreshTokenExpiry(token);
+  const db = await getDb();
+  await db
+    .prepare(
+      `INSERT INTO refresh_tokens (id, user_id, token, expires_at, is_revoked, created_at)
+     VALUES (?, ?, ?, ?, 0, ?)`
+    )
+    .run(crypto.randomUUID(), userId, token, resolvedExpiry, new Date().toISOString());
+};
 
 /**
  * Контролер для входу користувача в систему
@@ -12,23 +45,35 @@ const { generateTokenPair, verifyRefreshToken } = require('../config/jwt');
  */
 exports.login = async (req, res) => {
   try {
-    const { email, password, token2fa, phone } = req.body;
+    const { email, password, token2fa, phone, identifier } = req.body;
 
-    // Визначаємо, чи використовуємо email чи телефон для авторизації
-    const searchField = phone ? 'phone' : 'email';
-    const searchValue = phone || email;
+    const normalizedIdentifier =
+      identifier && typeof identifier === 'string' ? identifier.trim() : null;
+    const hasIdentifier = Boolean(normalizedIdentifier);
+    const isIdentifierEmail = hasIdentifier && normalizedIdentifier.includes('@');
+    const searchField = phone
+      ? 'phone'
+      : email
+        ? 'email'
+        : hasIdentifier
+          ? isIdentifierEmail
+            ? 'email'
+            : 'phone'
+          : null;
+    const searchValue = phone || email || normalizedIdentifier;
 
-    console.log(`[Auth] Login attempt for ${searchField}:`, searchValue);
+    if (!searchField || !searchValue || !password) {
+      return res.status(400).json({
+        status: 'error',
+        code: 'MISSING_CREDENTIALS',
+        message: 'Необхідно вказати email або телефон та пароль',
+      });
+    }
 
     // Перевіряємо користувача
-    const { data: users, error } = await supabaseAdmin
-      .from('users')
-      .select('*')
-      .eq(searchField, searchValue)
-      .single();
+    const user = await getUserByField(searchField, searchValue);
 
-    if (error || !users) {
-      console.log(`[Auth] Login failed - user not found: ${searchValue}`);
+    if (!user) {
       return res.status(401).json({
         status: 'error',
         code: 'INVALID_CREDENTIALS',
@@ -37,9 +82,36 @@ exports.login = async (req, res) => {
     }
 
     // Перевіряємо пароль
-    const isMatch = await bcrypt.compare(password, users.password_hash);
+    const storedPassword = user.password ? String(user.password) : '';
+    const plainPassword = password != null ? String(password) : '';
+    const looksLikeBcrypt =
+      storedPassword.startsWith('$2a$') ||
+      storedPassword.startsWith('$2b$') ||
+      storedPassword.startsWith('$2y$');
+
+    let isMatch = false;
+    try {
+      isMatch = await bcrypt.compare(plainPassword, storedPassword);
+    } catch (compareError) {
+      if (!looksLikeBcrypt) {
+        isMatch =
+          Boolean(plainPassword) && Boolean(storedPassword) && plainPassword === storedPassword;
+        if (isMatch) {
+          try {
+            const salt = await bcrypt.genSalt(10);
+            const hashedPassword = await bcrypt.hash(plainPassword, salt);
+            const db = await getDb();
+            await db
+              .prepare('UPDATE users SET password = ?, updated_at = ? WHERE id = ?')
+              .run(hashedPassword, new Date().toISOString(), user.id);
+          } catch (rehashError) {
+            console.error('[Auth] Password rehash failed:', rehashError?.message || rehashError);
+          }
+        }
+      }
+    }
+
     if (!isMatch) {
-      console.log(`[Auth] Login failed - invalid password for user: ${searchValue}`);
       return res.status(401).json({
         status: 'error',
         code: 'INVALID_CREDENTIALS',
@@ -48,34 +120,40 @@ exports.login = async (req, res) => {
     }
 
     // Перевіряємо 2FA, якщо воно включено
-    if (users.twoFactorEnabled) {
-      // Якщо 2FA включено, але токен не надано
+    if (user.two_factor_enabled) {
+      if (!user.two_factor_secret) {
+        return res.status(400).json({
+          status: 'error',
+          code: 'TWO_FACTOR_NOT_CONFIGURED',
+          message: 'Двофакторна автентифікація не налаштована',
+        });
+      }
+
       if (!token2fa) {
-        console.log('[Auth] 2FA required for user:', email);
         return res.status(200).json({
           status: 'pending',
           code: 'TWO_FACTOR_REQUIRED',
           requireTwoFactor: true,
           message: 'Потрібен код двофакторної автентифікації',
           user: {
-            id: users.id,
-            email: users.email,
-            role: users.role,
+            id: user.id,
+            email: user.email,
+            role: user.role,
             twoFactorEnabled: true,
           },
         });
       }
 
-      // Перевіряємо токен 2FA
-      const verified = speakeasy.totp.verify({
-        secret: users.twoFactorSecret,
-        encoding: 'base32',
-        token: token2fa,
-        window: 1, // Дозволяє невелике відхилення в часі
-      });
-
-      if (!verified) {
-        console.log('[Auth] Invalid 2FA token for user:', email);
+      let verified = false;
+      try {
+        verified = speakeasy.totp.verify({
+          secret: user.two_factor_secret,
+          encoding: 'base32',
+          token: token2fa,
+          window: 1,
+        });
+      } catch (verifyError) {
+        console.error('[Auth] 2FA verification error:', verifyError);
         return res.status(400).json({
           status: 'error',
           code: 'INVALID_2FA_TOKEN',
@@ -83,38 +161,41 @@ exports.login = async (req, res) => {
         });
       }
 
-      console.log('[Auth] 2FA verification successful for user:', email);
+      if (!verified) {
+        return res.status(400).json({
+          status: 'error',
+          code: 'INVALID_2FA_TOKEN',
+          message: 'Невірний код двофакторної автентифікації',
+        });
+      }
     }
 
     // Генеруємо пару токенів
-    const tokenPair = generateTokenPair(users.id, users.role, users.email || users.phone);
+    const tokenPair = generateTokenPair(user.id, user.role, user.email || user.phone);
 
     // Зберігаємо refresh token у базі даних
-    const { error: tokenError } = await supabase.from('refresh_tokens').insert([
-      {
-        user_id: users.id,
-        token: tokenPair.refreshToken,
-        expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 днів
-      },
-    ]);
-
-    if (tokenError) {
+    try {
+      await insertRefreshToken(user.id, tokenPair.refreshToken);
+    } catch (tokenError) {
       console.error('[Auth] Error saving refresh token:', tokenError);
       // Продовжуємо виконання, навіть якщо не вдалося зберегти refresh token
     }
 
-    console.log(`[Auth] Login successful for user: ${searchValue}`);
-
     // Підготовка даних користувача для відповіді
     const userResponse = {
-      id: users.id,
-      role: users.role,
-      twoFactorEnabled: users.twoFactorEnabled || false,
+      id: user.id,
+      role: user.role,
+      twoFactorEnabled: !!user.two_factor_enabled,
     };
 
-    // Додаємо email або телефон в залежності від наявності
-    if (users.email) userResponse.email = users.email;
-    if (users.phone) userResponse.phone = users.phone;
+    if (user.name) userResponse.name = user.name;
+    if (user.email) userResponse.email = user.email;
+    if (user.phone) userResponse.phone = user.phone;
+    if (user.first_name) userResponse.firstName = user.first_name;
+    if (user.last_name) userResponse.lastName = user.last_name;
+    if (user.patronymic) userResponse.patronymic = user.patronymic;
+    if (user.region) userResponse.region = user.region;
+    if (user.city) userResponse.city = user.city;
 
     res.json({
       status: 'success',
@@ -140,12 +221,31 @@ exports.login = async (req, res) => {
  */
 exports.register = async (req, res) => {
   try {
-    console.log('[Auth] Registration request body:', req.body);
-    const { name, email, password, role, phone, firstName, lastName, username } = req.body;
+    const {
+      name,
+      email,
+      password,
+      role,
+      phone,
+      firstName,
+      lastName,
+      patronymic,
+      region,
+      city,
+      username,
+    } = req.body;
 
     // Використовуємо ім'я з параметрів або комбінуємо firstName і lastName
+    const normalizedRole = (role || 'client').toLowerCase();
+    const normalizedFirstName = firstName?.trim() || name?.trim() || null;
+    const normalizedLastName = lastName?.trim() || null;
+    const normalizedPatronymic = patronymic?.trim() || null;
+    const normalizedRegion = region?.trim() || null;
+    const normalizedCity = city?.trim() || null;
     const userName =
-      name || (firstName ? (lastName ? `${firstName} ${lastName}` : firstName) : username);
+      name ||
+      [normalizedFirstName, normalizedLastName, normalizedPatronymic].filter(Boolean).join(' ') ||
+      username;
 
     // Генеруємо тимчасовий пароль, якщо його немає
     const userPassword = password || Math.random().toString(36).slice(-8);
@@ -161,29 +261,25 @@ exports.register = async (req, res) => {
         message: 'Необхідно вказати email або номер телефону',
       });
     }
-
-    // Логуємо спробу реєстрації
-    if (hasEmail) {
-      console.log('[Auth] Registration attempt for email:', email);
-    } else {
-      console.log('[Auth] Registration attempt for phone:', phone);
+    if (normalizedRole === 'master') {
+      if (!normalizedFirstName || !normalizedLastName || !normalizedRegion || !normalizedCity) {
+        return res.status(400).json({
+          status: 'error',
+          code: 'MISSING_REQUIRED_FIELDS',
+          message: "Для майстра обов'язкові поля: ім'я, прізвище, область, місто",
+        });
+      }
     }
 
     // Перевіряємо, чи існує користувач з таким email або телефоном
-    let existingUserQuery = supabaseAdmin.from('users').select('*');
-
-    if (hasEmail) {
-      existingUserQuery = existingUserQuery.eq('email', email);
-    } else if (hasPhone) {
-      existingUserQuery = existingUserQuery.eq('phone', phone);
-    }
-
-    const { data: existingUser } = await existingUserQuery.single();
+    const existingUser = hasEmail
+      ? await getUserByField('email', email)
+      : hasPhone
+        ? await getUserByField('phone', phone)
+        : null;
 
     if (existingUser) {
-      const identifier = hasEmail ? email : phone;
       const fieldName = hasEmail ? 'email' : 'телефон';
-      console.log(`[Auth] Registration failed - ${fieldName} already exists:`, identifier);
       return res.status(409).json({
         status: 'error',
         code: hasEmail ? 'EMAIL_EXISTS' : 'PHONE_EXISTS',
@@ -197,58 +293,66 @@ exports.register = async (req, res) => {
 
     // Підготовка даних для вставки
     const userData = {
-      password_hash: hashedPassword,
+      password: hashedPassword,
       name: userName,
-      role: role || 'client',
+      role: normalizedRole,
+      first_name: normalizedFirstName,
+      last_name: normalizedLastName,
+      patronymic: normalizedPatronymic,
+      region: normalizedRegion,
+      city: normalizedCity,
     };
 
     // Додаємо email або телефон в залежності від наявності
     if (hasEmail) userData.email = email;
     if (hasPhone) userData.phone = phone;
 
-    // Логування даних перед вставкою
-    console.log('[Auth] Data to insert:', {
-      ...userData,
-      password_hash: 'HASHED',
-    });
-
     // Створюємо користувача з хешованим паролем
-    console.log('[Auth] Creating user with hashed password...');
-    const { data: createdUser, error: userError } = await supabaseAdmin
-      .from('users')
-      .insert([userData])
-      .select()
-      .single();
+    const db = await getDb();
+    const createdUserId = crypto.randomUUID();
+    const now = new Date().toISOString();
+    await db
+      .prepare(
+        `INSERT INTO users (
+        id,
+        email,
+        password,
+        role,
+        name,
+        phone,
+        first_name,
+        last_name,
+        patronymic,
+        region,
+        city,
+        two_factor_enabled,
+        two_factor_pending,
+        created_at,
+        updated_at
+      )
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?)`
+      )
+      .run(
+        createdUserId,
+        userData.email || null,
+        userData.password,
+        userData.role,
+        userData.name || null,
+        userData.phone || null,
+        userData.first_name || null,
+        userData.last_name || null,
+        userData.patronymic || null,
+        userData.region || null,
+        userData.city || null,
+        now,
+        now
+      );
 
-    console.log('[Auth] User creation result:', { createdUser, userError });
-
-    // --- АВТОМАТИЧНЕ ПІДТВЕРДЖЕННЯ EMAIL ДЛЯ telegramuser.com ---
-    if (createdUser && createdUser.email && createdUser.email.endsWith('@telegramuser.com')) {
-      await supabase
-        .from('users')
-        .update({ email_confirmed_at: new Date().toISOString() })
-        .eq('id', createdUser.id);
-      console.log('[Auth] Email auto-confirmed for:', createdUser.email);
-    }
-    // --- КІНЕЦЬ БЛОКУ ---
-    if (userError) {
-      console.error('[Auth] Registration error:', userError);
-      return res.status(500).json({
-        status: 'error',
-        code: 'USER_CREATION_FAILED',
-        message: 'Помилка при створенні користувача',
-      });
-    }
-
-    if (!createdUser) {
-      console.error('[Auth] Registration error: No user data returned');
-      return res.status(500).json({
-        status: 'error',
-        code: 'USER_CREATION_FAILED',
-        message: 'Помилка при створенні користувача',
-      });
-    }
-
+    const createdUser = await db
+      .prepare(
+        'SELECT id, email, phone, role, name, first_name, last_name, patronymic, region, city FROM users WHERE id = ?'
+      )
+      .get(createdUserId);
     // Генеруємо пару токенів
     const tokenPair = generateTokenPair(
       createdUser.id,
@@ -257,21 +361,12 @@ exports.register = async (req, res) => {
     );
 
     // Зберігаємо refresh token у базі даних
-    const { error: tokenError } = await supabase.from('refresh_tokens').insert([
-      {
-        user_id: createdUser.id,
-        token: tokenPair.refreshToken,
-        expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 днів
-      },
-    ]);
-
-    if (tokenError) {
+    try {
+      await insertRefreshToken(createdUser.id, tokenPair.refreshToken);
+    } catch (tokenError) {
       console.error('[Auth] Error saving refresh token:', tokenError);
       // Продовжуємо виконання, навіть якщо не вдалося зберегти refresh token
     }
-
-    const identifier = hasEmail ? email : phone;
-    console.log('[Auth] Registration successful for user:', identifier);
 
     // Підготовка даних користувача для відповіді
     const userResponse = {
@@ -279,9 +374,14 @@ exports.register = async (req, res) => {
       role: createdUser.role,
     };
 
-    // Додаємо email або телефон в залежності від наявності
+    if (createdUser.name) userResponse.name = createdUser.name;
     if (hasEmail) userResponse.email = createdUser.email;
     if (hasPhone) userResponse.phone = createdUser.phone;
+    if (createdUser.first_name) userResponse.firstName = createdUser.first_name;
+    if (createdUser.last_name) userResponse.lastName = createdUser.last_name;
+    if (createdUser.patronymic) userResponse.patronymic = createdUser.patronymic;
+    if (createdUser.region) userResponse.region = createdUser.region;
+    if (createdUser.city) userResponse.city = createdUser.city;
 
     res.status(201).json({
       status: 'success',
@@ -306,27 +406,26 @@ exports.register = async (req, res) => {
  */
 exports.getCurrentUser = async (req, res) => {
   try {
-    console.log('[Auth] Getting current user info for ID:', req.user.id);
+    const db = await getDb();
+    const user = await db
+      .prepare(
+        'SELECT id, email, name, role, phone, first_name, last_name, patronymic, region, city, two_factor_enabled, created_at FROM users WHERE id = ?'
+      )
+      .get(req.user.id);
 
-    const { data: user, error } = await supabaseAdmin
-      .from('users')
-      .select('id, email, name, role, twoFactorEnabled, created_at')
-      .eq('id', req.user.id)
-      .single();
-
-    if (error || !user) {
-      console.log('[Auth] User not found for ID:', req.user.id);
+    if (!user) {
       return res.status(404).json({
         status: 'error',
         code: 'USER_NOT_FOUND',
         message: 'Користувача не знайдено',
       });
     }
-
-    console.log('[Auth] Successfully retrieved user info for ID:', req.user.id);
     res.json({
       status: 'success',
-      user,
+      user: {
+        ...user,
+        twoFactorEnabled: !!user.two_factor_enabled,
+      },
     });
   } catch (err) {
     console.error('[Auth] Get current user error:', err);
@@ -354,12 +453,9 @@ exports.refreshToken = async (req, res) => {
       });
     }
 
-    console.log('[Auth] Processing refresh token request');
-
     // Перевіряємо refresh token
     const decoded = verifyRefreshToken(refresh_token);
     if (!decoded) {
-      console.log('[Auth] Invalid refresh token');
       return res.status(401).json({
         status: 'error',
         code: 'INVALID_REFRESH_TOKEN',
@@ -368,16 +464,14 @@ exports.refreshToken = async (req, res) => {
     }
 
     // Перевіряємо, чи існує цей токен у базі даних і чи не був відкликаний
-    const { data: tokenData, error: tokenError } = await supabase
-      .from('refresh_tokens')
-      .select('*')
-      .eq('token', refresh_token)
-      .eq('user_id', decoded.id)
-      .eq('is_revoked', false)
-      .single();
+    const db = await getDb();
+    const tokenData = await db
+      .prepare(
+        'SELECT * FROM refresh_tokens WHERE token = ? AND user_id = ? AND is_revoked = 0 LIMIT 1'
+      )
+      .get(refresh_token, decoded.id);
 
-    if (tokenError || !tokenData) {
-      console.log('[Auth] Refresh token not found in database or revoked');
+    if (!tokenData) {
       return res.status(401).json({
         status: 'error',
         code: 'REFRESH_TOKEN_INVALID',
@@ -388,7 +482,6 @@ exports.refreshToken = async (req, res) => {
     // Перевіряємо, чи не закінчився термін діїї токена
     const tokenExpiry = new Date(tokenData.expires_at);
     if (tokenExpiry < new Date()) {
-      console.log('[Auth] Refresh token expired');
       return res.status(401).json({
         status: 'error',
         code: 'REFRESH_TOKEN_EXPIRED',
@@ -397,14 +490,11 @@ exports.refreshToken = async (req, res) => {
     }
 
     // Отримуємо інформацію про користувача
-    const { data: user, error: userError } = await supabase
-      .from('users')
-      .select('id, email, phone, role')
-      .eq('id', decoded.id)
-      .single();
+    const user = await db
+      .prepare('SELECT id, email, phone, role FROM users WHERE id = ?')
+      .get(decoded.id);
 
-    if (userError || !user) {
-      console.log('[Auth] User not found for refresh token');
+    if (!user) {
       return res.status(404).json({
         status: 'error',
         code: 'USER_NOT_FOUND',
@@ -420,18 +510,8 @@ exports.refreshToken = async (req, res) => {
     const tokenPair = generateTokenPair(user.id, user.role, identifier);
 
     // Позначаємо старий токен як відкликаний
-    await supabase.from('refresh_tokens').update({ is_revoked: true }).eq('token', refresh_token);
-
-    // Зберігаємо новий refresh token
-    await supabase.from('refresh_tokens').insert([
-      {
-        user_id: user.id,
-        token: tokenPair.refreshToken,
-        expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-      },
-    ]);
-
-    console.log('[Auth] Successfully refreshed token for user ID:', user.id);
+    await db.prepare('UPDATE refresh_tokens SET is_revoked = 1 WHERE token = ?').run(refresh_token);
+    await insertRefreshToken(user.id, tokenPair.refreshToken);
 
     res.json({
       status: 'success',
@@ -450,18 +530,198 @@ exports.refreshToken = async (req, res) => {
   }
 };
 
+exports.logout = async (req, res) => {
+  try {
+    const { refresh_token } = req.body || {};
+    if (refresh_token) {
+      const db = await getDb();
+      await db
+        .prepare('UPDATE refresh_tokens SET is_revoked = 1 WHERE token = ?')
+        .run(refresh_token);
+    }
+    res.json({
+      status: 'success',
+    });
+  } catch (err) {
+    console.error('[Auth] Logout error:', err);
+    res.status(500).json({
+      status: 'error',
+      code: 'SERVER_ERROR',
+      message: 'Помилка сервера при виході',
+    });
+  }
+};
+
+exports.forgotPassword = async (req, res) => {
+  try {
+    const emailRaw = req.body ? req.body.email : null;
+    const email = emailRaw && typeof emailRaw === 'string' ? emailRaw.trim() : null;
+
+    if (!email) {
+      return res.status(400).json({
+        status: 'error',
+        code: 'EMAIL_REQUIRED',
+        message: 'Необхідно вказати email',
+      });
+    }
+
+    const user = await getUserByField('email', email);
+    const genericResponse = {
+      status: 'success',
+      message: 'Якщо email існує, ми надіслали лист для скидання пароля',
+    };
+
+    if (!user) {
+      return res.json(genericResponse);
+    }
+
+    const db = await getDb();
+    await db.prepare('DELETE FROM password_reset_tokens WHERE user_id = ?').run(user.id);
+
+    const token = crypto.randomBytes(32).toString('hex');
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+
+    await db
+      .prepare(
+        `INSERT INTO password_reset_tokens (id, user_id, token_hash, expires_at, used_at, created_at)
+         VALUES (?, ?, ?, ?, NULL, ?)`
+      )
+      .run(crypto.randomUUID(), user.id, tokenHash, expiresAt, new Date().toISOString());
+
+    const appBaseUrl = process.env.APP_BASE_URL || 'http://localhost:5173';
+    const resetLink = `${appBaseUrl}/auth/reset-password?token=${encodeURIComponent(
+      token
+    )}&email=${encodeURIComponent(email)}`;
+
+    if (!mailer.isConfigured()) {
+      if (process.env.NODE_ENV !== 'production') {
+        return res.json({
+          ...genericResponse,
+          debug_reset_link: resetLink,
+        });
+      }
+      return res.status(500).json({
+        status: 'error',
+        code: 'EMAIL_NOT_CONFIGURED',
+        message: 'Email не налаштовано на сервері',
+      });
+    }
+
+    await mailer.sendMail({
+      to: email,
+      subject: 'Скидання пароля Avtoservis',
+      text: `Для скидання пароля перейдіть за посиланням: ${resetLink}\nПосилання дійсне 30 хвилин.`,
+      html: `<p>Для скидання пароля натисніть:</p><p><a href="${resetLink}">Скинути пароль</a></p><p>Посилання дійсне 30 хвилин.</p>`,
+    });
+
+    return res.json(genericResponse);
+  } catch (err) {
+    console.error('[Auth] Forgot password error:', err);
+    return res.status(500).json({
+      status: 'error',
+      code: 'SERVER_ERROR',
+      message: 'Помилка сервера',
+    });
+  }
+};
+
+exports.resetPassword = async (req, res) => {
+  try {
+    const emailRaw = req.body ? req.body.email : null;
+    const tokenRaw = req.body ? req.body.token : null;
+    const newPasswordRaw = req.body ? req.body.newPassword : null;
+
+    const email = emailRaw && typeof emailRaw === 'string' ? emailRaw.trim() : null;
+    const token = tokenRaw && typeof tokenRaw === 'string' ? tokenRaw.trim() : null;
+    const newPassword =
+      newPasswordRaw && typeof newPasswordRaw === 'string' ? newPasswordRaw : null;
+
+    if (!email || !token || !newPassword) {
+      return res.status(400).json({
+        status: 'error',
+        code: 'MISSING_FIELDS',
+        message: 'Необхідно вказати email, token та новий пароль',
+      });
+    }
+
+    if (newPassword.length < 8) {
+      return res.status(400).json({
+        status: 'error',
+        code: 'WEAK_PASSWORD',
+        message: 'Пароль має бути мінімум 8 символів',
+      });
+    }
+
+    const user = await getUserByField('email', email);
+    if (!user) {
+      return res.status(400).json({
+        status: 'error',
+        code: 'INVALID_RESET_TOKEN',
+        message: 'Недійсний або прострочений токен',
+      });
+    }
+
+    const db = await getDb();
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    const nowIso = new Date().toISOString();
+
+    const row = await db
+      .prepare(
+        `SELECT id, expires_at, used_at FROM password_reset_tokens
+         WHERE user_id = ? AND token_hash = ? LIMIT 1`
+      )
+      .get(user.id, tokenHash);
+
+    if (!row || row.used_at) {
+      return res.status(400).json({
+        status: 'error',
+        code: 'INVALID_RESET_TOKEN',
+        message: 'Недійсний або прострочений токен',
+      });
+    }
+
+    if (new Date(row.expires_at) < new Date()) {
+      return res.status(400).json({
+        status: 'error',
+        code: 'RESET_TOKEN_EXPIRED',
+        message: 'Токен прострочений',
+      });
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(newPassword, salt);
+
+    await db
+      .prepare('UPDATE users SET password = ?, updated_at = ? WHERE id = ?')
+      .run(hashedPassword, nowIso, user.id);
+    await db
+      .prepare('UPDATE password_reset_tokens SET used_at = ? WHERE id = ?')
+      .run(nowIso, row.id);
+    await db.prepare('UPDATE refresh_tokens SET is_revoked = 1 WHERE user_id = ?').run(user.id);
+
+    return res.json({
+      status: 'success',
+      message: 'Пароль успішно змінено',
+    });
+  } catch (err) {
+    console.error('[Auth] Reset password error:', err);
+    return res.status(500).json({
+      status: 'error',
+      code: 'SERVER_ERROR',
+      message: 'Помилка сервера',
+    });
+  }
+};
+
 // Контролер для генерації секрету 2FA
 exports.generateTwoFactorSecret = async (req, res) => {
   try {
     // Отримуємо користувача
-    const { data: user, error } = await supabase
-      .from('users')
-      .select('*')
-      .eq('id', req.user.id)
-      .single();
-
-    if (error) {
-      throw error;
+    const db = await getDb();
+    const user = await db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
+    if (!user) {
+      return res.status(404).json({ message: 'Користувача не знайдено' });
     }
 
     // Генеруємо секрет
@@ -470,17 +730,9 @@ exports.generateTwoFactorSecret = async (req, res) => {
     });
 
     // Зберігаємо секрет тимчасово (він буде активований після підтвердження)
-    const { error: updateError } = await supabase
-      .from('users')
-      .update({
-        twoFactorSecret: secret.base32,
-        twoFactorPending: true,
-      })
-      .eq('id', req.user.id);
-
-    if (updateError) {
-      throw updateError;
-    }
+    await db
+      .prepare('UPDATE users SET two_factor_secret = ?, two_factor_pending = 1 WHERE id = ?')
+      .run(secret.base32, req.user.id);
 
     // Генеруємо QR-код
     QRCode.toDataURL(secret.otpauth_url, (err, dataUrl) => {
@@ -505,19 +757,15 @@ exports.verifyAndEnableTwoFactor = async (req, res) => {
     const { token } = req.body;
 
     // Отримуємо користувача
-    const { data: user, error } = await supabase
-      .from('users')
-      .select('*')
-      .eq('id', req.user.id)
-      .single();
-
-    if (error) {
-      throw error;
+    const db = await getDb();
+    const user = await db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
+    if (!user) {
+      return res.status(404).json({ message: 'Користувача не знайдено' });
     }
 
     // Перевіряємо токен
     const verified = speakeasy.totp.verify({
-      secret: user.twoFactorSecret,
+      secret: user.two_factor_secret,
       encoding: 'base32',
       token,
       window: 1,
@@ -528,17 +776,9 @@ exports.verifyAndEnableTwoFactor = async (req, res) => {
     }
 
     // Активуємо 2FA
-    const { error: updateError } = await supabase
-      .from('users')
-      .update({
-        twoFactorEnabled: true,
-        twoFactorPending: false,
-      })
-      .eq('id', req.user.id);
-
-    if (updateError) {
-      throw updateError;
-    }
+    await db
+      .prepare('UPDATE users SET two_factor_enabled = 1, two_factor_pending = 0 WHERE id = ?')
+      .run(req.user.id);
 
     res.json({
       message: 'Двофакторну автентифікацію успішно активовано',
@@ -556,35 +796,24 @@ exports.disableTwoFactor = async (req, res) => {
     const { password } = req.body;
 
     // Отримуємо користувача
-    const { data: user, error } = await supabase
-      .from('users')
-      .select('*')
-      .eq('id', req.user.id)
-      .single();
-
-    if (error) {
-      throw error;
+    const db = await getDb();
+    const user = await db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
+    if (!user) {
+      return res.status(404).json({ message: 'Користувача не знайдено' });
     }
 
     // Перевіряємо пароль
-    const isMatch = await bcrypt.compare(password, user.password_hash);
+    const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       return res.status(400).json({ message: 'Невірний пароль' });
     }
 
     // Відключаємо 2FA
-    const { error: updateError } = await supabase
-      .from('users')
-      .update({
-        twoFactorEnabled: false,
-        twoFactorSecret: null,
-        twoFactorPending: false,
-      })
-      .eq('id', req.user.id);
-
-    if (updateError) {
-      throw updateError;
-    }
+    await db
+      .prepare(
+        'UPDATE users SET two_factor_enabled = 0, two_factor_secret = NULL, two_factor_pending = 0 WHERE id = ?'
+      )
+      .run(req.user.id);
 
     res.json({
       message: 'Двофакторну автентифікацію відключено',

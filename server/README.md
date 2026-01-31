@@ -6,7 +6,7 @@
 
 - Node.js
 - Express.js
-- Supabase (PostgreSQL)
+- Cloudflare D1 (SQLite)
 - JWT для автентифікації
 - Winston для логування
 
@@ -31,9 +31,16 @@ PORT=5001
 JWT_SECRET=your-secret-key
 JWT_EXPIRES_IN=24h
 
-SUPABASE_URL=your-supabase-url
-SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
-SUPABASE_ANON_KEY=your-anon-key
+## Cloudflare D1
+CLOUDFLARE_ACCOUNT_ID=your-cloudflare-account-id
+CLOUDFLARE_D1_DATABASE_ID=your-d1-database-id
+CLOUDFLARE_API_TOKEN=your-cloudflare-api-token
+
+# (опційно) Явний режим роботи з БД
+# D1_MODE=d1|fallback
+
+# API key for trusted integrations (Telegram bot etc.)
+SERVER_API_KEY=your-shared-server-api-key
 
 CORS_ORIGIN=http://localhost:3000
 

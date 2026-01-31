@@ -1,12 +1,41 @@
-import { supabase } from '../supabaseClient'
+async function requestJson(url, options = {}) {
+  const token = localStorage.getItem('auth_token');
+  const response = await fetch(url, {
+    method: options.method || 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(options.headers || {})
+    },
+    body: options.body ? JSON.stringify(options.body) : undefined
+  })
+
+  if (!response.ok) {
+    let message = `Request failed with status ${response.status}`
+    try {
+      const errorBody = await response.json()
+      if (errorBody && typeof errorBody.message === 'string') {
+        message = errorBody.message
+      }
+    } catch (error) {
+      void error
+    }
+    throw new Error(message)
+  }
+
+  const contentType = response.headers.get('content-type') || ''
+  if (contentType.includes('application/json')) {
+    return response.json()
+  }
+  return null
+}
 
 export async function listAll() {
-  const { data, error } = await supabase
-    .from('parts')
-    .select('id, name, article, manufacturer, price, warranty_period')
-    .order('id', { ascending: false })
-  if (error) throw error
-  return Array.isArray(data) ? data : []
+  const payload = await requestJson('/api/parts?limit=500&offset=0')
+  if (!payload) return []
+  if (Array.isArray(payload)) return payload
+  if (Array.isArray(payload.data)) return payload.data
+  return []
 }
 
 export async function create(payload) {
@@ -15,15 +44,12 @@ export async function create(payload) {
     article: payload.article || null,
     manufacturer: payload.manufacturer || null,
     price: payload.price != null ? Number(payload.price) : null,
-    warranty_period: payload.warranty_period != null ? Number(payload.warranty_period) : null,
+    warranty_period: payload.warranty_period != null ? Number(payload.warranty_period) : null
   }
-  const { data, error } = await supabase
-    .from('parts')
-    .insert(body)
-    .select('*')
-    .single()
-  if (error) throw error
-  return data
+  return requestJson('/api/parts', {
+    method: 'POST',
+    body
+  })
 }
 
 export async function updateById(id, payload) {
@@ -32,23 +58,17 @@ export async function updateById(id, payload) {
     article: payload.article || null,
     manufacturer: payload.manufacturer || null,
     price: payload.price != null ? Number(payload.price) : null,
-    warranty_period: payload.warranty_period != null ? Number(payload.warranty_period) : null,
+    warranty_period: payload.warranty_period != null ? Number(payload.warranty_period) : null
   }
-  const { data, error } = await supabase
-    .from('parts')
-    .update(body)
-    .eq('id', id)
-    .select('*')
-    .single()
-  if (error) throw error
-  return data
+  return requestJson(`/api/parts/${id}`, {
+    method: 'PUT',
+    body
+  })
 }
 
 export async function deleteById(id) {
-  const { error } = await supabase
-    .from('parts')
-    .delete()
-    .eq('id', id)
-  if (error) throw error
+  await requestJson(`/api/parts/${id}`, {
+    method: 'DELETE'
+  })
   return true
 }

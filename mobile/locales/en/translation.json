@@ -14,6 +14,7 @@
     "info": "Information",
     "loading": "Loading...",
     "save": "Save",
+    "update": "Update",
     "cancel": "Cancel",
     "delete": "Delete",
     "edit": "Edit",
@@ -106,6 +107,7 @@
     "edit": "Edit Vehicle",
     "edit_vehicle": "Edit Vehicle",
     "delete": "Delete Vehicle",
+    "vehicle_details": "Vehicle Details",
     "details": "Vehicle Details",
     "make": "Make",
     "model": "Model",
@@ -182,6 +184,7 @@
     "select_color": "Select Color",
     "engine_types": {
       "petrol": "Petrol",
+      "gas": "Gas",
       "diesel": "Diesel",
       "electric": "Electric",
       "hybrid": "Hybrid"
@@ -189,7 +192,8 @@
     "transmissions": {
       "manual": "Manual",
       "automatic": "Automatic",
-      "cvt": "CVT"
+      "cvt": "CVT",
+      "semi_auto": "Semi-automatic"
     },
     "no_cached_data": "No cached data",
     "network_error": "Network error",
@@ -205,12 +209,14 @@
     "title": "Service Book",
     "export": "Export",
     "no_records": "No service records",
-    "select_vehicle": "Select vehicle"
+    "select_vehicle": "Select vehicle",
+    "add_record": "Add record"
   },
   "service_records": {
     "title": "Service Records",
     "empty": "No service records",
     "add": "Add record",
+    "details": "Details",
     "fetch_error": "Failed to fetch service records",
     "add_record": "Add Record",
     "vehicle": "Vehicle",
@@ -280,6 +286,11 @@
       "completed": "Completed",
       "cancelled": "Cancelled"
     },
+    "status_pending": "Pending",
+    "status_confirmed": "Confirmed",
+    "status_in_progress": "In Progress",
+    "status_completed": "Completed",
+    "status_cancelled": "Cancelled",
     "create": "Create Appointment",
     "update": "Update Appointment",
     "delete_confirm": "Are you sure you want to delete this appointment?",
@@ -337,6 +348,7 @@
     "name": "Name",
     "email": "Email",
     "phone": "Phone",
+    "city": "City",
     "role": "Role",
     "edit_profile": "Edit Profile",
     "settings": "Settings",
@@ -386,6 +398,7 @@
   "dashboard": {
     "title": "Dashboard",
     "welcome": "Welcome",
+    "good_morning": "Good morning",
     "good_afternoon": "Good afternoon",
     "good_evening": "Good evening",
     "your_vehicles": "Your Vehicles",
@@ -402,7 +415,12 @@
     "quick_actions": "Quick Actions",
     "upcoming_appointments": "Upcoming Appointments",
     "recent_service_records": "Recent Service Records",
-    "vehicles_status": "Vehicles Status"
+    "vehicles_status": "Vehicles Status",
+    "no_upcoming_appointments": "No upcoming appointments",
+    "schedule_appointment": "Schedule service",
+    "no_recent_service_records": "No recent service records",
+    "view_service_book": "View service book",
+    "user": "User"
   },
   "parts": {
     "title": "Parts",
@@ -469,11 +487,15 @@
   },
   "master": {
     "title": "Master Dashboard",
+    "dashboard_title": "Master Control Panel",
     "welcome": "Welcome, Master",
     "today_schedule": "Today's Schedule",
     "upcoming_appointments": "Upcoming Appointments",
     "no_appointments_today": "No appointments for today",
     "no_upcoming_appointments": "No upcoming appointments",
+    "schedule_appointment": "Schedule appointment",
+    "no_recent_service_records": "No recent service records",
+    "view_service_book": "View service book",
     "view_all_appointments": "View all appointments",
     "stats": "Statistics",
     "total_appointments": "Total Appointments",
@@ -499,6 +521,35 @@
     "service_history": "Service History",
     "quick_actions": "Quick Actions",
     "min_busy_time_error": "Busy time must be at least {{minutes}} minutes from the current time"
+  },
+  "interactions": {
+    "title": "Interactions",
+    "new_interaction": "New interaction",
+    "add_interaction": "Add interaction",
+    "no_interactions": "No interactions",
+    "fetch_error": "Error loading interactions",
+    "recipient": "Recipient",
+    "recipients_error": "Error fetching recipients",
+    "type": "Type",
+    "types": {
+      "message": "Message",
+      "question": "Question",
+      "request": "Request"
+    },
+    "related_entity": "Related item",
+    "entities": {
+      "vehicle": "Vehicle",
+      "appointment": "Appointment",
+      "service_record": "Service record"
+    },
+    "no_entity": "No link",
+    "message": "Message",
+    "message_placeholder": "Enter message...",
+    "send": "Send",
+    "send_success": "Message sent",
+    "send_error": "Error sending message",
+    "select_recipient": "Select recipient",
+    "enter_message": "Enter message"
   },
   "days": {
     "monday": "Monday",

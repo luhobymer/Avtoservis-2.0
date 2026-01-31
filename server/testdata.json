@@ -1,20 +1,12 @@
 {
   "users": [
     {
-      "role": "admin",
-      "name": "Адміністратор Системи",
-      "email": "admin@avtoservis.ua",
+      "role": "master",
+      "name": "Майстер-механік",
+      "email": "master@avtoservis.ua",
       "phone": "+380501234567",
-      "password": "AdminPass123!",
+      "password": "MasterPass123!",
       "address": "м. Київ, вул. Хрещатик 1"
-    },
-    {
-      "role": "mechanic",
-      "name": "Петренко Іван Олексійович",
-      "email": "mechanic@avtoservis.ua",
-      "phone": "+380671234568",
-      "password": "MechPass123!",
-      "address": "м. Київ, вул. Лісова 5"
     },
     {
       "role": "client",

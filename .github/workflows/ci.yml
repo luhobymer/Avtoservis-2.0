@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  server:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - name: Install
+        working-directory: server
+        run: npm ci
+      - name: Test
+        working-directory: server
+        run: npm test
+
+  client:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+      - name: Install
+        working-directory: client
+        run: npm ci
+      - name: Typecheck
+        working-directory: client
+        run: npm run typecheck
+      - name: Build
+        working-directory: client
+        run: npm run build
+
+  mobile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - name: Install
+        working-directory: mobile
+        run: npm ci
+      - name: Typecheck
+        working-directory: mobile
+        run: npm run typecheck
+

@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { scheduleNotification, cancelScheduledNotification } from './pushNotificationsService';
-import { supabase } from './supabaseClient';
+import axiosAuth from './axiosConfig';
+import secureStorage, { SECURE_STORAGE_KEYS } from '../utils/secureStorage';
 import { getUserVehicles } from './vehiclesApi';
 
 /**
@@ -106,30 +107,17 @@ export const updateMileageRequestStatus = async (requestId, status, mileage = nu
     // Зберігаємо оновлений масив
     await saveMileageRequests(requests);
     
-      // Якщо запит виконано, синхронізуємо дані з Supabase
+      // Якщо запит виконано, синхронізуємо дані з бекендом
       if (status === 'completed' && mileage !== null) {
         try {
-          const { data } = await supabase.auth.getSession();
-          const userId = data?.user?.id || null;
+          const storedUser = await secureStorage.secureGet(SECURE_STORAGE_KEYS.USER_DATA, true);
+          const userId = storedUser?.id || null;
           const vin = requests[requestIndex].vehicleId;
           if (vin) {
-            await supabase
-              .from('vehicles')
-              .update({ mileage })
-              .eq('vin', vin);
-            if (userId) {
-              await supabase
-                .from('mileage_requests')
-                .insert({
-                  vehicle_vin: vin,
-                  user_id: userId,
-                  current_mileage: mileage,
-                  status: 'completed'
-                });
-            }
+            await axiosAuth.put(`/api/vehicles/${vin}`, { mileage });
           }
         } catch (serverError) {
-          console.error('Помилка при синхронізації пробігу з Supabase:', serverError);
+          console.error('Помилка при синхронізації пробігу з бекендом:', serverError);
         }
       
       // Скасовуємо сповіщення для запиту
@@ -187,8 +175,8 @@ export const createMonthlyMileageRequests = async () => {
     }
     
     // Отримуємо список автомобілів користувача
-    const { data } = await supabase.auth.getSession();
-    const userId = data?.user?.id || null;
+    const storedUser = await secureStorage.secureGet(SECURE_STORAGE_KEYS.USER_DATA, true);
+    const userId = storedUser?.id || null;
     const vehicles = userId ? await getUserVehicles(userId) : [];
     
     if (!vehicles || vehicles.length === 0) {

@@ -1,17 +1,61 @@
-const { supabase } = require('../config/supabase.js');
+const crypto = require('crypto');
+const { getDb, getExistingColumn } = require('../db/d1');
+
+const getMechanicSpecializationConfig = async (db) => {
+  const columns = await db.prepare('PRAGMA table_info(mechanics)').all();
+  const columnNames = new Set(columns.map((column) => column.name));
+  if (columnNames.has('specialization')) {
+    return { join: '', select: 'm.specialization AS specialization' };
+  }
+  if (columnNames.has('specialization_id')) {
+    const specializationsTable = await db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='specializations'")
+      .get();
+    if (specializationsTable) {
+      return {
+        join: 'LEFT JOIN specializations sp ON sp.id = m.specialization_id',
+        select: 'sp.name AS specialization',
+      };
+    }
+    return { join: '', select: 'm.specialization_id AS specialization' };
+  }
+  return { join: '', select: 'NULL AS specialization' };
+};
 
 // Отримати всі СТО
 exports.getAllStations = async (req, res) => {
   try {
-    const { data, error } = await supabase.from('service_stations').select(`
-        *,
-        services (id, name, price, duration),
-        mechanics (id, first_name, last_name, specialization)
-      `);
+    const db = await getDb();
+    const serviceStationColumn = await getExistingColumn('services', [
+      'service_station_id',
+      'station_id',
+    ]);
+    const mechanicStationColumn = await getExistingColumn('mechanics', [
+      'service_station_id',
+      'station_id',
+    ]);
+    const mechanicSpec = await getMechanicSpecializationConfig(db);
+    const stations = await db.prepare('SELECT * FROM service_stations').all();
+    const result = await Promise.all(
+      stations.map(async (station) => {
+        const services = await db
+          .prepare(
+            `SELECT id, name, price, duration FROM services WHERE ${serviceStationColumn} = ?`
+          )
+          .all(station.id);
+        const mechanics = await db
+          .prepare(
+            `SELECT m.id, m.first_name, m.last_name, ${mechanicSpec.select}
+             FROM mechanics m
+             ${mechanicSpec.join}
+             WHERE m.${mechanicStationColumn} = ?`
+          )
+          .all(station.id);
+        return { ...station, services, mechanics };
+      })
+    );
 
-    if (error) throw error;
-
-    res.json(data);
+    res.json(result);
   } catch (err) {
     console.error('Get stations error:', err);
     res.status(500).json({ message: 'Помилка сервера' });
@@ -22,25 +66,56 @@ exports.getAllStations = async (req, res) => {
 exports.getStationById = async (req, res) => {
   try {
     const { id } = req.params;
-    const { data, error } = await supabase
-      .from('service_stations')
-      .select(
-        `
-        *,
-        services (id, name, price, duration),
-        mechanics (id, first_name, last_name, specialization),
-        reviews (id, rating, comment, created_at, users (id, email))
-      `
-      )
-      .eq('id', id)
-      .single();
+    const db = await getDb();
+    const serviceStationColumn = await getExistingColumn('services', [
+      'service_station_id',
+      'station_id',
+    ]);
+    const mechanicStationColumn = await getExistingColumn('mechanics', [
+      'service_station_id',
+      'station_id',
+    ]);
+    const mechanicSpec = await getMechanicSpecializationConfig(db);
+    const reviewStationColumn = await getExistingColumn('reviews', [
+      'service_station_id',
+      'station_id',
+    ]);
+    const station = await db.prepare('SELECT * FROM service_stations WHERE id = ?').get(id);
 
-    if (error) throw error;
-    if (!data) {
+    if (!station) {
       return res.status(404).json({ message: 'СТО не знайдено' });
     }
 
-    res.json(data);
+    const services = await db
+      .prepare(`SELECT id, name, price, duration FROM services WHERE ${serviceStationColumn} = ?`)
+      .all(id);
+    const mechanics = await db
+      .prepare(
+        `SELECT m.id, m.first_name, m.last_name, ${mechanicSpec.select}
+         FROM mechanics m
+         ${mechanicSpec.join}
+         WHERE m.${mechanicStationColumn} = ?`
+      )
+      .all(id);
+    const reviews = (
+      await db
+        .prepare(
+          `SELECT r.id, r.rating, r.comment, r.created_at,
+          u.id AS user_id_ref, u.email AS user_email
+        FROM reviews r
+        LEFT JOIN users u ON u.id = r.user_id
+        WHERE r.${reviewStationColumn} = ?`
+        )
+        .all(id)
+    ).map((review) => ({
+      id: review.id,
+      rating: review.rating,
+      comment: review.comment,
+      created_at: review.created_at,
+      users: review.user_id_ref ? { id: review.user_id_ref, email: review.user_email } : null,
+    }));
+
+    res.json({ ...station, services, mechanics, reviews });
   } catch (err) {
     console.error('Get station error:', err);
     res.status(500).json({ message: 'Помилка сервера' });
@@ -52,15 +127,19 @@ exports.createStation = async (req, res) => {
   try {
     const { name, address, phone, working_hours, description } = req.body;
 
-    const { data, error } = await supabase
-      .from('service_stations')
-      .insert([{ name, address, phone, working_hours, description }])
-      .select()
-      .single();
+    const db = await getDb();
+    const stationId = crypto.randomUUID();
+    const workingHoursValue =
+      typeof working_hours === 'string' ? working_hours : JSON.stringify(working_hours ?? null);
+    await db
+      .prepare(
+        `INSERT INTO service_stations (id, name, address, phone, working_hours, description)
+       VALUES (?, ?, ?, ?, ?, ?)`
+      )
+      .run(stationId, name, address, phone, workingHoursValue, description);
 
-    if (error) throw error;
-
-    res.status(201).json(data);
+    const created = await db.prepare('SELECT * FROM service_stations WHERE id = ?').get(stationId);
+    res.status(201).json(created);
   } catch (err) {
     console.error('Create station error:', err);
     res.status(500).json({ message: 'Помилка сервера' });
@@ -73,19 +152,23 @@ exports.updateStation = async (req, res) => {
     const { id } = req.params;
     const { name, address, phone, working_hours, description } = req.body;
 
-    const { data, error } = await supabase
-      .from('service_stations')
-      .update({ name, address, phone, working_hours, description })
-      .eq('id', id)
-      .select()
-      .single();
+    const db = await getDb();
+    const workingHoursValue =
+      typeof working_hours === 'string' ? working_hours : JSON.stringify(working_hours ?? null);
+    const updateResult = await db
+      .prepare(
+        `UPDATE service_stations
+         SET name = ?, address = ?, phone = ?, working_hours = ?, description = ?
+         WHERE id = ?`
+      )
+      .run(name, address, phone, workingHoursValue, description, id);
 
-    if (error) throw error;
-    if (!data) {
+    if (updateResult.changes === 0) {
       return res.status(404).json({ message: 'СТО не знайдено' });
     }
 
-    res.json(data);
+    const updated = await db.prepare('SELECT * FROM service_stations WHERE id = ?').get(id);
+    res.json(updated);
   } catch (err) {
     console.error('Update station error:', err);
     res.status(500).json({ message: 'Помилка сервера' });
@@ -96,9 +179,8 @@ exports.updateStation = async (req, res) => {
 exports.deleteStation = async (req, res) => {
   try {
     const { id } = req.params;
-    const { error } = await supabase.from('service_stations').delete().eq('id', id);
-
-    if (error) throw error;
+    const db = await getDb();
+    await db.prepare('DELETE FROM service_stations WHERE id = ?').run(id);
 
     res.status(204).send();
   } catch (err) {

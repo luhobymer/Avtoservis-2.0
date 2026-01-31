@@ -1,14 +1,6 @@
-// Mock Supabase
-const mockSupabase = {
-  from: jest.fn().mockReturnThis(),
-  select: jest.fn().mockReturnThis(),
-  eq: jest.fn().mockReturnThis(),
-  single: jest.fn().mockReturnThis(),
-};
-
-jest.mock('../config/supabaseClient.js', () => ({ supabase: mockSupabase }));
-
 const { getAllMechanics } = require('../controllers/mechanicController');
+const crypto = require('crypto');
+const { getDb } = require('../db/d1');
 
 describe('MechanicController Simple Test', () => {
   let req, res;
@@ -23,16 +15,34 @@ describe('MechanicController Simple Test', () => {
   });
 
   it('should get all mechanics', async () => {
-    const mockMechanics = [{ id: 1, first_name: 'Іван', last_name: 'Петренко' }];
+    const db = getDb();
+    const now = new Date().toISOString();
+    const stationId = crypto.randomUUID();
+    const specializationId = crypto.randomUUID();
+    const mechanicId = crypto.randomUUID();
 
-    mockSupabase.select.mockResolvedValue({
-      data: mockMechanics,
-      error: null,
-    });
+    db.prepare(
+      'INSERT INTO service_stations (id, name, created_at, updated_at) VALUES (?, ?, ?, ?)'
+    ).run(stationId, 'Test Station', now, now);
+    db.prepare(
+      'INSERT INTO specializations (id, name, created_at, updated_at) VALUES (?, ?, ?, ?)'
+    ).run(specializationId, 'Engine', now, now);
+    db.prepare(
+      'INSERT INTO mechanics (id, first_name, last_name, specialization_id, service_station_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    ).run(mechanicId, 'Іван', 'Петренко', specializationId, stationId, now, now);
 
     await getAllMechanics(req, res);
 
-    expect(mockSupabase.from).toHaveBeenCalledWith('mechanics');
-    expect(res.json).toHaveBeenCalledWith(mockMechanics);
+    expect(res.json).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: mechanicId,
+          first_name: 'Іван',
+          last_name: 'Петренко',
+          service_stations: expect.objectContaining({ id: stationId, name: 'Test Station' }),
+          specializations: expect.objectContaining({ id: specializationId, name: 'Engine' }),
+        }),
+      ])
+    );
   });
 });

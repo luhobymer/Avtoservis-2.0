@@ -1,4 +1,5 @@
 const jwt = require('jsonwebtoken');
+const { JWT_SECRET } = require('../config/jwt');
 
 /**
  * Middleware для перевірки автентифікації користувача
@@ -38,7 +39,7 @@ module.exports = async (req, res, next) => {
 
     try {
       // Перевіряємо токен
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      const decoded = jwt.verify(token, JWT_SECRET);
 
       // Перевіряємо наявність необхідних полів
       if (!decoded.id || (!decoded.email && !decoded.phone)) {

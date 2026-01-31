@@ -41,7 +41,8 @@ const UsersManagement = () => {
     name: '',
     email: '',
     phone: '',
-    role: 'client'
+    role: 'client',
+    password: ''
   });
 
   useEffect(() => {
@@ -68,7 +69,8 @@ const UsersManagement = () => {
         name: user.name,
         email: user.email,
         phone: user.phone,
-        role: user.role
+        role: user.role,
+        password: ''
       });
     } else {
       setSelectedUser(null);
@@ -106,7 +108,17 @@ const UsersManagement = () => {
         };
         await usersDao.update(selectedUser.id, updatePayload);
       } else {
-        setError(t('admin.userCreateViaRegisterOnly'));
+        if (!formData.password || String(formData.password).length < 6) {
+          setError(t('auth.passwordMin', 'Пароль повинен містити щонайменше 6 символів'));
+          return;
+        }
+        await usersDao.create({
+          name: formData.name,
+          email: formData.email,
+          phone: formData.phone,
+          role: formData.role,
+          password: formData.password
+        });
       }
       fetchUsers();
       handleCloseDialog();
@@ -178,8 +190,8 @@ const UsersManagement = () => {
                   <TableCell>{user.phone}</TableCell>
                   <TableCell>
                     <Chip 
-                      label={user.role === 'admin' ? t('user.admin') : t('user.client')}
-                      color={user.role === 'admin' ? 'primary' : 'default'}
+                      label={user.role === 'master' ? t('user.master') : t('user.client')}
+                      color={user.role === 'master' ? 'primary' : 'default'}
                       size="small"
                     />
                   </TableCell>
@@ -258,7 +270,7 @@ const UsersManagement = () => {
                   label={t('auth.role')}
                 >
                   <MenuItem value="client">{t('user.client')}</MenuItem>
-                  <MenuItem value="admin">{t('user.admin')}</MenuItem>
+                  <MenuItem value="master">{t('user.master')}</MenuItem>
                 </Select>
               </FormControl>
             </Grid>
@@ -269,6 +281,7 @@ const UsersManagement = () => {
                   label={t('auth.password')}
                   name="password"
                   type="password"
+                  value={formData.password}
                   onChange={handleChange}
                   margin="normal"
                 />

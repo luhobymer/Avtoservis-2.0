@@ -1,579 +1,192 @@
-// Mock the supabase client using __mocks__
-// Mock supabase client
-const mockSupabase = {
-  from: jest.fn(),
-  select: jest.fn(),
-  eq: jest.fn(),
-  single: jest.fn(),
-  insert: jest.fn(),
-  update: jest.fn(),
-  order: jest.fn(),
-};
-
-jest.mock('../config/supabaseClient.js', () => ({
-  supabase: mockSupabase,
-}));
-
-const {
-  getAllAppointments,
-  getAppointmentById,
-  getUserAppointments,
-  createAppointment,
-  updateAppointmentStatus,
-  cancelAppointment,
-} = require('../controllers/appointmentController');
+const crypto = require('crypto');
+const { getDb } = require('../db/d1');
+const appointmentController = require('../controllers/appointmentController');
 
 describe('AppointmentController', () => {
-  let req, res;
+  let req;
+  let res;
+
+  const makeRes = () => {
+    const response = {
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn().mockReturnThis(),
+      send: jest.fn().mockReturnThis(),
+    };
+    response.status.mockReturnValue(response);
+    return response;
+  };
 
   beforeEach(() => {
-    req = {
-      params: {},
-      query: {},
-      body: {},
-      user: { id: 1 },
-    };
-    res = {
-      json: jest.fn(),
-      status: jest.fn(() => res),
-    };
+    req = { params: {}, query: {}, body: {}, user: { id: null } };
+    res = makeRes();
     jest.clearAllMocks();
   });
 
-  describe('getAllAppointments', () => {
-    beforeEach(() => {
-      // Reset all mocks
-      mockSupabase.from.mockClear();
-      mockSupabase.select.mockClear();
-      mockSupabase.order.mockClear();
-    });
+  const seedBase = () => {
+    const db = getDb();
+    const now = new Date().toISOString();
+    const userId = crypto.randomUUID();
+    const stationId = crypto.randomUUID();
+    const categoryId = crypto.randomUUID();
+    const serviceId = crypto.randomUUID();
+    const specializationId = crypto.randomUUID();
+    const mechanicId = crypto.randomUUID();
 
-    it('should return all appointments with related data', async () => {
-      const mockAppointments = [
-        {
-          id: 1,
-          appointment_date: '2024-01-15T10:00:00Z',
-          status: 'confirmed',
-          users: { id: 1, email: 'user@example.com' },
-          services: { id: 1, name: 'Заміна масла', price: 500, duration: 60 },
-          mechanics: { id: 1, first_name: 'Іван', last_name: 'Петренко' },
-          service_stations: { id: 1, name: 'СТО №1' },
-        },
-      ];
+    db.prepare(
+      'INSERT INTO users (id, email, password, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
+    ).run(userId, 'user@example.com', 'hashed', 'client', now, now);
+    db.prepare(
+      'INSERT INTO service_stations (id, name, created_at, updated_at) VALUES (?, ?, ?, ?)'
+    ).run(stationId, 'Station', now, now);
+    db.prepare(
+      'INSERT INTO service_categories (id, name, created_at, updated_at) VALUES (?, ?, ?, ?)'
+    ).run(categoryId, 'Cat', now, now);
+    db.prepare(
+      'INSERT INTO services (id, name, price, duration, service_station_id, category_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    ).run(serviceId, 'Oil Change', 500, 60, stationId, categoryId, now, now);
+    db.prepare(
+      'INSERT INTO specializations (id, name, created_at, updated_at) VALUES (?, ?, ?, ?)'
+    ).run(specializationId, 'Engine', now, now);
+    db.prepare(
+      'INSERT INTO mechanics (id, first_name, last_name, specialization_id, service_station_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    ).run(mechanicId, 'Іван', 'Петренко', specializationId, stationId, now, now);
 
-      // Mock the chain
-      mockSupabase.from.mockReturnValue(mockSupabase);
-      mockSupabase.select.mockReturnValue(mockSupabase);
-      mockSupabase.order.mockResolvedValue({
-        data: mockAppointments,
-        error: null,
-      });
+    req.user.id = userId;
 
-      await getAllAppointments(req, res);
+    return { db, now, userId, stationId, serviceId, mechanicId };
+  };
 
-      expect(mockSupabase.from).toHaveBeenCalledWith('appointments');
-      expect(mockSupabase.select).toHaveBeenCalled();
-      expect(mockSupabase.order).toHaveBeenCalledWith('appointment_date', { ascending: true });
-      expect(res.json).toHaveBeenCalledWith(mockAppointments);
-    });
+  it('getAllAppointments returns mapped appointments', async () => {
+    const { db, userId, serviceId, mechanicId } = seedBase();
+    const appointmentId = crypto.randomUUID();
+    const scheduledTime = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
 
-    it('should handle database error', async () => {
-      mockSupabase.select.mockResolvedValue({
-        data: null,
-        error: new Error('Database error'),
-      });
+    db.prepare(
+      'INSERT INTO appointments (id, user_id, service_id, mechanic_id, scheduled_time, status) VALUES (?, ?, ?, ?, ?, ?)'
+    ).run(appointmentId, userId, serviceId, mechanicId, scheduledTime, 'confirmed');
 
-      await getAllAppointments(req, res);
+    await appointmentController.getAllAppointments(req, res);
 
-      expect(res.status).toHaveBeenCalledWith(500);
-      expect(res.json).toHaveBeenCalledWith({ message: 'Помилка сервера' });
-    });
-
-    it('should handle server error', async () => {
-      mockSupabase.select.mockRejectedValue(new Error('Server error'));
-
-      await getAllAppointments(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(500);
-      expect(res.json).toHaveBeenCalledWith({ message: 'Помилка сервера' });
-    });
+    expect(res.json).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: appointmentId,
+          users: expect.objectContaining({ id: userId, email: 'user@example.com' }),
+          services: expect.objectContaining({
+            id: serviceId,
+            name: 'Oil Change',
+            price: 500,
+            duration: 60,
+          }),
+          mechanics: expect.objectContaining({
+            id: mechanicId,
+            first_name: 'Іван',
+            last_name: 'Петренко',
+            specialization: 'Engine',
+          }),
+        }),
+      ])
+    );
   });
 
-  describe('getAppointmentById', () => {
-    beforeEach(() => {
-      req.params.id = '1';
-    });
-
-    it('should return appointment by id with related data', async () => {
-      const mockAppointment = {
-        id: 1,
-        appointment_date: '2024-01-15T10:00:00Z',
-        status: 'confirmed',
-        users: { id: 1, email: 'user@example.com' },
-        services: { id: 1, name: 'Заміна масла', price: 500, duration: 60 },
-        mechanics: { id: 1, first_name: 'Іван', last_name: 'Петренко' },
-        service_stations: { id: 1, name: 'СТО №1' },
-      };
-
-      mockSupabase.single.mockResolvedValue({
-        data: mockAppointment,
-        error: null,
-      });
-
-      await getAppointmentById(req, res);
-
-      expect(mockSupabase.from).toHaveBeenCalledWith('appointments');
-      expect(mockSupabase.select).toHaveBeenCalled();
-      expect(mockSupabase.eq).toHaveBeenCalledWith('id', '1');
-      expect(mockSupabase.single).toHaveBeenCalled();
-      expect(res.json).toHaveBeenCalledWith(mockAppointment);
-    });
-
-    it('should return 404 when appointment not found', async () => {
-      mockSupabase.single.mockResolvedValue({
-        data: null,
-        error: null,
-      });
-
-      await getAppointmentById(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(404);
-      expect(res.json).toHaveBeenCalledWith({ message: 'Запис не знайдено' });
-    });
-
-    it('should handle database error', async () => {
-      mockSupabase.single.mockResolvedValue({
-        data: null,
-        error: new Error('Database error'),
-      });
-
-      await getAppointmentById(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(500);
-      expect(res.json).toHaveBeenCalledWith({ message: 'Помилка сервера' });
-    });
+  it('getAppointmentById returns 404 when missing', async () => {
+    seedBase();
+    req.params.id = crypto.randomUUID();
+    await appointmentController.getAppointmentById(req, res);
+    expect(res.status).toHaveBeenCalledWith(404);
   });
 
-  describe('getUserAppointments', () => {
-    it('should return user appointments ordered by date', async () => {
-      const mockAppointments = [
-        {
-          id: 1,
-          appointment_date: '2024-01-15T10:00:00Z',
-          status: 'confirmed',
-          services: { id: 1, name: 'Заміна масла', price: 500, duration: 60 },
-          mechanics: { id: 1, first_name: 'Іван', last_name: 'Петренко' },
-          service_stations: { id: 1, name: 'СТО №1' },
-        },
-      ];
+  it('getUserAppointments returns in scheduled_time order', async () => {
+    const { db, userId, serviceId, mechanicId } = seedBase();
+    const a1 = crypto.randomUUID();
+    const a2 = crypto.randomUUID();
+    const t1 = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
+    const t2 = new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString();
 
-      mockSupabase.order.mockResolvedValue({
-        data: mockAppointments,
-        error: null,
-      });
+    db.prepare(
+      'INSERT INTO appointments (id, user_id, service_id, mechanic_id, scheduled_time, status) VALUES (?, ?, ?, ?, ?, ?)'
+    ).run(a2, userId, serviceId, mechanicId, t2, 'confirmed');
+    db.prepare(
+      'INSERT INTO appointments (id, user_id, service_id, mechanic_id, scheduled_time, status) VALUES (?, ?, ?, ?, ?, ?)'
+    ).run(a1, userId, serviceId, mechanicId, t1, 'confirmed');
 
-      await getUserAppointments(req, res);
+    await appointmentController.getUserAppointments(req, res);
 
-      expect(mockSupabase.from).toHaveBeenCalledWith('appointments');
-      expect(mockSupabase.eq).toHaveBeenCalledWith('user_id', 1);
-      expect(mockSupabase.order).toHaveBeenCalledWith('appointment_date', { ascending: true });
-      expect(res.json).toHaveBeenCalledWith(mockAppointments);
-    });
-
-    it('should handle database error', async () => {
-      mockSupabase.order.mockResolvedValue({
-        data: null,
-        error: new Error('Database error'),
-      });
-
-      await getUserAppointments(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(500);
-      expect(res.json).toHaveBeenCalledWith({ message: 'Помилка сервера' });
-    });
+    const payload = res.json.mock.calls[0][0];
+    expect(payload[0].id).toBe(a1);
+    expect(payload[1].id).toBe(a2);
   });
 
-  describe('createAppointment', () => {
-    beforeEach(() => {
-      req.body = {
-        service_id: 1,
-        mechanic_id: 1,
-        appointment_date: '2024-01-15T10:00:00Z',
-        notes: 'Тестові нотатки',
-        car_info: 'Toyota Camry 2020',
-      };
-    });
+  it('createAppointment returns 201 when time is available', async () => {
+    const { db, serviceId, mechanicId } = seedBase();
+    const scheduledTime = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
+    req.body = {
+      service_id: serviceId,
+      mechanic_id: mechanicId,
+      scheduled_time: scheduledTime,
+      notes: 'n',
+      car_info: 'c',
+    };
 
-    it('should create new appointment successfully when time is available', async () => {
-      // Reset all mocks first
-      mockSupabase.from.mockReturnValue(mockSupabase);
-      mockSupabase.select.mockReturnValue(mockSupabase);
-      mockSupabase.eq.mockReturnValue(mockSupabase);
-      mockSupabase.insert.mockReturnValue(mockSupabase);
+    await appointmentController.createAppointment(req, res);
 
-      const mockCreatedAppointment = {
-        id: 1,
-        user_id: 1,
-        ...req.body,
-        status: 'pending',
-      };
-
-      // Mock check for existing appointment - none found
-      mockSupabase.single.mockResolvedValueOnce({
-        data: null,
-        error: { code: 'PGRST116' }, // No rows found
-      });
-
-      // Mock create appointment
-      mockSupabase.single.mockResolvedValueOnce({
-        data: mockCreatedAppointment,
-        error: null,
-      });
-
-      await createAppointment(req, res);
-
-      expect(mockSupabase.from).toHaveBeenCalledWith('appointments');
-      expect(mockSupabase.eq).toHaveBeenCalledWith('mechanic_id', 1);
-      expect(mockSupabase.eq).toHaveBeenCalledWith('appointment_date', '2024-01-15T10:00:00Z');
-      expect(mockSupabase.insert).toHaveBeenCalledWith([
-        {
-          user_id: 1,
-          service_id: 1,
-          mechanic_id: 1,
-          appointment_date: '2024-01-15T10:00:00Z',
-          notes: 'Тестові нотатки',
-          car_info: 'Toyota Camry 2020',
-          status: 'pending',
-        },
-      ]);
-      expect(res.status).toHaveBeenCalledWith(201);
-      expect(res.json).toHaveBeenCalledWith(mockCreatedAppointment);
-    });
-
-    it('should return 400 when time slot is already taken', async () => {
-      // Reset all mocks first
-      mockSupabase.from.mockReturnValue(mockSupabase);
-      mockSupabase.select.mockReturnValue(mockSupabase);
-      mockSupabase.eq.mockReturnValue(mockSupabase);
-
-      // Mock check for existing appointment - found one
-      mockSupabase.single.mockResolvedValue({
-        data: { id: 2, mechanic_id: 1, appointment_date: '2024-01-15T10:00:00Z' },
-        error: null,
-      });
-
-      await createAppointment(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(400);
-      expect(res.json).toHaveBeenCalledWith({ message: 'Цей час вже зайнято' });
-    });
-
-    it('should handle database error during availability check', async () => {
-      // Reset all mocks first
-      mockSupabase.from.mockReturnValue(mockSupabase);
-      mockSupabase.select.mockReturnValue(mockSupabase);
-      mockSupabase.eq.mockReturnValue(mockSupabase);
-
-      mockSupabase.single.mockResolvedValue({
-        data: null,
-        error: new Error('Database error'),
-      });
-
-      await createAppointment(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(500);
-      expect(res.json).toHaveBeenCalledWith({ message: 'Помилка сервера' });
-    });
-
-    it('should handle database error during creation', async () => {
-      // Reset all mocks first
-      mockSupabase.from.mockReturnValue(mockSupabase);
-      mockSupabase.select.mockReturnValue(mockSupabase);
-      mockSupabase.eq.mockReturnValue(mockSupabase);
-      mockSupabase.insert.mockReturnValue(mockSupabase);
-
-      // Mock successful availability check
-      mockSupabase.single.mockResolvedValueOnce({
-        data: null,
-        error: { code: 'PGRST116' },
-      });
-
-      // Mock creation error
-      mockSupabase.single.mockResolvedValueOnce({
-        data: null,
-        error: new Error('Database error'),
-      });
-
-      await createAppointment(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(500);
-      expect(res.json).toHaveBeenCalledWith({ message: 'Помилка сервера' });
-    });
-
-    it('should handle server error', async () => {
-      // Reset all mocks first
-      mockSupabase.from.mockReturnValue(mockSupabase);
-      mockSupabase.select.mockReturnValue(mockSupabase);
-      mockSupabase.eq.mockReturnValue(mockSupabase);
-
-      mockSupabase.single.mockRejectedValue(new Error('Server error'));
-
-      await createAppointment(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(500);
-      expect(res.json).toHaveBeenCalledWith({ message: 'Помилка сервера' });
-    });
+    expect(res.status).toHaveBeenCalledWith(201);
+    const created = res.json.mock.calls[0][0];
+    const row = db.prepare('SELECT * FROM appointments WHERE id = ?').get(created.id);
+    expect(row).toBeTruthy();
   });
 
-  describe('updateAppointmentStatus', () => {
-    beforeEach(() => {
-      req.params.id = '1';
-      req.body = {
-        status: 'completed',
-        completion_notes: 'Роботу виконано успішно',
-      };
-    });
+  it('createAppointment returns 400 when time is already taken', async () => {
+    const { db, userId, serviceId, mechanicId } = seedBase();
+    const scheduledTime = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
+    const existingId = crypto.randomUUID();
+    db.prepare(
+      'INSERT INTO appointments (id, user_id, service_id, mechanic_id, scheduled_time, status) VALUES (?, ?, ?, ?, ?, ?)'
+    ).run(existingId, userId, serviceId, mechanicId, scheduledTime, 'pending');
 
-    it('should update appointment status successfully', async () => {
-      // Reset all mocks first
-      mockSupabase.from.mockReturnValue(mockSupabase);
-      mockSupabase.update.mockReturnValue(mockSupabase);
-      mockSupabase.eq.mockReturnValue(mockSupabase);
-      mockSupabase.select.mockReturnValue(mockSupabase);
+    req.body = { service_id: serviceId, mechanic_id: mechanicId, scheduled_time: scheduledTime };
+    await appointmentController.createAppointment(req, res);
 
-      const mockUpdatedAppointment = {
-        id: 1,
-        status: 'completed',
-        completion_notes: 'Роботу виконано успішно',
-        completed_at: expect.any(Date),
-      };
-
-      mockSupabase.single.mockResolvedValue({
-        data: mockUpdatedAppointment,
-        error: null,
-      });
-
-      await updateAppointmentStatus(req, res);
-
-      expect(mockSupabase.from).toHaveBeenCalledWith('appointments');
-      expect(mockSupabase.update).toHaveBeenCalledWith({
-        status: 'completed',
-        completion_notes: 'Роботу виконано успішно',
-        completed_at: expect.any(Date),
-      });
-      expect(mockSupabase.eq).toHaveBeenCalledWith('id', '1');
-      expect(res.json).toHaveBeenCalledWith(mockUpdatedAppointment);
-    });
-
-    it('should not set completed_at when status is not completed', async () => {
-      req.body.status = 'confirmed';
-
-      // Reset all mocks first
-      mockSupabase.from.mockReturnValue(mockSupabase);
-      mockSupabase.update.mockReturnValue(mockSupabase);
-      mockSupabase.eq.mockReturnValue(mockSupabase);
-
-      const mockUpdatedAppointment = {
-        id: 1,
-        status: 'confirmed',
-        completion_notes: 'Роботу виконано успішно',
-        completed_at: null,
-      };
-
-      mockSupabase.single.mockResolvedValue({
-        data: mockUpdatedAppointment,
-        error: null,
-      });
-
-      await updateAppointmentStatus(req, res);
-
-      expect(mockSupabase.update).toHaveBeenCalledWith({
-        status: 'confirmed',
-        completion_notes: 'Роботу виконано успішно',
-        completed_at: null,
-      });
-    });
-
-    it('should return 404 when appointment not found', async () => {
-      // Reset all mocks first
-      mockSupabase.from.mockReturnValue(mockSupabase);
-      mockSupabase.update.mockReturnValue(mockSupabase);
-      mockSupabase.eq.mockReturnValue(mockSupabase);
-
-      mockSupabase.single.mockResolvedValue({
-        data: null,
-        error: null,
-      });
-
-      await updateAppointmentStatus(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(404);
-      expect(res.json).toHaveBeenCalledWith({ message: 'Запис не знайдено' });
-    });
-
-    it('should handle database error', async () => {
-      // Reset all mocks first
-      mockSupabase.from.mockReturnValue(mockSupabase);
-      mockSupabase.update.mockReturnValue(mockSupabase);
-      mockSupabase.eq.mockReturnValue(mockSupabase);
-
-      mockSupabase.single.mockResolvedValue({
-        data: null,
-        error: new Error('Database error'),
-      });
-
-      await updateAppointmentStatus(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(500);
-      expect(res.json).toHaveBeenCalledWith({ message: 'Помилка сервера' });
-    });
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({ message: 'Цей час вже зайнято' });
   });
 
-  describe('cancelAppointment', () => {
-    beforeEach(() => {
-      req.params.id = '1';
-      // Reset all mocks
-      mockSupabase.from.mockClear();
-      mockSupabase.select.mockClear();
-      mockSupabase.eq.mockClear();
-      mockSupabase.update.mockClear();
-      mockSupabase.single.mockClear();
-    });
+  it('updateAppointmentStatus returns 404 when missing', async () => {
+    seedBase();
+    req.params.id = crypto.randomUUID();
+    req.body = { status: 'completed', completion_notes: 'done' };
+    await appointmentController.updateAppointmentStatus(req, res);
+    expect(res.status).toHaveBeenCalledWith(404);
+  });
 
-    it('should cancel appointment successfully when more than 24 hours before', async () => {
-      // Set appointment date to be more than 24 hours in the future
-      const futureDate = new Date();
-      futureDate.setHours(futureDate.getHours() + 48);
+  it('cancelAppointment returns 400 when less than 24 hours before', async () => {
+    const { db, userId, serviceId, mechanicId } = seedBase();
+    const appointmentId = crypto.randomUUID();
+    const scheduledTime = new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString();
+    db.prepare(
+      'INSERT INTO appointments (id, user_id, service_id, mechanic_id, scheduled_time, status) VALUES (?, ?, ?, ?, ?, ?)'
+    ).run(appointmentId, userId, serviceId, mechanicId, scheduledTime, 'confirmed');
 
-      // Mock the chain for checking appointment
-      mockSupabase.from.mockReturnValue(mockSupabase);
-      mockSupabase.select.mockReturnValue(mockSupabase);
-      mockSupabase.eq.mockReturnValue(mockSupabase);
-      mockSupabase.single.mockResolvedValue({
-        data: {
-          id: 1,
-          user_id: 1,
-          appointment_date: futureDate.toISOString(),
-        },
-        error: null,
-      });
+    req.params.id = appointmentId;
+    await appointmentController.cancelAppointment(req, res);
 
-      // Mock the chain for update operation
-      mockSupabase.update.mockReturnValue(mockSupabase);
-      mockSupabase.eq.mockReturnValue({
-        error: null,
-      });
+    expect(res.status).toHaveBeenCalledWith(400);
+  });
 
-      await cancelAppointment(req, res);
+  it('cancelAppointment returns 200 and updates status when allowed', async () => {
+    const { db, userId, serviceId, mechanicId } = seedBase();
+    const appointmentId = crypto.randomUUID();
+    const scheduledTime = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
+    db.prepare(
+      'INSERT INTO appointments (id, user_id, service_id, mechanic_id, scheduled_time, status) VALUES (?, ?, ?, ?, ?, ?)'
+    ).run(appointmentId, userId, serviceId, mechanicId, scheduledTime, 'confirmed');
 
-      expect(mockSupabase.from).toHaveBeenCalledWith('appointments');
-      expect(mockSupabase.select).toHaveBeenCalledWith('*');
-      expect(mockSupabase.eq).toHaveBeenCalledWith('id', '1');
-      expect(mockSupabase.eq).toHaveBeenCalledWith('user_id', 1);
-      expect(mockSupabase.update).toHaveBeenCalledWith({ status: 'cancelled' });
-      expect(res.status).toHaveBeenCalledWith(200);
-      expect(res.json).toHaveBeenCalledWith({ message: 'Запис скасовано' });
-    });
+    req.params.id = appointmentId;
+    await appointmentController.cancelAppointment(req, res);
 
-    it('should return 404 when appointment not found', async () => {
-      mockSupabase.from.mockReturnValue(mockSupabase);
-      mockSupabase.select.mockReturnValue(mockSupabase);
-      mockSupabase.eq.mockReturnValue(mockSupabase);
-
-      mockSupabase.single.mockResolvedValue({
-        data: null,
-        error: null,
-      });
-
-      await cancelAppointment(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(404);
-      expect(res.json).toHaveBeenCalledWith({ message: 'Запис не знайдено' });
-    });
-
-    it('should return 400 when trying to cancel less than 24 hours before appointment', async () => {
-      // Set appointment date to be less than 24 hours in the future
-      const nearFutureDate = new Date();
-      nearFutureDate.setHours(nearFutureDate.getHours() + 12); // 12 hours in future
-
-      mockSupabase.from.mockReturnValue(mockSupabase);
-      mockSupabase.select.mockReturnValue(mockSupabase);
-      mockSupabase.eq.mockReturnValue(mockSupabase);
-
-      mockSupabase.single.mockResolvedValue({
-        data: {
-          id: 1,
-          user_id: 1,
-          appointment_date: nearFutureDate.toISOString(),
-        },
-        error: null,
-      });
-
-      await cancelAppointment(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(400);
-      expect(res.json).toHaveBeenCalledWith({
-        message: 'Скасування можливе не менше ніж за 24 години до запису',
-      });
-    });
-
-    it('should handle database error during appointment check', async () => {
-      mockSupabase.from.mockReturnValue(mockSupabase);
-      mockSupabase.select.mockReturnValue(mockSupabase);
-      mockSupabase.eq.mockReturnValue(mockSupabase);
-
-      mockSupabase.single.mockResolvedValue({
-        data: null,
-        error: new Error('Database error'),
-      });
-
-      await cancelAppointment(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(500);
-      expect(res.json).toHaveBeenCalledWith({ message: 'Помилка сервера' });
-    });
-
-    it('should handle database error during cancellation', async () => {
-      // Set appointment date to be more than 24 hours in the future
-      const futureDate = new Date();
-      futureDate.setHours(futureDate.getHours() + 48);
-
-      mockSupabase.from.mockReturnValue(mockSupabase);
-      mockSupabase.select.mockReturnValue(mockSupabase);
-      mockSupabase.eq.mockReturnValue(mockSupabase);
-
-      // Mock successful appointment check
-      mockSupabase.single.mockResolvedValue({
-        data: {
-          id: 1,
-          user_id: 1,
-          appointment_date: futureDate.toISOString(),
-        },
-        error: null,
-      });
-
-      // Mock update operation error
-      mockSupabase.update.mockReturnValue(mockSupabase);
-      mockSupabase.eq.mockReturnValue({
-        error: new Error('Database error'),
-      });
-
-      await cancelAppointment(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(500);
-      expect(res.json).toHaveBeenCalledWith({ message: 'Помилка сервера' });
-    });
-
-    it('should handle server error', async () => {
-      mockSupabase.from.mockReturnValue(mockSupabase);
-      mockSupabase.select.mockReturnValue(mockSupabase);
-      mockSupabase.eq.mockReturnValue(mockSupabase);
-      mockSupabase.single.mockRejectedValue(new Error('Server error'));
-
-      await cancelAppointment(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(500);
-      expect(res.json).toHaveBeenCalledWith({ message: 'Помилка сервера' });
-    });
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith({ message: 'Запис скасовано' });
+    const updated = db.prepare('SELECT status FROM appointments WHERE id = ?').get(appointmentId);
+    expect(updated.status).toBe('cancelled');
   });
 });

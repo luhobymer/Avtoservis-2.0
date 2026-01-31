@@ -211,11 +211,10 @@ export default function AppointmentsScreen({ navigation }) {
 
   const renderActionButtons = (appointment) => {
     const { id, status } = appointment;
-    const isAdmin = user && user.role === 'admin';
     const isMaster = user && user.role === 'master';
     
     // Клієнт може скасувати запис, якщо він ще не розпочатий
-    if (!isAdmin && !isMaster) {
+    if (!isMaster) {
       if (status === 'pending' || status === 'confirmed') {
         return (
           <TouchableOpacity
@@ -229,7 +228,7 @@ export default function AppointmentsScreen({ navigation }) {
       return null;
     }
     
-    // Адміністратор або майстер можуть змінювати статус
+    // Майстер може змінювати статус
     switch (status) {
       case 'pending':
         return (

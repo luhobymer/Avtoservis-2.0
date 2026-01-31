@@ -1,4 +1,4 @@
-import { supabase } from './supabaseClient';
+import axiosAuth from './axiosConfig';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Ключі для AsyncStorage
@@ -17,16 +17,17 @@ const MASTER_BUSY_STATUS_KEY = 'master_busy_status';
 export const getMasterSchedule = async (masterId, startDate, endDate, token) => {
   try {
     console.log(`[API] Отримання розкладу майстра ${masterId} з ${startDate} по ${endDate}`);
-    const { data, error } = await supabase
-      .from('appointments')
-      .select('id, scheduled_time, status, service_id, user_id')
-      .eq('mechanic_id', masterId)
-      .gte('scheduled_time', startDate)
-      .lte('scheduled_time', endDate)
-      .order('scheduled_time', { ascending: true });
-    if (!error && Array.isArray(data)) {
-      await AsyncStorage.setItem(`${MASTER_SCHEDULE_KEY}_${masterId}`, JSON.stringify(data));
-      return data;
+    const response = await axiosAuth.get('/api/appointments', {
+      params: {
+        mechanic_id: masterId,
+        start_date: startDate,
+        end_date: endDate
+      }
+    });
+    const rows = Array.isArray(response.data) ? response.data : [];
+    if (rows.length > 0) {
+      await AsyncStorage.setItem(`${MASTER_SCHEDULE_KEY}_${masterId}`, JSON.stringify(rows));
+      return rows;
     }
     
     // Якщо немає даних, спробуємо отримати з локального сховища
@@ -104,20 +105,11 @@ export const getMasterAvailability = async (masterId, date, token) => {
 export const getMasterWorkingHours = async (masterId, token) => {
   try {
     console.log(`[API] Отримання робочих годин майстра ${masterId}`);
-    const { data: mechanic, error: mechError } = await supabase
-      .from('mechanics')
-      .select('station_id')
-      .eq('id', masterId)
-      .single();
-    if (!mechError && mechanic && mechanic.station_id) {
-      const { data: station, error: stationError } = await supabase
-        .from('service_stations')
-        .select('working_hours')
-        .eq('id', mechanic.station_id)
-        .single();
-      if (!stationError && station && station.working_hours && typeof station.working_hours === 'object') {
-        return station.working_hours;
-      }
+    const response = await axiosAuth.get('/api/schedule/working-hours', {
+      params: { master_id: masterId }
+    });
+    if (response.data && typeof response.data === 'object') {
+      return response.data;
     }
     
     // Повертаємо стандартні робочі години (пн-пт, 9:00-18:00)
@@ -189,18 +181,15 @@ export const getMasterAppointmentsForDate = async (masterId, date, token) => {
     const formattedDate = date.split('T')[0];
     const start = new Date(`${formattedDate}T00:00:00.000Z`).toISOString();
     const end = new Date(`${formattedDate}T23:59:59.999Z`).toISOString();
-    const { data, error } = await supabase
-      .from('appointments')
-      .select('id, scheduled_time, status, service_id, user_id')
-      .eq('mechanic_id', masterId)
-      .gte('scheduled_time', start)
-      .lte('scheduled_time', end)
-      .order('scheduled_time', { ascending: true });
-    if (!error && Array.isArray(data)) {
-      return data;
-    }
-    
-    return [];
+    const response = await axiosAuth.get('/api/appointments', {
+      params: {
+        mechanic_id: masterId,
+        start_date: start,
+        end_date: end
+      }
+    });
+    const rows = Array.isArray(response.data) ? response.data : [];
+    return rows;
   } catch (error) {
     console.error('[ScheduleService] Помилка при отриманні записів майстра:', error);
     return [];
@@ -228,15 +217,12 @@ export const setMasterBusyStatus = async (masterId, isBusy, endTime, reason, tok
       updated_at: new Date().toISOString()
     };
     const mechanicIdValue = /^[0-9]+$/.test(String(masterId)) ? Number(masterId) : masterId;
-    await supabase
-      .from('mechanic_busy_status')
-      .insert({
-        mechanic_id: mechanicIdValue,
-        is_busy: isBusy,
-        busy_until: endTime,
-        busy_reason: reason,
-        updated_at: new Date().toISOString()
-      });
+    await axiosAuth.post('/api/schedule/busy-status', {
+      mechanic_id: mechanicIdValue,
+      is_busy: isBusy,
+      busy_until: endTime,
+      busy_reason: reason
+    });
     console.log('[API] Статус зайнятості оновлено');
     
     // Зберігаємо статус в локальному сховищі
@@ -271,15 +257,13 @@ export const getMasterBusyStatus = async (masterId, token) => {
   try {
     console.log(`[API] Отримання статусу зайнятості майстра ${masterId}`);
     const mechanicIdValue = /^[0-9]+$/.test(String(masterId)) ? Number(masterId) : masterId;
-    const { data, error } = await supabase
-      .from('mechanic_busy_status')
-      .select('mechanic_id, is_busy, busy_until, busy_reason, updated_at')
-      .eq('mechanic_id', mechanicIdValue)
-      .order('updated_at', { ascending: false })
-      .limit(1);
-    if (!error && Array.isArray(data) && data.length > 0) {
-      await AsyncStorage.setItem(`${MASTER_BUSY_STATUS_KEY}_${masterId}`, JSON.stringify(data[0]));
-      return data[0];
+    const response = await axiosAuth.get('/api/schedule/busy-status', {
+      params: { mechanic_id: mechanicIdValue }
+    });
+    const data = response.data;
+    if (data) {
+      await AsyncStorage.setItem(`${MASTER_BUSY_STATUS_KEY}_${masterId}`, JSON.stringify(data));
+      return data;
     }
     const cachedStatus = await AsyncStorage.getItem(`${MASTER_BUSY_STATUS_KEY}_${masterId}`);
     if (cachedStatus) return JSON.parse(cachedStatus);

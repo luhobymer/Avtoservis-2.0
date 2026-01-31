@@ -1,10 +1,8 @@
-const { supabase } = require('../config/supabase.js');
+const { getDb } = require('../db/d1');
 const logger = require('../utils/logger.js');
-const userController = require('./users');
 const serviceController = require('./serviceController');
 const serviceStationController = require('./serviceStationController');
 const appointmentController = require('./appointmentController');
-const vehicleController = require('./vehicleController');
 
 /**
  * Контролер для обробки запитів від Telegram-бота
@@ -49,13 +47,10 @@ exports.createAppointment = async (req, res) => {
     }
 
     // Перевіряємо існування користувача
-    const { data: user, error: userError } = await supabase
-      .from('users')
-      .select('id')
-      .eq('id', user_id)
-      .single();
+    const db = await getDb();
+    const user = await db.prepare('SELECT id FROM users WHERE id = ?').get(user_id);
 
-    if (userError || !user) {
+    if (!user) {
       return res.status(404).json({
         success: false,
         error: 'Користувача не знайдено',

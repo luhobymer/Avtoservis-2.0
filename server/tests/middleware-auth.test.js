@@ -3,10 +3,9 @@
  * Покриває всі сценарії автентифікації
  */
 
-const jwt = require('jsonwebtoken');
 const authMiddleware = require('../middleware/auth');
+const { JWT_SECRET } = require('../config/jwt');
 
-// Мокуємо JWT
 jest.mock('jsonwebtoken');
 
 describe('Auth Middleware - Детальне тестування', () => {
@@ -28,9 +27,6 @@ describe('Auth Middleware - Детальне тестування', () => {
     next = jest.fn();
 
     mockJwt = require('jsonwebtoken');
-
-    // Налаштовуємо змінну середовища
-    process.env.JWT_SECRET = 'test_secret_key';
 
     // Очищуємо всі моки
     jest.clearAllMocks();
@@ -56,7 +52,7 @@ describe('Auth Middleware - Детальне тестування', () => {
 
       await authMiddleware(req, res, next);
 
-      expect(mockJwt.verify).toHaveBeenCalledWith(validToken, 'test_secret_key');
+      expect(mockJwt.verify).toHaveBeenCalledWith(validToken, JWT_SECRET);
       expect(req.user).toEqual(decodedPayload);
       expect(next).toHaveBeenCalled();
       expect(res.status).not.toHaveBeenCalled();
@@ -82,7 +78,7 @@ describe('Auth Middleware - Детальне тестування', () => {
 
       await authMiddleware(req, res, next);
 
-      expect(mockJwt.verify).toHaveBeenCalledWith(validToken, 'test_secret_key');
+      expect(mockJwt.verify).toHaveBeenCalledWith(validToken, JWT_SECRET);
       expect(req.user).toEqual(decodedPayload);
       expect(next).toHaveBeenCalled();
     });
@@ -106,7 +102,7 @@ describe('Auth Middleware - Детальне тестування', () => {
 
       await authMiddleware(req, res, next);
 
-      expect(mockJwt.verify).toHaveBeenCalledWith(xAuthToken, 'test_secret_key');
+      expect(mockJwt.verify).toHaveBeenCalledWith(xAuthToken, JWT_SECRET);
       expect(req.user).toEqual(decodedPayload);
     });
   });
@@ -413,8 +409,6 @@ describe('Auth Middleware - Детальне тестування', () => {
 
   describe('Обробка серверних помилок', () => {
     test('повинен повертати 500 при неочікуваній помилці', async () => {
-      const validToken = 'valid.format.token';
-
       req.header.mockImplementation(() => {
         throw new Error('Unexpected error');
       });

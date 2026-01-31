@@ -97,6 +97,11 @@ const Login = () => {
               {loading ? <CircularProgress size={24} /> : t('auth.login')}
             </Button>
             <Grid container justifyContent="flex-end">
+              <Grid item sx={{ mr: 2 }}>
+                <Link to="/auth/forgot-password" variant="body2">
+                  Забули пароль?
+                </Link>
+              </Grid>
               <Grid item>
                 <Link to="/auth/register" variant="body2">
                   {t('auth.register')}

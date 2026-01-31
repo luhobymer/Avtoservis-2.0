@@ -1,5 +1,5 @@
 {
-  "dashboard": "Admin Dashboard",
+  "dashboard": "Master Panel",
   "welcome": "Welcome",
   "users_management": "User Management",
   "users_management_desc": "Manage user accounts and roles",
@@ -20,7 +20,7 @@
     "inactive": "Inactive",
     "no_users": "No users",
     "roles": {
-      "admin": "Administrator",
+      "admin": "Master",
       "master": "Master",
       "client": "Client"
     },

@@ -2,10 +2,49 @@
  * Сервіс для автоматичної перевірки та відправки нагадувань
  */
 
+const crypto = require('crypto');
 const cron = require('node-cron');
-const { supabase } = require('../config/supabase.js');
+const { getDb } = require('../db/d1');
 const logger = require('../middleware/logger.js');
 const { sendPushNotification } = require('./pushNotificationService.js');
+
+const mapReminderRow = (row) => {
+  const {
+    user_id_ref,
+    user_email,
+    user_phone,
+    vehicle_make,
+    vehicle_model,
+    vehicle_year,
+    vehicle_license_plate,
+    ...reminder
+  } = row;
+
+  return {
+    ...reminder,
+    reminder_date: row.due_date,
+    recurring_interval: row.recurrence_interval,
+    is_completed: !!row.is_completed,
+    is_recurring: !!row.is_recurring,
+    users: user_id_ref ? { id: user_id_ref, email: user_email, phone: user_phone } : null,
+    vehicles:
+      vehicle_make || vehicle_model || vehicle_year || vehicle_license_plate
+        ? {
+            brand: vehicle_make,
+            make: vehicle_make,
+            model: vehicle_model,
+            year: vehicle_year,
+            license_plate: vehicle_license_plate,
+          }
+        : null,
+  };
+};
+
+const getActiveColumn = async (db, tableName) => {
+  const columns = await db.prepare(`PRAGMA table_info(${tableName})`).all();
+  const columnNames = new Set(columns.map((column) => column.name));
+  return ['is_active', 'isActive', 'active'].find((column) => columnNames.has(column));
+};
 
 /**
  * Перевірка нагадувань, які потрібно відправити
@@ -18,23 +57,25 @@ const checkAndSendReminders = async () => {
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
 
-    const { data: reminders, error } = await supabase
-      .from('reminders')
-      .select(
-        `
-        *,
-        users!inner(id, email, phone),
-        vehicles(brand, make, model, year, license_plate)
-      `
+    const db = await getDb();
+    const reminderRows = await db
+      .prepare(
+        `SELECT r.*,
+          u.id AS user_id_ref,
+          u.email AS user_email,
+          u.phone AS user_phone,
+          v.make AS vehicle_make,
+          v.model AS vehicle_model,
+          v.year AS vehicle_year,
+          v.license_plate AS vehicle_license_plate
+        FROM reminders r
+        LEFT JOIN users u ON u.id = r.user_id
+        LEFT JOIN vehicles v ON v.vin = r.vehicle_vin
+        WHERE r.is_completed = 0 AND r.due_date <= ? AND r.due_date >= ?`
       )
-      .eq('is_completed', false)
-      .lte('reminder_date', tomorrow.toISOString())
-      .gte('reminder_date', new Date().toISOString());
+      .all(tomorrow.toISOString(), new Date().toISOString());
 
-    if (error) {
-      logger.error('Помилка отримання нагадувань:', error);
-      return;
-    }
+    const reminders = reminderRows.map(mapReminderRow);
 
     if (!reminders || reminders.length === 0) {
       logger.info('Нагадувань для відправки не знайдено');
@@ -61,13 +102,14 @@ const checkAndSendReminders = async () => {
 const processReminder = async (reminder) => {
   try {
     // Перевіряємо, чи не було вже відправлено сповіщення
-    const { data: existingNotification } = await supabase
-      .from('notifications')
-      .select('id')
-      .eq('user_id', reminder.user_id)
-      .eq('type', 'reminder')
-      .eq('reference_id', reminder.id)
-      .single();
+    const db = await getDb();
+    const existingNotification = await db
+      .prepare(
+        `SELECT id FROM notifications
+         WHERE user_id = ? AND type = ? AND data LIKE ?
+         LIMIT 1`
+      )
+      .get(reminder.user_id, 'reminder', `%"reminderId":"${reminder.id}"%`);
 
     if (existingNotification) {
       logger.info(`Сповіщення для нагадування ${reminder.id} вже відправлено`);
@@ -75,23 +117,38 @@ const processReminder = async (reminder) => {
     }
 
     // Створюємо сповіщення в базі даних
+    const notificationId = crypto.randomUUID();
     const notificationData = {
+      id: notificationId,
       user_id: reminder.user_id,
       type: 'reminder',
       title: getNotificationTitle(reminder),
       message: getNotificationMessage(reminder),
-      reference_id: reminder.id,
-      is_read: false,
+      is_read: 0,
       created_at: new Date().toISOString(),
+      status: 'pending',
+      data: JSON.stringify({ type: 'reminder', reminderId: reminder.id }),
     };
 
-    const { data: notification, error: notificationError } = await supabase
-      .from('notifications')
-      .insert(notificationData)
-      .select()
-      .single();
-
-    if (notificationError) {
+    try {
+      await db
+        .prepare(
+          `INSERT INTO notifications
+          (id, user_id, type, title, message, is_read, created_at, status, data)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        )
+        .run(
+          notificationData.id,
+          notificationData.user_id,
+          notificationData.type,
+          notificationData.title,
+          notificationData.message,
+          notificationData.is_read,
+          notificationData.created_at,
+          notificationData.status,
+          notificationData.data
+        );
+    } catch (notificationError) {
       logger.error(
         `Помилка створення сповіщення для нагадування ${reminder.id}:`,
         notificationError
@@ -100,11 +157,20 @@ const processReminder = async (reminder) => {
     }
 
     // Отримуємо push-токени користувача
-    const { data: pushTokens } = await supabase
-      .from('push_tokens')
-      .select('token')
-      .eq('user_id', reminder.user_id)
-      .eq('is_active', true);
+    const pushTokensTable = await db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='push_tokens'")
+      .get();
+    const pushTokens = [];
+
+    if (pushTokensTable) {
+      const activeColumn = await getActiveColumn(db, 'push_tokens');
+      const query = activeColumn
+        ? `SELECT token FROM push_tokens WHERE user_id = ? AND ${activeColumn} = 1`
+        : 'SELECT token FROM push_tokens WHERE user_id = ?';
+      pushTokens.push(...(await db.prepare(query).all(reminder.user_id)));
+    } else {
+      logger.info('Таблиця push_tokens не знайдена, push-сповіщення пропущено');
+    }
 
     // Відправляємо push-сповіщення
     if (pushTokens && pushTokens.length > 0) {
@@ -116,7 +182,7 @@ const processReminder = async (reminder) => {
           data: {
             type: 'reminder',
             reminderId: reminder.id,
-            notificationId: notification.id,
+            notificationId,
           },
         });
       }
@@ -139,7 +205,7 @@ const processReminder = async (reminder) => {
  */
 const createNextRecurringReminder = async (reminder) => {
   try {
-    const currentDate = new Date(reminder.reminder_date);
+    const currentDate = new Date(reminder.reminder_date || reminder.due_date);
     let nextDate;
 
     switch (reminder.recurring_interval) {
@@ -160,26 +226,33 @@ const createNextRecurringReminder = async (reminder) => {
         return;
     }
 
-    const nextReminderData = {
-      user_id: reminder.user_id,
-      vehicle_id: reminder.vehicle_id,
-      title: reminder.title,
-      description: reminder.description,
-      reminder_type: reminder.reminder_type,
-      reminder_date: nextDate.toISOString(),
-      mileage_threshold: reminder.mileage_threshold,
-      is_completed: false,
-      is_recurring: true,
-      recurring_interval: reminder.recurring_interval,
-    };
+    const nextReminderId = crypto.randomUUID();
+    const now = new Date().toISOString();
+    const db = await getDb();
+    await db
+      .prepare(
+        `INSERT INTO reminders
+          (id, user_id, vehicle_vin, title, description, reminder_type, due_date, due_mileage,
+          is_completed, is_recurring, recurrence_interval, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        nextReminderId,
+        reminder.user_id,
+        reminder.vehicle_vin || null,
+        reminder.title,
+        reminder.description || null,
+        reminder.reminder_type || 'custom',
+        nextDate.toISOString(),
+        reminder.due_mileage ?? reminder.mileage_threshold ?? null,
+        0,
+        1,
+        reminder.recurring_interval,
+        now,
+        now
+      );
 
-    const { error } = await supabase.from('reminders').insert(nextReminderData);
-
-    if (error) {
-      logger.error(`Помилка створення наступного нагадування для ${reminder.id}:`, error);
-    } else {
-      logger.info(`Створено наступне повторюване нагадування для ${reminder.id}`);
-    }
+    logger.info(`Створено наступне повторюване нагадування для ${reminder.id}`);
   } catch (error) {
     logger.error(`Помилка створення повторюваного нагадування:`, error);
   }
@@ -204,28 +277,40 @@ const getNotificationTitle = (reminder) => {
 /**
  * Генерація тексту сповіщення
  * @param {Object} reminder - нагадування
- * @returns {string} - текст повідомлення
  */
 const getNotificationMessage = (reminder) => {
-  let message = reminder.title;
+  let message = reminder?.title || 'Нагадування';
 
-  if (reminder.vehicles) {
-    const vehicle = reminder.vehicles;
-    const make = vehicle.brand || vehicle.make;
-    message += ` для ${make} ${vehicle.model} (${vehicle.license_plate})`;
+  const vehicle = reminder?.vehicles || null;
+  if (vehicle) {
+    const make = vehicle.make || vehicle.brand || '';
+    const model = vehicle.model || '';
+    const vehicleLabel = [make, model].filter(Boolean).join(' ');
+    const lp = vehicle.license_plate ? ` (${vehicle.license_plate})` : '';
+    if (vehicleLabel || lp) {
+      message += ` для ${vehicleLabel}${lp}`.trimEnd();
+    }
   }
 
-  const reminderDate = new Date(reminder.reminder_date);
-  const today = new Date();
-  const diffTime = reminderDate - today;
-  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  const dueDateValue = reminder?.reminder_date || reminder?.due_date || null;
+  const dueMileage = reminder?.due_mileage ?? reminder?.mileage_threshold ?? null;
 
-  if (diffDays === 0) {
-    message += ' - сьогодні!';
-  } else if (diffDays === 1) {
-    message += ' - завтра!';
-  } else if (diffDays > 1) {
-    message += ` - через ${diffDays} днів`;
+  if (dueDateValue) {
+    const reminderDate = new Date(dueDateValue);
+    if (!Number.isNaN(reminderDate.getTime())) {
+      const startOfToday = new Date();
+      startOfToday.setHours(0, 0, 0, 0);
+      const startOfReminder = new Date(reminderDate);
+      startOfReminder.setHours(0, 0, 0, 0);
+
+      const diffMs = startOfReminder.getTime() - startOfToday.getTime();
+      const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+      if (diffDays === 0) message += ' - сьогодні!';
+      else if (diffDays === 1) message += ' - завтра!';
+      else if (diffDays > 1) message += ` - через ${diffDays} днів`;
+    }
+  } else if (dueMileage != null) {
+    message += ` - поріг пробігу ${dueMileage} км`;
   }
 
   return message;

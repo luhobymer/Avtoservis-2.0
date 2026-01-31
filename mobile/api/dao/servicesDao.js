@@ -1,58 +1,41 @@
-import { supabase } from '../supabaseClient'
+import axiosAuth from '../axiosConfig'
 
 export async function listAll() {
-  const { data, error } = await supabase
-    .from('services')
-    .select('id, name, description, price, duration')
-    .order('name')
-  if (error) throw error
-  return Array.isArray(data) ? data : []
+  const response = await axiosAuth.get('/api/parts', {
+    params: { limit: 1000, offset: 0 }
+  })
+  const payload = response.data
+  const rows = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : []
+  return rows.map((p) => ({
+    id: p.id,
+    name: p.name,
+    description: p.description || '',
+    price: Number(p.price) || 0,
+    duration: null
+  }))
 }
 
 export async function create(payload) {
   const body = {
     name: payload.name,
     description: payload.description || '',
-    price: typeof payload.price === 'number' ? payload.price : parseFloat(payload.price) || 0,
-    duration:
-      payload.duration === null || payload.duration === undefined || payload.duration === ''
-        ? null
-        : parseInt(payload.duration, 10) || 0
+    price: typeof payload.price === 'number' ? payload.price : parseFloat(payload.price) || 0
   }
-  const { data, error } = await supabase
-    .from('services')
-    .insert(body)
-    .select('*')
-    .single()
-  if (error) throw error
-  return data
+  const response = await axiosAuth.post('/api/parts', body)
+  return response.data
 }
 
 export async function updateById(id, payload) {
   const body = {
     name: payload.name,
     description: payload.description || '',
-    price: typeof payload.price === 'number' ? payload.price : parseFloat(payload.price) || 0,
-    duration:
-      payload.duration === null || payload.duration === undefined || payload.duration === ''
-        ? null
-        : parseInt(payload.duration, 10) || 0
+    price: typeof payload.price === 'number' ? payload.price : parseFloat(payload.price) || 0
   }
-  const { data, error } = await supabase
-    .from('services')
-    .update(body)
-    .eq('id', id)
-    .select('*')
-    .single()
-  if (error) throw error
-  return data
+  const response = await axiosAuth.put(`/api/parts/${id}`, body)
+  return response.data
 }
 
 export async function deleteById(id) {
-  const { error } = await supabase
-    .from('services')
-    .delete()
-    .eq('id', id)
-  if (error) throw error
+  await axiosAuth.delete(`/api/parts/${id}`)
   return true
 }

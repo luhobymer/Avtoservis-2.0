@@ -13,14 +13,15 @@
     "sourceType": "module"
   },
   "rules": {
-    "no-console": "warn",
+    "no-console": "off",
     "no-unused-vars": ["error", { "argsIgnorePattern": "next" }],
     "prettier/prettier": ["error", {
       "singleQuote": true,
       "semi": true,
       "trailingComma": "es5",
       "printWidth": 100,
-      "tabWidth": 2
+      "tabWidth": 2,
+      "endOfLine": "auto"
     }]
   }
 }

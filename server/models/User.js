@@ -1,11 +1,14 @@
 const Joi = require('joi');
 const bcrypt = require('bcryptjs');
-const { supabase } = require('../config/supabase.js');
+const crypto = require('crypto');
+const { getDb } = require('../db/d1');
 
 const userSchema = Joi.object({
   email: Joi.string().email().required(),
   password: Joi.string().min(8).required(),
-  role: Joi.string().valid('client', 'mechanic', 'admin').default('client'),
+  role: Joi.string()
+    .valid('client', 'mechanic', 'admin', 'master', 'master_admin')
+    .default('client'),
   name: Joi.string().max(100),
   phone: Joi.string()
     .pattern(/^\+380\d{9}$/)
@@ -20,9 +23,9 @@ const userSchema = Joi.object({
 });
 
 class User {
-  constructor({ email, password_hash, role, name, phone }) {
+  constructor({ email, password, role, name, phone }) {
     this.email = email;
-    this.password_hash = password_hash;
+    this.password = password;
     this.role = role;
     this.name = name;
     this.phone = phone;
@@ -34,49 +37,65 @@ class User {
   }
 
   static async findOne(query) {
-    return await supabase
-      .from('users')
-      .select()
-      .eq(Object.keys(query)[0], Object.values(query)[0])
-      .single();
+    const criteria = query?.where || query;
+    if (!criteria || Object.keys(criteria).length === 0) {
+      return { data: null, error: new Error('Invalid query') };
+    }
+
+    const [field, value] = Object.entries(criteria)[0];
+    const db = await getDb();
+    const row = await db.prepare(`SELECT * FROM users WHERE ${field} = ? LIMIT 1`).get(value);
+    return { data: row || null, error: null };
   }
 
   static async create(userData) {
     const { value: validatedData, error } = userSchema.validate(userData);
     if (error) throw new Error(error.details[0].message);
 
-    const { data, error: supabaseError } = await supabase
-      .from('users')
-      .insert({
-        ...validatedData,
-        password_hash: await bcrypt.hash(userData.password, 10),
-        phone: (() => {
-          const rawPhone = validatedData.phone;
-          const cleanPhone = rawPhone.replace(/[^0-9+]/g, '');
+    const rawPhone = validatedData.phone;
+    const cleanPhone = rawPhone.replace(/[^0-9+]/g, '');
+    const formattedPhone = cleanPhone.startsWith('0') ? '+380' + cleanPhone.slice(1) : cleanPhone;
 
-          // Конвертація номера в єдиний формат
-          const formattedPhone = cleanPhone.startsWith('0')
-            ? '+380' + cleanPhone.slice(1)
-            : cleanPhone;
+    if (!/^\+380\d{9}$/.test(formattedPhone)) {
+      throw new Error(
+        'Невірний формат телефону. Використовуйте формат +380XXXXXXXXX. Приклад: +380991234567'
+      );
+    }
 
-          // Перевірка фінального формату
-          if (!/^\+380\d{9}$/.test(formattedPhone)) {
-            throw new Error(
-              'Невірний формат телефону. Використовуйте формат +380XXXXXXXXX. Приклад: +380991234567'
-            );
-          }
+    const db = await getDb();
+    const id = crypto.randomUUID();
+    const now = new Date().toISOString();
 
-          return formattedPhone;
-        })(),
-        created_at: new Date().toISOString(),
-      })
-      .single();
+    await db
+      .prepare(
+        `INSERT INTO users (id, email, password, role, name, phone, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        id,
+        validatedData.email || null,
+        await bcrypt.hash(userData.password, 10),
+        validatedData.role || 'client',
+        validatedData.name || null,
+        formattedPhone,
+        now,
+        now
+      );
 
-    if (supabaseError) throw new Error(supabaseError.message);
-    return new User(data);
+    const row = await db.prepare('SELECT * FROM users WHERE id = ?').get(id);
+    return new User(row);
+  }
+
+  static async findAll() {
+    const db = await getDb();
+    return db.prepare('SELECT * FROM users ORDER BY created_at DESC').all();
+  }
+
+  static async count() {
+    const db = await getDb();
+    const row = await db.prepare('SELECT COUNT(*) as count FROM users').get();
+    return row?.count || 0;
   }
 }
-
-// Видалено виклик User.init(), оскільки ми використовуємо Supabase, а не Sequelize
 
 module.exports = User;

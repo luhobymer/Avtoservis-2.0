@@ -54,7 +54,7 @@ export default function AppNavigator() {
         <>
           <Stack.Screen
             name="Main"
-            component={user.role === 'admin' ? AdminNavigator : MainNavigator}
+            component={user.role === 'master' ? AdminNavigator : MainNavigator}
             options={{ headerShown: false }}
           />
           <Stack.Screen

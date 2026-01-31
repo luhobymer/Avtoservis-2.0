@@ -12,7 +12,10 @@ import AuthLayout from './layouts/AuthLayout';
 // Pages
 import Login from './pages/Login';
 import Register from './pages/Register';
+import ForgotPassword from './pages/ForgotPassword';
+import ResetPassword from './pages/ResetPassword';
 import Dashboard from './pages/Dashboard';
+import MasterDashboard from './pages/MasterDashboard';
 import Vehicles from './pages/Vehicles';
 import VehicleDetails from './pages/VehicleDetails';
 import Appointments from './pages/Appointments';
@@ -105,6 +108,8 @@ const App = () => {
             <Route index element={<Navigate to="login" replace />} />
             <Route path="login" element={<Login />} />
             <Route path="register" element={<Register />} />
+            <Route path="forgot-password" element={<ForgotPassword />} />
+            <Route path="reset-password" element={<ResetPassword />} />
           </Route>
           
           {/* Protected Routes */}
@@ -117,14 +122,16 @@ const App = () => {
             <Route path="/appointments/schedule" element={<AppointmentDetails isNew={true} />} />
             <Route path="/appointments/:id" element={<AppointmentDetails />} />
             <Route path="/service-records" element={<ServiceRecords />} />
+            <Route path="/service-records/new" element={<ServiceRecordDetails isNew={true} />} />
             <Route path="/service-records/:id" element={<ServiceRecordDetails />} />
             <Route path="/profile" element={<Profile />} />
+            <Route path="/master-dashboard" element={<MasterDashboard />} />
             <Route path="/admin" element={<AdminPanel />} />
-<Route path="/notifications" element={<Notifications />} />
+            <Route path="/notifications" element={<Notifications />} />
           </Route>
           
           {/* Redirect to login if no route matches */}
-          <Route path="*" element={<Navigate to="/login" replace />} />
+          <Route path="*" element={<Navigate to="/auth/login" replace />} />
         </Routes>
         <ToastContainer position="bottom-right" />
       </ThemeProvider>

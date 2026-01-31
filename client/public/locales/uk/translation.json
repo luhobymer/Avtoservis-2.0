@@ -39,6 +39,10 @@
     "emailCannotBeChanged": "Електронну пошту не можна змінити",
     "leaveBlankPassword": "Залиште порожнім, якщо не хочете змінювати пароль",
     "name": "Ім'я",
+    "lastName": "Прізвище",
+    "patronymic": "По батькові",
+    "region": "Область",
+    "city": "Місто",
     "phone": "Телефон (формат: +380XXXXXXXXX або 0XXXXXXXXX)",
     "serviceTypes": {
     "air_conditioning": "Кондиціонер",
@@ -139,7 +143,8 @@
     "appointments": "Записи на обслуговування",
     "serviceRecords": "Сервісна книга",
     "profile": "Профіль",
-    "admin": "Адміністрування",
+    "masterDashboard": "Дашборд майстра",
+    "admin": "Панель майстра",
     "logout": "Вийти"
   },
   "notifications": {
@@ -158,7 +163,8 @@
   },
   "user": {
     "admin": "Адміністратор",
-    "client": "Клієнт"
+    "client": "Клієнт",
+    "master": "Майстер-механік"
   },
   "serviceTypes": {
     "air_conditioning": "Кондиціонер",
@@ -203,7 +209,7 @@
     "failedToSaveServiceRecord": "Не вдалося зберегти сервісний запис"
   },
   "admin": {
-    "title": "Адміністративна панель",
+    "title": "Панель майстра",
     "addUser": "Додати користувача",
     "editUser": "Редагувати користувача",
     "addUserDesc": "Введіть дані нового користувача",

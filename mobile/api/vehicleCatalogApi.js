@@ -1,14 +1,16 @@
-import { supabase } from './supabaseClient';
+import axiosAuth from './axiosConfig';
 
 // Функція для отримання списку марок автомобілів
 export const getVehicleMakes = async (token) => {
   try {
-    const { data, error } = await supabase
-      .from('vehicle_makes')
-      .select('id, name')
-      .order('name');
-    if (error) throw error;
-    return Array.isArray(data) ? data : [];
+    const response = await axiosAuth.get('/api/vehicle-registry', {
+      params: { type: 'makes' }
+    });
+    const rows = Array.isArray(response.data) ? response.data : [];
+    return rows.map((row, index) => ({
+      id: row.id || index + 1,
+      name: row.name || row.make || ''
+    }));
   } catch (apiError) {
     console.error('[API] Error fetching vehicle makes:', apiError);
     return [];
@@ -19,13 +21,10 @@ export const getVehicleMakes = async (token) => {
 export const getVehicleModels = async (makeId, token) => {
   try {
     const otherModel = { id: `other_${makeId}`, name: 'Інша модель', make_id: makeId };
-    const { data, error } = await supabase
-      .from('vehicle_models')
-      .select('id, name, make_id')
-      .eq('make_id', makeId)
-      .order('name');
-    if (error) throw error;
-    const rows = Array.isArray(data) ? data : [];
+    const response = await axiosAuth.get('/api/vehicle-registry', {
+      params: { type: 'models', make_id: makeId }
+    });
+    const rows = Array.isArray(response.data) ? response.data : [];
     return [...rows, otherModel];
   } catch (error) {
     console.error(`Error fetching vehicle models for make ID ${makeId}:`, error);

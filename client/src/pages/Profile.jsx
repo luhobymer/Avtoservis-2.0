@@ -25,6 +25,10 @@ const Profile = () => {
   
   const [formData, setFormData] = useState({
     name: '',
+    lastName: '',
+    patronymic: '',
+    region: '',
+    city: '',
     email: '',
     phone: '',
     currentPassword: '',
@@ -39,19 +43,31 @@ const Profile = () => {
       console.log('[Profile] User data from context:', user);
       
       // Додаємо підтримку різних форматів даних
-      const userName = user.name || user.full_name || user.username || '';
+      const userName = user.firstName || user.first_name || user.name || user.full_name || user.username || '';
+      const userLastName = user.lastName || user.last_name || '';
+      const userPatronymic = user.patronymic || '';
+      const userRegion = user.region || '';
+      const userCity = user.city || '';
       const userEmail = user.email || '';
       const userPhone = user.phone || user.phone_number || '';
       
       setFormData(prev => ({
         ...prev,
         name: userName,
+        lastName: userLastName,
+        patronymic: userPatronymic,
+        region: userRegion,
+        city: userCity,
         email: userEmail,
         phone: userPhone
       }));
       
       console.log('[Profile] Form data set:', {
         name: userName,
+        lastName: userLastName,
+        patronymic: userPatronymic,
+        region: userRegion,
+        city: userCity,
         email: userEmail,
         phone: userPhone
       });
@@ -89,9 +105,18 @@ const Profile = () => {
     }
 
     try {
+      const fullName = [formData.name, formData.lastName, formData.patronymic]
+        .filter(Boolean)
+        .join(' ')
+        .trim();
       const payload = {
-        name: formData.name,
-        phone: formData.phone
+        name: fullName || formData.name,
+        phone: formData.phone,
+        firstName: formData.name,
+        lastName: formData.lastName,
+        patronymic: formData.patronymic,
+        region: formData.region,
+        city: formData.city
       };
       if (formData.newPassword) {
         payload.newPassword = formData.newPassword;
@@ -159,7 +184,53 @@ const Profile = () => {
                 onChange={handleChange}
               />
             </Grid>
-            
+
+            <Grid item xs={12} sm={6}>
+              <TextField
+                required
+                fullWidth
+                label={t('auth.lastName')}
+                name="lastName"
+                value={formData.lastName}
+                onChange={handleChange}
+              />
+            </Grid>
+
+            {(user?.role || '').toLowerCase() === 'master' && (
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  required
+                  fullWidth
+                  label={t('auth.patronymic')}
+                  name="patronymic"
+                  value={formData.patronymic}
+                  onChange={handleChange}
+                />
+              </Grid>
+            )}
+
+            <Grid item xs={12} sm={6}>
+              <TextField
+                required
+                fullWidth
+                label={t('auth.region')}
+                name="region"
+                value={formData.region}
+                onChange={handleChange}
+              />
+            </Grid>
+
+            <Grid item xs={12} sm={6}>
+              <TextField
+                required
+                fullWidth
+                label={t('auth.city')}
+                name="city"
+                value={formData.city}
+                onChange={handleChange}
+              />
+            </Grid>
+
             <Grid item xs={12} sm={6}>
               <TextField
                 required

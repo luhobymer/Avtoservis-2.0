@@ -1,95 +1,151 @@
-import { supabase } from '../supabaseClient';
+async function requestJson(url, options = {}) {
+  const token = localStorage.getItem('auth_token');
+  const response = await fetch(url, {
+    method: options.method || 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(options.headers || {})
+    },
+    body: options.body ? JSON.stringify(options.body) : undefined
+  });
+
+  if (!response.ok) {
+    let message = `Request failed with status ${response.status}`;
+    try {
+      const errorBody = await response.json();
+      if (errorBody && typeof errorBody.message === 'string') {
+        message = errorBody.message;
+      }
+    } catch (error) {
+      void error;
+    }
+    throw new Error(message);
+  }
+
+  const contentType = response.headers.get('content-type') || '';
+  if (contentType.includes('application/json')) {
+    return response.json();
+  }
+  return null;
+}
+
+const mapVehicle = (v) => ({
+  id: v.id,
+  vin: v.vin,
+  make: v.make || v.brand,
+  brand: v.brand || v.make,
+  model: v.model,
+  year: v.year,
+  licensePlate:
+    v.licensePlate ||
+    v.license_plate ||
+    v.registration_number ||
+    '',
+  mileage: v.mileage != null ? v.mileage : 0,
+  color: v.color || '',
+  UserId: v.user_id || v.UserId || null
+});
+
+function normalizeListPayload(payload) {
+  if (!payload) return [];
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload.data)) return payload.data;
+  return [];
+}
 
 export async function list() {
-  const { data, error } = await supabase
-    .from('vehicles')
-    .select('id, user_id, vin, make, model, year, license_plate, mileage, color, updated_at')
-    .order('updated_at', { ascending: false });
-  if (error) throw error;
-  return (data || []).map(v => ({
-    id: v.id,
-    make: v.make,
-    model: v.model,
-    year: v.year,
-    vin: v.vin,
-    licensePlate: v.license_plate || '',
-    mileage: v.mileage || 0,
-    color: v.color || '',
-    UserId: v.user_id || null
-  }));
+  const payload = await requestJson('/api/vehicles?admin=1');
+  const data = normalizeListPayload(payload);
+  return data.map(mapVehicle);
 }
 
 export async function listForUser(userId) {
-  const { data, error } = await supabase
-    .from('vehicles')
-    .select('id, user_id, vin, make, model, year, license_plate, mileage, color, updated_at')
-    .eq('user_id', userId)
-    .order('updated_at', { ascending: false });
-  if (error) throw error;
-  return (data || []).map(v => ({
-    id: v.id,
-    make: v.make,
-    model: v.model,
-    year: v.year,
-    vin: v.vin,
-    licensePlate: v.license_plate || '',
-    mileage: v.mileage || 0,
-    color: v.color || '',
-    UserId: v.user_id || null
-  }));
+  if (!userId) return [];
+  const payload = await requestJson(`/api/vehicles?user_id=${encodeURIComponent(userId)}`);
+  const data = normalizeListPayload(payload);
+  return data.map(mapVehicle);
 }
 
 export async function update(id, payload) {
-  const { error } = await supabase
-    .from('vehicles')
-    .update(payload)
-    .eq('id', id);
-  if (error) throw error;
+  const vin = id;
+  const body = {
+    make: payload.make || payload.brand,
+    model: payload.model,
+    year:
+      payload.year !== undefined && payload.year !== null && payload.year !== ''
+        ? Number(payload.year)
+        : null,
+    vin: payload.vin,
+    license_plate: payload.license_plate || payload.licensePlate,
+    mileage:
+      payload.mileage !== undefined && payload.mileage !== null && payload.mileage !== ''
+        ? Number(payload.mileage)
+        : null,
+    color: payload.color,
+    user_id: payload.user_id || payload.UserId || null
+  };
+
+  await requestJson(`/api/vehicles/${encodeURIComponent(vin)}`, {
+    method: 'PUT',
+    body
+  });
 }
 
 export async function getById(id) {
-  const { data, error } = await supabase
-    .from('vehicles')
-    .select('id, user_id, vin, make, model, year, license_plate, mileage, color, updated_at')
-    .eq('id', id)
-    .single();
-  if (error) throw error;
-  return {
-    id: data.id,
-    make: data.make,
-    model: data.model,
-    year: data.year,
-    vin: data.vin,
-    licensePlate: data.license_plate || '',
-    mileage: data.mileage || 0,
-    color: data.color || '',
-    UserId: data.user_id || null
-  };
+  const payload = await requestJson(`/api/vehicles/${encodeURIComponent(id)}`);
+  if (!payload) {
+    throw new Error('Vehicle not found');
+  }
+  return mapVehicle(payload);
 }
 
-export async function create(payload) {
+export async function create(payload, userId) {
+  if (!userId) {
+    throw new Error('User id is required to create vehicle');
+  }
+
   const body = {
+    user_id: userId,
     make: payload.make || payload.brand || '',
     model: payload.model || '',
-    year: payload.year ? Number(payload.year) : null,
+    year:
+      payload.year !== undefined && payload.year !== null && payload.year !== ''
+        ? Number(payload.year)
+        : null,
     vin: payload.vin || '',
     license_plate: payload.licensePlate || payload.license_plate || null,
-    mileage: payload.mileage != null ? Number(payload.mileage) : null,
-    color: payload.color || null,
+    mileage:
+      payload.mileage !== undefined && payload.mileage !== null && payload.mileage !== ''
+        ? Number(payload.mileage)
+        : null,
+    color: payload.color || null
   };
-  const { data, error } = await supabase
-    .from('vehicles')
-    .insert(body)
-    .select('id')
-    .single();
-  if (error) throw error;
-  return data.id;
+
+  const created = await requestJson('/api/vehicles', {
+    method: 'POST',
+    body
+  });
+
+  if (created && created.id) {
+    return created.id;
+  }
+
+  return null;
 }
 
 export async function remove(id) {
-  const { error } = await supabase
-    .from('vehicles')
-    .delete()
-    .eq('id', id);
-  if (error) throw error;
+  await requestJson(`/api/vehicles/${encodeURIComponent(id)}`, {
+    method: 'DELETE'
+  });
+}
+
+export async function lookupRegistryByLicensePlate(licensePlate) {
+  if (!licensePlate) {
+    throw new Error('License plate is required');
+  }
+  const payload = await requestJson(
+    `/api/vehicle-registry?license_plate=${encodeURIComponent(licensePlate)}`
+  );
+  return payload;
 }

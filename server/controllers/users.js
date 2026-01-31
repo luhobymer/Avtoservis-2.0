@@ -1,30 +1,73 @@
-const supabase = require('../config/supabase.js');
-const jwt = require('jsonwebtoken');
-const { generateTokenPair } = require('../config/jwt');
 const logger = require('../middleware/logger.js');
 const bcrypt = require('bcryptjs');
+const { getDb } = require('../db/d1');
+
+const isAdminRole = (role) => role === 'master';
+
+const parseSettingsValue = (value) => {
+  if (!value) return null;
+  if (typeof value === 'object') return value;
+  if (typeof value !== 'string') return value;
+  try {
+    return JSON.parse(value);
+  } catch (error) {
+    return value;
+  }
+};
+
+const normalizeSettingsPayload = (settings) => {
+  if (settings === null) return null;
+  if (typeof settings === 'string') {
+    try {
+      JSON.parse(settings);
+      return settings;
+    } catch (error) {
+      return JSON.stringify(settings);
+    }
+  }
+  return JSON.stringify(settings ?? {});
+};
 
 // Оновлення профілю користувача
 const updateUserProfile = async (req, res) => {
   try {
-    const { name, phone } = req.body;
+    const { name, phone, firstName, lastName, patronymic, region, city } = req.body;
     const userId = req.user.id;
 
-    const { data, error } = await supabase
-      .from('users')
-      .update({ name, phone })
-      .eq('id', userId)
-      .select();
+    const updateData = {};
+    if (typeof name !== 'undefined') updateData.name = name;
+    if (typeof phone !== 'undefined') updateData.phone = phone;
+    if (typeof firstName !== 'undefined') updateData.first_name = firstName;
+    if (typeof lastName !== 'undefined') updateData.last_name = lastName;
+    if (typeof patronymic !== 'undefined') updateData.patronymic = patronymic;
+    if (typeof region !== 'undefined') updateData.region = region;
+    if (typeof city !== 'undefined') updateData.city = city;
 
-    if (error) {
-      logger.error('Помилка оновлення профілю:', error);
-      return res.status(400).json({ success: false, error: error.message });
+    const fields = Object.keys(updateData);
+    if (fields.length > 0) {
+      const setClause = fields.map((field) => `${field} = ?`).join(', ');
+      const values = fields.map((field) => updateData[field]);
+      const db = await getDb();
+      await db
+        .prepare(`UPDATE users SET ${setClause}, updated_at = ? WHERE id = ?`)
+        .run(...values, new Date().toISOString(), userId);
+    }
+
+    const db = await getDb();
+    const updatedUser = await db
+      .prepare(
+        'SELECT id, name, email, phone, role, first_name, last_name, patronymic, region, city, created_at FROM users WHERE id = ?'
+      )
+      .get(userId);
+
+    if (!updatedUser) {
+      return res.status(404).json({ success: false, error: 'Користувач не знайдений' });
     }
 
     res.json({
       success: true,
       message: 'Профіль успішно оновлено',
-      user: data[0],
+      user: updatedUser,
     });
   } catch (error) {
     logger.error('Помилка при оновленні профілю:', error);
@@ -35,82 +78,195 @@ const updateUserProfile = async (req, res) => {
   }
 };
 
-// Логін користувача
-const loginUser = async (req, res) => {
-  logger.info('Початок обробки запиту на логін');
-  console.log('[loginUser] Отримано запит на логін:', { email: req.body?.email });
-
-  // Перевірка наявності JWT_SECRET
-  if (!process.env.JWT_SECRET) {
-    logger.error('JWT_SECRET не знайдено в змінних середовища');
-    console.error('[loginUser] Відсутній JWT_SECRET');
-    return res.status(500).json({
-      success: false,
-      error: 'Помилка конфігурації сервера',
-      details: 'Відсутній ключ JWT',
-    });
-  }
-
-  // Перевірка наявності email та password
-  const { email, password } = req.body;
-  if (!email || !password) {
-    logger.warn('Спроба логіну без email або password');
-    return res.status(400).json({
-      success: false,
-      error: "Відсутні обов'язкові поля",
-      details: "Email та пароль обов'язкові",
-    });
-  }
-
+const listUsers = async (req, res) => {
   try {
-    // Знаходимо користувача в базі даних
-    const { data: user, error: fetchError } = await supabase
-      .from('users')
-      .select('*')
-      .eq('email', email)
-      .single();
+    const limitParam = Number.parseInt(req.query.limit, 10);
+    const limit = Number.isFinite(limitParam) ? Math.min(Math.max(limitParam, 1), 1000) : 500;
+    const db = await getDb();
+    const users = await db
+      .prepare(
+        'SELECT id, email, name, phone, role, created_at, updated_at FROM users ORDER BY created_at DESC LIMIT ?'
+      )
+      .all(limit);
+    res.json(users);
+  } catch (error) {
+    logger.error('Помилка при отриманні користувачів:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Внутрішня помилка сервера',
+    });
+  }
+};
 
-    if (fetchError || !user) {
-      logger.warn('Користувач не знайдений:', email);
-      return res.status(401).json({ success: false, error: 'Неправильний email або пароль' });
+const getUserById = async (req, res) => {
+  try {
+    const requestedId = req.params.id;
+    const requesterId = req.user?.id;
+    const requesterRole = req.user?.role;
+
+    if (requestedId !== requesterId && !isAdminRole(requesterRole)) {
+      return res.status(403).json({ msg: 'Access denied' });
     }
 
-    // Перевіряємо пароль
-    const isPasswordValid = await bcrypt.compare(password, user.password_hash);
-    if (!isPasswordValid) {
-      logger.warn('Неправильний пароль для користувача:', email);
-      return res.status(401).json({ success: false, error: 'Неправильний email або пароль' });
+    const db = await getDb();
+    const user = await db
+      .prepare(
+        'SELECT id, email, name, phone, role, created_at, updated_at FROM users WHERE id = ?'
+      )
+      .get(requestedId);
+    if (!user) {
+      return res.status(404).json({ msg: 'User not found' });
+    }
+    res.json(user);
+  } catch (error) {
+    logger.error('Помилка при отриманні користувача:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Внутрішня помилка сервера',
+    });
+  }
+};
+
+const updateUserById = async (req, res) => {
+  try {
+    const { name, email, phone, role, password } = req.body;
+    const db = await getDb();
+    const user = await db.prepare('SELECT id FROM users WHERE id = ?').get(req.params.id);
+
+    if (!user) {
+      return res.status(404).json({ msg: 'User not found' });
     }
 
-    // Генеруємо JWT токен
-    const tokenPayload = {
-      id: user.id,
-      email: user.email,
-      role: user.role,
-    };
+    const updateData = {};
+    if (name) updateData.name = name;
+    if (email) updateData.email = email;
+    if (phone) updateData.phone = phone;
+    if (role) updateData.role = role;
+    if (password) updateData.password = await bcrypt.hash(password, 10);
 
-    const token = jwt.sign(tokenPayload, process.env.JWT_SECRET, { expiresIn: '24h' });
+    const fields = Object.keys(updateData);
+    if (fields.length > 0) {
+      const setClause = fields.map((field) => `${field} = ?`).join(', ');
+      const values = fields.map((field) => updateData[field]);
+      await db
+        .prepare(`UPDATE users SET ${setClause}, updated_at = ? WHERE id = ?`)
+        .run(...values, new Date().toISOString(), req.params.id);
+    }
 
-    logger.info('Успішний логін користувача:', email);
-    console.log('[loginUser] Успішна автентифікація для:', email);
+    const updatedUser = await db
+      .prepare(
+        'SELECT id, email, name, phone, role, created_at, updated_at FROM users WHERE id = ?'
+      )
+      .get(req.params.id);
 
-    // Повертаємо успішну відповідь з токеном
-    return res.status(200).json({
-      success: true,
-      message: 'Успішний логін',
-      token,
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-        phone: user.phone,
-      },
+    if (!updatedUser) {
+      return res.status(404).json({ msg: 'User not found' });
+    }
+
+    res.json(updatedUser);
+  } catch (error) {
+    logger.error('Помилка при оновленні користувача:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Внутрішня помилка сервера',
+    });
+  }
+};
+
+const deleteUserById = async (req, res) => {
+  try {
+    const db = await getDb();
+    const user = await db.prepare('SELECT id FROM users WHERE id = ?').get(req.params.id);
+    if (!user) {
+      return res.status(404).json({ msg: 'User not found' });
+    }
+
+    if (user.id === req.user.id) {
+      return res.status(400).json({ msg: 'Cannot delete your own account' });
+    }
+
+    await db.prepare('DELETE FROM users WHERE id = ?').run(req.params.id);
+
+    res.json({ msg: 'User removed' });
+  } catch (error) {
+    logger.error('Помилка при видаленні користувача:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Внутрішня помилка сервера',
+    });
+  }
+};
+
+const getUserSettings = async (req, res) => {
+  try {
+    const requestedId = req.params.id;
+    const requesterId = req.user?.id;
+    const requesterRole = req.user?.role;
+
+    if (requestedId !== requesterId && !isAdminRole(requesterRole)) {
+      return res.status(403).json({ msg: 'Access denied' });
+    }
+
+    const db = await getDb();
+    const row = await db
+      .prepare('SELECT settings FROM user_settings WHERE user_id = ?')
+      .get(requestedId);
+    const settings = row && row.settings ? parseSettingsValue(row.settings) : null;
+
+    res.json({ user_id: requestedId, settings });
+  } catch (error) {
+    logger.error('Помилка при отриманні налаштувань користувача:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Внутрішня помилка сервера',
+    });
+  }
+};
+
+const updateUserSettings = async (req, res) => {
+  try {
+    const requestedId = req.params.id;
+    const requesterId = req.user?.id;
+    const requesterRole = req.user?.role;
+
+    if (requestedId !== requesterId && !isAdminRole(requesterRole)) {
+      return res.status(403).json({ msg: 'Access denied' });
+    }
+
+    if (typeof req.body.settings === 'undefined') {
+      return res.status(400).json({ message: 'settings field is required' });
+    }
+
+    const db = await getDb();
+    const now = new Date().toISOString();
+    const normalizedSettings = normalizeSettingsPayload(req.body.settings);
+
+    const existing = await db
+      .prepare('SELECT id FROM user_settings WHERE user_id = ?')
+      .get(requestedId);
+
+    if (existing && existing.id) {
+      await db
+        .prepare('UPDATE user_settings SET settings = ?, updated_at = ? WHERE id = ?')
+        .run(normalizedSettings, now, existing.id);
+    } else {
+      await db
+        .prepare(
+          'INSERT INTO user_settings (user_id, settings, created_at, updated_at) VALUES (?, ?, ?, ?)'
+        )
+        .run(requestedId, normalizedSettings, now, now);
+    }
+
+    res.json({
+      user_id: requestedId,
+      settings: parseSettingsValue(normalizedSettings),
     });
   } catch (error) {
-    logger.error('Помилка при логіні:', error);
-    console.error('[loginUser] Помилка:', error);
-    return res.status(500).json({ success: false, error: 'Внутрішня помилка сервера' });
+    logger.error('Помилка при оновленні налаштувань користувача:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Внутрішня помилка сервера',
+    });
   }
 };
 
@@ -119,16 +275,12 @@ const getUserProfile = async (req, res) => {
   try {
     const userId = req.user.id;
 
-    const { data, error } = await supabase
-      .from('users')
-      .select('id, name, email, phone, role, created_at')
-      .eq('id', userId)
-      .single();
-
-    if (error) {
-      logger.error('Помилка отримання профілю:', error);
-      return res.status(400).json({ success: false, error: error.message });
-    }
+    const db = await getDb();
+    const data = await db
+      .prepare(
+        'SELECT id, name, email, phone, role, first_name, last_name, patronymic, region, city, created_at FROM users WHERE id = ?'
+      )
+      .get(userId);
 
     if (!data) {
       return res.status(404).json({ success: false, error: 'Користувач не знайдений' });
@@ -147,78 +299,13 @@ const getUserProfile = async (req, res) => {
   }
 };
 
-// Реєстрація користувача
-const registerUser = async (req, res) => {
-  logger.info('Початок обробки запиту на реєстрацію');
-  console.log('[registerUser] Отримано запит на реєстрацію:', {
-    email: req.body?.email,
-    role: req.body?.role,
-  });
-
-  const { email, password, name, role } = req.body;
-
-  // Перевірка обов'язкових полів
-  if (!email || !password || !name || !role) {
-    logger.warn("Спроба реєстрації без обов'язкових полів");
-    return res.status(400).json({ success: false, error: "Відсутні обов'язкові поля" });
-  }
-
-  try {
-    // Перевіряємо, чи користувач вже існує
-    const { data: existingUser } = await supabaseAdmin
-      .from('users')
-      .select('email')
-      .eq('email', email)
-      .single();
-
-    if (existingUser) {
-      logger.warn('Спроба реєстрації з існуючим email:', email);
-      return res.status(400).json({ success: false, error: 'Користувач з таким email вже існує' });
-    }
-
-    // Хешуємо пароль
-    const saltRounds = 10;
-    const hashedPassword = await bcrypt.hash(password, saltRounds);
-
-    // Створюємо користувача напряму в таблиці
-    const { data: newUser, error: insertError } = await supabaseAdmin
-      .from('users')
-      .insert([
-        {
-          email,
-          password_hash: hashedPassword,
-          name,
-          role,
-          phone: req.body.phone || null,
-        },
-      ])
-      .select()
-      .single();
-
-    if (insertError) {
-      logger.error('Помилка створення користувача:', insertError);
-      return res.status(500).json({ success: false, error: 'Помилка створення користувача' });
-    }
-
-    logger.info('Користувач успішно зареєстрований:', email);
-    console.log('[registerUser] Успішна реєстрація для:', email);
-
-    return res.status(201).json({
-      success: true,
-      message: 'Користувач успішно зареєстрований',
-      user: {
-        id: newUser.id,
-        email: newUser.email,
-        name: newUser.name,
-        role: newUser.role,
-        phone: newUser.phone,
-      },
-    });
-  } catch (error) {
-    logger.error('Помилка при реєстрації:', error);
-    console.error('[registerUser] Помилка:', error);
-    return res.status(500).json({ success: false, error: 'Внутрішня помилка сервера' });
-  }
+module.exports = {
+  updateUserProfile,
+  getUserProfile,
+  listUsers,
+  getUserById,
+  updateUserById,
+  deleteUserById,
+  getUserSettings,
+  updateUserSettings,
 };
-
-module.exports = { updateUserProfile, loginUser, getUserProfile, registerUser };

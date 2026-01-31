@@ -1,5 +1,5 @@
-const { supabase } = require('../config/supabase.js');
-const Notification = require('../models/Notification.js');
+const crypto = require('crypto');
+const { getDb, getExistingColumn } = require('../db/d1');
 const logger = require('../middleware/logger.js');
 
 const getNotifications = async (req, res) => {
@@ -9,19 +9,15 @@ const getNotifications = async (req, res) => {
       return res.status(401).json({ msg: 'Unauthorized' });
     }
 
-    const { data, error } = await supabase
-      .from('notifications')
-      .select('*')
-      .eq('user_id', req.user.id)
-      .order('created_at', { ascending: false });
+    const db = await getDb();
+    const notifications = await db
+      .prepare('SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC')
+      .all(req.user.id);
 
-    if (error) {
-      logger.error('Failed to fetch notifications:', error);
-      throw error;
-    }
-
-    logger.info(`Successfully fetched ${data?.length || 0} notifications for user ${req.user.id}`);
-    res.json(data || []);
+    logger.info(
+      `Successfully fetched ${notifications?.length || 0} notifications for user ${req.user.id}`
+    );
+    res.json(notifications || []);
   } catch (err) {
     logger.error('Server error in getNotifications:', err);
     res.status(500).json({
@@ -34,21 +30,43 @@ const getNotifications = async (req, res) => {
 
 const createNotification = async (req, res) => {
   try {
-    const newNotification = {
-      ...req.body,
-      user_id: req.user.id,
-      read: false,
+    const db = await getDb();
+    const readColumn = await getExistingColumn('notifications', ['is_read', 'read']);
+    const notificationId = crypto.randomUUID();
+    const payload = {
+      title: req.body.title,
+      message: req.body.message,
+      type: req.body.type || 'general',
+      status: req.body.status || 'pending',
+      scheduled_for: req.body.scheduled_for || null,
+      data:
+        typeof req.body.data === 'string' ? req.body.data : JSON.stringify(req.body.data ?? null),
     };
 
-    const { data, error } = await supabase.from('notifications').insert([newNotification]).select();
+    await db
+      .prepare(
+        `INSERT INTO notifications
+        (id, user_id, title, message, type, status, scheduled_for, data, ${readColumn}, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        notificationId,
+        req.user.id,
+        payload.title,
+        payload.message,
+        payload.type,
+        payload.status,
+        payload.scheduled_for,
+        payload.data,
+        0,
+        new Date().toISOString()
+      );
 
-    if (error) {
-      logger.error('Failed to create notification:', error);
-      throw error;
-    }
-
-    logger.info(`Created notification with ID: ${data[0]?.id}`);
-    res.status(201).json(data[0]);
+    const created = await db
+      .prepare('SELECT * FROM notifications WHERE id = ?')
+      .get(notificationId);
+    logger.info(`Created notification with ID: ${created?.id}`);
+    res.status(201).json(created);
   } catch (err) {
     logger.error('Server error in createNotification:', err);
     res.status(500).json({
@@ -66,25 +84,24 @@ const markAsRead = async (req, res) => {
       return res.status(401).json({ msg: 'Unauthorized' });
     }
 
-    const { data, error } = await supabase
-      .from('notifications')
-      .update({ read: true })
-      .eq('id', req.params.id)
-      .eq('user_id', req.user.id)
-      .select();
+    const db = await getDb();
+    const readColumn = await getExistingColumn('notifications', ['is_read', 'read']);
+    const updateResult = await db
+      .prepare(
+        `UPDATE notifications
+         SET ${readColumn} = 1
+         WHERE id = ? AND user_id = ?`
+      )
+      .run(req.params.id, req.user.id);
 
-    if (error) {
-      logger.error('Failed to mark notification as read:', error);
-      throw error;
-    }
-
-    if (!data || data.length === 0) {
+    if (updateResult.changes === 0) {
       logger.warn(`Notification with ID ${req.params.id} not found for user ${req.user.id}`);
       return res.status(404).json({ msg: 'Notification not found' });
     }
 
     logger.info(`Marked notification with ID: ${req.params.id} as read for user ${req.user.id}`);
-    res.json(data[0]);
+    const updated = await db.prepare('SELECT * FROM notifications WHERE id = ?').get(req.params.id);
+    res.json(updated);
   } catch (err) {
     logger.error('Server error in markAsRead:', err);
     res.status(500).json({

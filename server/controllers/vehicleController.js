@@ -1,4 +1,5 @@
-const { supabase } = require('../config/supabase.js');
+const crypto = require('crypto');
+const { getDb } = require('../db/d1');
 
 // Хелпер: нормалізація держномеру (прибирає пробіли/розділювачі, upper-case, мапить кирилицю на латиницю для однакових символів)
 const normalizeLicensePlate = (input) => {
@@ -26,47 +27,140 @@ const normalizeLicensePlate = (input) => {
     .join('');
 };
 
-// Отримати всі автомобілі користувача
+const getVehicleColumnInfo = async (db) => {
+  const columns = await db.prepare('PRAGMA table_info(vehicles)').all();
+  const columnNames = new Set(columns.map((column) => column.name));
+  const makeColumn = columnNames.has('make') ? 'make' : 'brand';
+  const licenseColumn = columnNames.has('license_plate')
+    ? 'license_plate'
+    : columnNames.has('licensePlate')
+      ? 'licensePlate'
+      : columnNames.has('registration_number')
+        ? 'registration_number'
+        : 'license_plate';
+  return {
+    hasId: columnNames.has('id'),
+    makeColumn,
+    licenseColumn,
+    hasCreatedAt: columnNames.has('created_at'),
+    hasUpdatedAt: columnNames.has('updated_at'),
+  };
+};
+
+const getServiceHistoryInfo = async (db) => {
+  const serviceHistoryTable = await db
+    .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='service_history'")
+    .get();
+  if (serviceHistoryTable) {
+    return { table: 'service_history', filterColumn: 'vehicle_vin' };
+  }
+  const serviceRecordsTable = await db
+    .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='service_records'")
+    .get();
+  if (serviceRecordsTable) {
+    return { table: 'service_records', filterColumn: 'vehicle_id' };
+  }
+  return null;
+};
+
 exports.getUserVehicles = async (req, res) => {
   try {
-    const userId = req.user?.id || req.params.userId;
+    const db = await getDb();
+    const { makeColumn, licenseColumn } = await getVehicleColumnInfo(db);
+    const historyInfo = await getServiceHistoryInfo(db);
+
+    const isMaster = req.user && req.user.role === 'master';
+    const isAdminView = isMaster && String(req.query.admin || '') === '1';
+
+    if (isAdminView) {
+      const vehicles = await db
+        .prepare(
+          `SELECT v.*, u.name AS owner_name, u.email AS owner_email
+           FROM vehicles v
+           LEFT JOIN users u ON u.id = v.user_id
+           ORDER BY v.created_at DESC`
+        )
+        .all();
+
+      const vehiclesWithDetails = await Promise.all(
+        vehicles.map(async (vehicle) => {
+          const appointments = await db
+            .prepare(
+              'SELECT id, scheduled_time, status, completion_notes, service_id, mechanic_id FROM appointments WHERE vehicle_vin = ?'
+            )
+            .all(vehicle.vin);
+          const historyTarget =
+            historyInfo?.filterColumn === 'vehicle_id' ? vehicle.id : vehicle.vin;
+          const serviceHistory = historyInfo
+            ? await db
+                .prepare(`SELECT * FROM ${historyInfo.table} WHERE ${historyInfo.filterColumn} = ?`)
+                .all(historyTarget)
+            : [];
+
+          const appointmentsWithServices = await Promise.all(
+            (appointments || []).map(async (appointment) => {
+              if (appointment.service_id) {
+                const service = await db
+                  .prepare('SELECT name, description FROM services WHERE id = ?')
+                  .get(appointment.service_id);
+                return { ...appointment, services: service || null };
+              }
+              return appointment;
+            })
+          );
+
+          return {
+            ...vehicle,
+            make: vehicle[makeColumn] || vehicle.make || vehicle.brand,
+            brand: vehicle[makeColumn] || vehicle.brand || vehicle.make,
+            licensePlate:
+              vehicle[licenseColumn] ||
+              vehicle.license_plate ||
+              vehicle.licensePlate ||
+              vehicle.registration_number,
+            appointments: appointmentsWithServices,
+            service_history: serviceHistory || [],
+          };
+        })
+      );
+
+      return res.json(vehiclesWithDetails);
+    }
+
+    const requestedUserId = req.query?.user_id ? String(req.query.user_id) : null;
+    const userId =
+      isMaster && requestedUserId
+        ? requestedUserId
+        : req.user?.id || req.params.userId || req.query?.user_id;
     if (!userId) {
       return res.status(400).json({ message: 'Не вказано користувача' });
     }
-    // Отримуємо автомобілі
-    const { data: vehicles, error: vehiclesError } = await supabase
-      .from('vehicles')
-      .select('*')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false });
 
-    if (vehiclesError) throw vehiclesError;
+    const vehicles = await db
+      .prepare('SELECT * FROM vehicles WHERE user_id = ? ORDER BY created_at DESC')
+      .all(userId);
 
-    // Для кожного автомобіля отримуємо додаткову інформацію
     const vehiclesWithDetails = await Promise.all(
       vehicles.map(async (vehicle) => {
-        // Отримуємо записи на обслуговування
-        const { data: appointments } = await supabase
-          .from('appointments')
-          .select('id, scheduled_time, status, completion_notes, service_id')
-          .eq('vehicle_vin', vehicle.vin);
+        const appointments = await db
+          .prepare(
+            'SELECT id, scheduled_time, status, completion_notes, service_id, mechanic_id FROM appointments WHERE vehicle_vin = ?'
+          )
+          .all(vehicle.vin);
+        const historyTarget = historyInfo?.filterColumn === 'vehicle_id' ? vehicle.id : vehicle.vin;
+        const serviceHistory = historyInfo
+          ? await db
+              .prepare(`SELECT * FROM ${historyInfo.table} WHERE ${historyInfo.filterColumn} = ?`)
+              .all(historyTarget)
+          : [];
 
-        // Отримуємо історію обслуговування
-        const { data: serviceHistory } = await supabase
-          .from('service_history')
-          .select('id, service_date, description, cost, mileage')
-          .eq('vehicle_vin', vehicle.vin);
-
-        // Для кожного запису отримуємо інформацію про сервіс
         const appointmentsWithServices = await Promise.all(
           (appointments || []).map(async (appointment) => {
             if (appointment.service_id) {
-              const { data: service } = await supabase
-                .from('services')
-                .select('name, description')
-                .eq('id', appointment.service_id)
-                .single();
-              return { ...appointment, services: service };
+              const service = await db
+                .prepare('SELECT name, description FROM services WHERE id = ?')
+                .get(appointment.service_id);
+              return { ...appointment, services: service || null };
             }
             return appointment;
           })
@@ -74,9 +168,13 @@ exports.getUserVehicles = async (req, res) => {
 
         return {
           ...vehicle,
-          make: vehicle.brand || vehicle.make,
-          brand: vehicle.brand || vehicle.make,
-          licensePlate: vehicle.license_plate,
+          make: vehicle[makeColumn] || vehicle.make || vehicle.brand,
+          brand: vehicle[makeColumn] || vehicle.brand || vehicle.make,
+          licensePlate:
+            vehicle[licenseColumn] ||
+            vehicle.license_plate ||
+            vehicle.licensePlate ||
+            vehicle.registration_number,
           appointments: appointmentsWithServices,
           service_history: serviceHistory || [],
         };
@@ -95,60 +193,44 @@ exports.getVehicleByVin = async (req, res) => {
   try {
     const { vin } = req.params;
 
-    // Отримуємо автомобіль
-    const { data: vehicle, error: vehicleError } = await supabase
-      .from('vehicles')
-      .select('*')
-      .eq('vin', vin)
-      .eq('user_id', req.user.id)
-      .single();
-
-    // Якщо не знайдено — повертаємо 404, інакше кидаємо інші помилки
-    if (vehicleError) {
-      if (vehicleError.code === 'PGRST116') {
-        return res.status(404).json({ message: 'Автомобіль не знайдено' });
-      }
-      throw vehicleError;
-    }
+    const db = await getDb();
+    const { makeColumn, licenseColumn } = await getVehicleColumnInfo(db);
+    const historyInfo = await getServiceHistoryInfo(db);
+    const vehicle = await db
+      .prepare('SELECT * FROM vehicles WHERE vin = ? AND user_id = ?')
+      .get(vin, req.user.id);
 
     if (!vehicle) {
       return res.status(404).json({ message: 'Автомобіль не знайдено' });
     }
 
-    // Отримуємо записи на обслуговування
-    const { data: appointments } = await supabase
-      .from('appointments')
-      .select('id, scheduled_time, status, completion_notes, service_id, mechanic_id')
-      .eq('vehicle_vin', vin);
+    const appointments = await db
+      .prepare(
+        'SELECT id, scheduled_time, status, completion_notes, service_id, mechanic_id FROM appointments WHERE vehicle_vin = ?'
+      )
+      .all(vin);
+    const historyTarget = historyInfo?.filterColumn === 'vehicle_id' ? vehicle.id : vin;
+    const serviceHistory = historyInfo
+      ? await db
+          .prepare(`SELECT * FROM ${historyInfo.table} WHERE ${historyInfo.filterColumn} = ?`)
+          .all(historyTarget)
+      : [];
 
-    // Отримуємо історію обслуговування
-    const { data: serviceHistory } = await supabase
-      .from('service_history')
-      .select('id, service_date, description, cost, mileage')
-      .eq('vehicle_vin', vin);
-
-    // Для кожного запису отримуємо інформацію про сервіс та механіка
     const appointmentsWithDetails = await Promise.all(
       (appointments || []).map(async (appointment) => {
         let serviceData = null;
         let mechanicData = null;
 
         if (appointment.service_id) {
-          const { data: service } = await supabase
-            .from('services')
-            .select('name, description')
-            .eq('id', appointment.service_id)
-            .single();
-          serviceData = service;
+          serviceData = await db
+            .prepare('SELECT name, description FROM services WHERE id = ?')
+            .get(appointment.service_id);
         }
 
         if (appointment.mechanic_id) {
-          const { data: mechanic } = await supabase
-            .from('mechanics')
-            .select('id, first_name, last_name')
-            .eq('id', appointment.mechanic_id)
-            .single();
-          mechanicData = mechanic;
+          mechanicData = await db
+            .prepare('SELECT id, first_name, last_name FROM mechanics WHERE id = ?')
+            .get(appointment.mechanic_id);
         }
 
         return {
@@ -161,9 +243,13 @@ exports.getVehicleByVin = async (req, res) => {
 
     const result = {
       ...vehicle,
-      make: vehicle.brand || vehicle.make,
-      brand: vehicle.brand || vehicle.make,
-      licensePlate: vehicle.license_plate,
+      make: vehicle[makeColumn] || vehicle.make || vehicle.brand,
+      brand: vehicle[makeColumn] || vehicle.brand || vehicle.make,
+      licensePlate:
+        vehicle[licenseColumn] ||
+        vehicle.license_plate ||
+        vehicle.licensePlate ||
+        vehicle.registration_number,
       appointments: appointmentsWithDetails,
       service_history: serviceHistory || [],
     };
@@ -191,46 +277,69 @@ exports.addVehicle = async (req, res) => {
       user_id, // для Telegram API
     } = req.body;
 
-    // Перевірка чи VIN вже існує
-    const { data: existingVehicle } = await supabase
-      .from('vehicles')
-      .select('*')
-      .eq('vin', vin)
-      .single();
+    const db = await getDb();
+    const { hasId, makeColumn, licenseColumn, hasCreatedAt, hasUpdatedAt } =
+      await getVehicleColumnInfo(db);
+    const existingVehicle = await db.prepare('SELECT vin FROM vehicles WHERE vin = ?').get(vin);
 
     if (existingVehicle) {
       return res.status(400).json({ message: 'Автомобіль з таким VIN вже існує' });
     }
 
-    // Узгодження полів: приймаємо make/brand з клієнта, зберігаємо у brand
     const brandValue = brand || make;
     const licensePlateValue = licensePlate || license_plate;
     const normalizedLicensePlate = normalizeLicensePlate(licensePlateValue);
+    const vehicleId = crypto.randomUUID();
+    const now = new Date().toISOString();
 
-    const { data, error } = await supabase
-      .from('vehicles')
-      .insert([
-        {
-          user_id: req.user?.id || user_id,
-          vin,
-          brand: brandValue,
-          model,
-          year,
-          color,
-          mileage,
-          license_plate: normalizedLicensePlate || null,
-        },
-      ])
-      .select()
-      .single();
+    const insertColumns = ['user_id', 'vin', makeColumn, 'model', 'year', 'color', 'mileage'];
+    const effectiveUserId =
+      req.user && req.user.role === 'master' && user_id ? String(user_id) : req.user?.id || user_id;
 
-    if (error) throw error;
+    const insertValues = [
+      effectiveUserId,
+      vin,
+      brandValue,
+      model,
+      year,
+      color || null,
+      mileage ?? null,
+    ];
 
-    // Повертаємо з уніфікованими полями
+    if (hasId) {
+      insertColumns.unshift('id');
+      insertValues.unshift(vehicleId);
+    }
+    if (licenseColumn) {
+      insertColumns.push(licenseColumn);
+      insertValues.push(normalizedLicensePlate || null);
+    }
+    if (hasCreatedAt) {
+      insertColumns.push('created_at');
+      insertValues.push(now);
+    }
+    if (hasUpdatedAt) {
+      insertColumns.push('updated_at');
+      insertValues.push(now);
+    }
+
+    const placeholders = insertColumns.map(() => '?').join(', ');
+    await db
+      .prepare(`INSERT INTO vehicles (${insertColumns.join(', ')}) VALUES (${placeholders})`)
+      .run(...insertValues);
+
+    const inserted = hasId
+      ? await db.prepare('SELECT * FROM vehicles WHERE id = ?').get(vehicleId)
+      : await db.prepare('SELECT * FROM vehicles WHERE vin = ?').get(vin);
+
     const result = {
-      ...data,
-      make: data.brand,
-      licensePlate: data.license_plate,
+      ...inserted,
+      make: inserted[makeColumn] || inserted.make || inserted.brand,
+      licensePlate:
+        inserted[licenseColumn] ||
+        inserted.license_plate ||
+        inserted.licensePlate ||
+        inserted.registration_number,
     };
 
     res.status(201).json(result);
@@ -244,37 +353,68 @@ exports.addVehicle = async (req, res) => {
 exports.updateVehicle = async (req, res) => {
   try {
     const { vin } = req.params;
-    const { make, model, year, color, mileage, brand } = req.body;
+    const { make, model, year, color, mileage, brand, user_id } = req.body;
 
     const licensePlateValue = req.body.licensePlate || req.body.license_plate;
     const normalizedLicensePlate = licensePlateValue
       ? normalizeLicensePlate(licensePlateValue)
       : undefined;
 
-    const { data, error } = await supabase
-      .from('vehicles')
-      .update({
-        brand: brand ?? make,
-        model,
-        year,
-        color,
-        mileage,
-        ...(licensePlateValue ? { license_plate: normalizedLicensePlate } : {}),
-      })
-      .eq('vin', vin)
-      .eq('user_id', req.user.id)
-      .select()
-      .single();
+    const db = await getDb();
+    const { makeColumn, licenseColumn, hasUpdatedAt } = await getVehicleColumnInfo(db);
+    const isMaster = req.user && req.user.role === 'master';
+    const existingVehicle = isMaster
+      ? await db.prepare('SELECT * FROM vehicles WHERE vin = ?').get(vin)
+      : await db
+          .prepare('SELECT * FROM vehicles WHERE vin = ? AND user_id = ?')
+          .get(vin, req.user.id);
 
-    if (error) throw error;
-    if (!data) {
+    if (!existingVehicle) {
       return res.status(404).json({ message: 'Автомобіль не знайдено' });
     }
 
+    const updateData = {};
+    if (isMaster && user_id !== undefined) {
+      updateData.user_id = user_id || null;
+    }
+    if (brand !== undefined || make !== undefined) {
+      updateData[makeColumn] = brand ?? make;
+    }
+    if (model !== undefined) updateData.model = model;
+    if (year !== undefined) updateData.year = year;
+    if (color !== undefined) updateData.color = color;
+    if (mileage !== undefined) updateData.mileage = mileage;
+    if (licensePlateValue) {
+      updateData[licenseColumn] = normalizedLicensePlate || null;
+    }
+    if (hasUpdatedAt) {
+      updateData.updated_at = new Date().toISOString();
+    }
+
+    const fields = Object.keys(updateData);
+    if (fields.length > 0) {
+      const setClause = fields.map((field) => `${field} = ?`).join(', ');
+      const values = fields.map((field) => updateData[field]);
+      if (isMaster) {
+        await db.prepare(`UPDATE vehicles SET ${setClause} WHERE vin = ?`).run(...values, vin);
+      } else {
+        await db
+          .prepare(`UPDATE vehicles SET ${setClause} WHERE vin = ? AND user_id = ?`)
+          .run(...values, vin, req.user.id);
+      }
+    }
+
+    const data = isMaster
+      ? await db.prepare('SELECT * FROM vehicles WHERE vin = ?').get(vin)
+      : await db
+          .prepare('SELECT * FROM vehicles WHERE vin = ? AND user_id = ?')
+          .get(vin, req.user.id);
+
     const result = {
       ...data,
-      make: data.brand,
-      licensePlate: data.license_plate,
+      make: data[makeColumn] || data.make || data.brand,
+      licensePlate:
+        data[licenseColumn] || data.license_plate || data.licensePlate || data.registration_number,
     };
 
     res.json(result);
@@ -289,27 +429,25 @@ exports.deleteVehicle = async (req, res) => {
   try {
     const { vin } = req.params;
 
-    // Перевіряємо чи є активні записи
-    const { data: activeAppointments } = await supabase
-      .from('appointments')
-      .select('id')
-      .eq('vehicle_vin', vin)
-      .in('status', ['pending', 'confirmed'])
-      .limit(1);
+    const db = await getDb();
+    const activeAppointment = await db
+      .prepare(
+        "SELECT id FROM appointments WHERE vehicle_vin = ? AND status IN ('pending', 'confirmed') LIMIT 1"
+      )
+      .get(vin);
 
-    if (activeAppointments?.length > 0) {
+    if (activeAppointment) {
       return res.status(400).json({
         message: 'Неможливо видалити автомобіль з активними записами на обслуговування',
       });
     }
 
-    const { error } = await supabase
-      .from('vehicles')
-      .delete()
-      .eq('vin', vin)
-      .eq('user_id', req.user.id);
-
-    if (error) throw error;
+    const isMaster = req.user && req.user.role === 'master';
+    if (isMaster) {
+      await db.prepare('DELETE FROM vehicles WHERE vin = ?').run(vin);
+    } else {
+      await db.prepare('DELETE FROM vehicles WHERE vin = ? AND user_id = ?').run(vin, req.user.id);
+    }
 
     res.status(204).send();
   } catch (err) {
@@ -324,25 +462,25 @@ exports.getVehicleByLicensePlate = async (req, res) => {
     const { licensePlate } = req.params;
     const normalizedPlate = normalizeLicensePlate(licensePlate);
 
-    // Отримуємо автомобіль за номерним знаком
-    const { data: vehicle, error: vehicleError } = await supabase
-      .from('vehicles')
-      .select('*')
-      .eq('license_plate', normalizedPlate)
-      .single();
+    const db = await getDb();
+    const { makeColumn, licenseColumn } = await getVehicleColumnInfo(db);
+    const vehicle = await db
+      .prepare(`SELECT * FROM vehicles WHERE ${licenseColumn} = ?`)
+      .get(normalizedPlate);
 
-    if (vehicleError) {
-      if (vehicleError.code === 'PGRST116') {
-        return res.status(404).json({ message: 'Автомобіль не знайдено' });
-      }
-      throw vehicleError;
+    if (!vehicle) {
+      return res.status(404).json({ message: 'Автомобіль не знайдено' });
     }
 
     const result = {
       ...vehicle,
-      make: vehicle.brand || vehicle.make,
-      brand: vehicle.brand || vehicle.make,
-      licensePlate: vehicle.license_plate,
+      make: vehicle[makeColumn] || vehicle.make || vehicle.brand,
+      brand: vehicle[makeColumn] || vehicle.brand || vehicle.make,
+      licensePlate:
+        vehicle[licenseColumn] ||
+        vehicle.license_plate ||
+        vehicle.licensePlate ||
+        vehicle.registration_number,
     };
 
     res.json(result);
@@ -358,34 +496,29 @@ exports.getVehicleByLicensePlateForBot = async (req, res) => {
     const { licensePlate } = req.params;
     const normalizedPlate = normalizeLicensePlate(licensePlate);
 
-    // Отримуємо автомобіль за номерним знаком
-    const { data: vehicle, error: vehicleError } = await supabase
-      .from('vehicles')
-      .select('*')
-      .eq('license_plate', normalizedPlate)
-      .single();
+    const db = await getDb();
+    const { makeColumn, licenseColumn } = await getVehicleColumnInfo(db);
+    const vehicle = await db
+      .prepare(`SELECT * FROM vehicles WHERE ${licenseColumn} = ?`)
+      .get(normalizedPlate);
 
-    if (vehicleError) {
-      if (vehicleError.code === 'PGRST116') {
-        return res.status(404).json({ message: 'Автомобіль не знайдено' });
-      }
-      throw vehicleError;
+    if (!vehicle) {
+      return res.status(404).json({ message: 'Автомобіль не знайдено' });
     }
 
-    // Отримуємо інформацію про власника
-    const { data: owner, error: ownerError } = await supabase
-      .from('users')
-      .select('id, name, phone')
-      .eq('id', vehicle.user_id)
-      .single();
-
-    if (ownerError) throw ownerError;
+    const owner = await db
+      .prepare('SELECT id, name, phone FROM users WHERE id = ?')
+      .get(vehicle.user_id);
 
     const result = {
       ...vehicle,
-      make: vehicle.brand || vehicle.make,
-      brand: vehicle.brand || vehicle.make,
-      licensePlate: vehicle.license_plate,
+      make: vehicle[makeColumn] || vehicle.make || vehicle.brand,
+      brand: vehicle[makeColumn] || vehicle.brand || vehicle.make,
+      licensePlate:
+        vehicle[licenseColumn] ||
+        vehicle.license_plate ||
+        vehicle.licensePlate ||
+        vehicle.registration_number,
       owner: owner || null,
     };
 

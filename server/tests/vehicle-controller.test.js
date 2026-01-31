@@ -1,520 +1,390 @@
-/**
- * Детальний тест для vehicleController.js
- * Покриває всі операції управління автомобілями користувачів
- */
-
+const crypto = require('crypto');
+const { getDb } = require('../db/d1');
 const vehicleController = require('../controllers/vehicleController');
 
-// Мокуємо Supabase
-jest.mock('../config/supabaseClient.js', () => ({
-  supabase: {
-    from: jest.fn().mockReturnThis(),
-    select: jest.fn().mockReturnThis(),
-    insert: jest.fn().mockReturnThis(),
-    update: jest.fn().mockReturnThis(),
-    delete: jest.fn().mockReturnThis(),
-    eq: jest.fn().mockReturnThis(),
-    in: jest.fn().mockReturnThis(),
-    order: jest.fn().mockReturnThis(),
-    limit: jest.fn().mockReturnThis(),
-    single: jest.fn(),
-  },
-}));
+describe('VehicleController - D1 інтеграційні тести', () => {
+  let req;
+  let res;
 
-describe('VehicleController - Детальне тестування', () => {
-  let req, res, mockSupabase;
-
-  beforeEach(() => {
-    // Налаштовуємо req та res об'єкти
-    req = {
-      params: {},
-      body: {},
-      user: { id: 1 },
-    };
-
-    res = {
+  const makeRes = () => {
+    const response = {
       status: jest.fn().mockReturnThis(),
       json: jest.fn().mockReturnThis(),
       send: jest.fn().mockReturnThis(),
     };
+    response.status.mockReturnValue(response);
+    return response;
+  };
 
-    // Переконуємося що status повертає сам res об'єкт
-    res.status.mockReturnValue(res);
-
-    // Отримуємо мокований Supabase
-    mockSupabase = require('../config/supabaseClient.js').supabase;
-
-    // Очищуємо всі моки
+  beforeEach(() => {
+    req = { params: {}, body: {}, user: { id: null } };
+    res = makeRes();
     jest.clearAllMocks();
-
-    // Скидаємо моки до початкового стану
-    mockSupabase.from.mockReturnValue(mockSupabase);
-    mockSupabase.select.mockReturnValue(mockSupabase);
-    mockSupabase.insert.mockReturnValue(mockSupabase);
-    mockSupabase.update.mockReturnValue(mockSupabase);
-    mockSupabase.delete.mockReturnValue(mockSupabase);
-    mockSupabase.eq.mockReturnValue(mockSupabase);
-    mockSupabase.in.mockReturnValue(mockSupabase);
-    mockSupabase.order.mockReturnValue(mockSupabase);
-    mockSupabase.limit.mockReturnValue(mockSupabase);
   });
 
-  describe('getUserVehicles функція', () => {
-    test('повинен успішно отримувати автомобілі користувача', async () => {
-      const mockVehicles = [
-        {
-          id: 1,
-          vin: 'WBAFR9C50DD123456',
-          make: 'BMW',
-          model: 'X5',
-          year: 2020,
-          color: 'Чорний',
-          license_plate: 'AA1234BB',
-          mileage: 50000,
-          user_id: 1,
-          service_history: [
-            {
-              id: 1,
-              service_type: 'Заміна масла',
-              scheduled_time: '2024-01-15T10:00:00Z',
-              status: 'completed',
-              completion_notes: 'Виконано успішно',
-            },
-          ],
-        },
-        {
-          id: 2,
-          vin: 'WBAFR9C50DD789012',
-          make: 'BMW',
-          model: 'X3',
-          year: 2019,
-          color: 'Білий',
-          license_plate: 'BB5678CC',
-          mileage: 75000,
-          user_id: 1,
-          service_history: [],
-        },
-      ];
+  describe('getUserVehicles', () => {
+    test('повинен повертати автомобілі користувача з історією і записами', async () => {
+      const db = getDb();
+      const now = new Date().toISOString();
+      const userId = crypto.randomUUID();
+      const vehicleId = crypto.randomUUID();
+      const vin = `VIN-${crypto.randomUUID()}`;
+      const serviceId = crypto.randomUUID();
+      const appointmentId = crypto.randomUUID();
+      const historyId = crypto.randomUUID();
 
-      mockSupabase.order.mockResolvedValue({ data: mockVehicles, error: null });
+      db.prepare(
+        'INSERT INTO users (id, email, password, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
+      ).run(userId, 'user@example.com', 'hashed', 'client', now, now);
+
+      db.prepare(
+        'INSERT INTO vehicles (id, user_id, vin, make, model, year, color, license_plate, mileage, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+      ).run(vehicleId, userId, vin, 'BMW', 'X5', 2020, 'Чорний', 'AA1234BB', 50000, now, now);
+
+      db.prepare(
+        'INSERT INTO services (id, name, description, price, duration, service_station_id, category_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+      ).run(serviceId, 'Oil Change', 'Desc', 500, 60, null, null, now, now);
+
+      db.prepare(
+        'INSERT INTO appointments (id, user_id, vehicle_id, vehicle_vin, service_id, mechanic_id, scheduled_time, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+      ).run(appointmentId, userId, vehicleId, vin, serviceId, null, now, 'confirmed', now, now);
+
+      db.prepare(
+        'INSERT INTO service_history (id, user_id, vehicle_id, vehicle_vin, service_type, mileage, service_date, description, cost, mechanic_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+      ).run(
+        historyId,
+        userId,
+        vehicleId,
+        vin,
+        'Заміна масла',
+        50000,
+        now,
+        'Виконано',
+        500,
+        null,
+        now,
+        now
+      );
+
+      req.user.id = userId;
 
       await vehicleController.getUserVehicles(req, res);
 
-      expect(mockSupabase.from).toHaveBeenCalledWith('vehicles');
-      expect(mockSupabase.select).toHaveBeenCalledWith(`
-        *,
-        service_history:appointments(
-          id,
-          service_type,
-          scheduled_time,
-          status,
-          completion_notes
-        )
-      `);
-      expect(mockSupabase.eq).toHaveBeenCalledWith('user_id', 1);
-      expect(mockSupabase.order).toHaveBeenCalledWith('created_at', { ascending: false });
-      expect(res.json).toHaveBeenCalledWith(mockVehicles);
+      const payload = res.json.mock.calls[0][0];
+      expect(Array.isArray(payload)).toBe(true);
+      const vehicle = payload.find((item) => item.id === vehicleId);
+      expect(vehicle).toBeTruthy();
+      expect(vehicle).toEqual(
+        expect.objectContaining({
+          id: vehicleId,
+          vin,
+          user_id: userId,
+          make: 'BMW',
+          model: 'X5',
+        })
+      );
+      expect(vehicle.licensePlate).toBe('AA1234BB');
+      expect(vehicle.appointments).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: appointmentId,
+            service_id: serviceId,
+          }),
+        ])
+      );
+      expect(vehicle.service_history.length).toBeGreaterThan(0);
     });
 
     test('повинен повертати порожній масив якщо у користувача немає автомобілів', async () => {
-      mockSupabase.order.mockResolvedValue({ data: [], error: null });
+      const userId = crypto.randomUUID();
+      req.user.id = userId;
 
       await vehicleController.getUserVehicles(req, res);
 
       expect(res.json).toHaveBeenCalledWith([]);
     });
 
-    test('повинен обробляти помилки бази даних', async () => {
-      mockSupabase.order.mockResolvedValue({ data: null, error: new Error('Database error') });
+    test('повинен повертати помилку якщо не вказано користувача', async () => {
+      req.user = null;
 
       await vehicleController.getUserVehicles(req, res);
 
-      expect(res.status).toHaveBeenCalledWith(500);
-      expect(res.json).toHaveBeenCalledWith({ message: 'Помилка сервера' });
-    });
-
-    test('повинен обробляти серверні помилки', async () => {
-      mockSupabase.order.mockRejectedValue(new Error('Server error'));
-
-      await vehicleController.getUserVehicles(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(500);
-      expect(res.json).toHaveBeenCalledWith({ message: 'Помилка сервера' });
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({ message: 'Не вказано користувача' });
     });
   });
 
-  describe('getVehicleByVin функція', () => {
-    test('повинен успішно отримувати автомобіль за VIN', async () => {
-      const mockVehicle = {
-        id: 1,
-        vin: 'WBAFR9C50DD123456',
-        make: 'BMW',
-        model: 'X5',
-        year: 2020,
-        color: 'Чорний',
-        license_plate: 'AA1234BB',
-        mileage: 50000,
-        user_id: 1,
-        service_history: [
-          {
-            id: 1,
-            service_type: 'Заміна масла',
-            scheduled_time: '2024-01-15T10:00:00Z',
-            status: 'completed',
-            completion_notes: 'Виконано успішно',
-            mechanics: {
-              id: 1,
-              first_name: 'Іван',
-              last_name: 'Петров',
-            },
-          },
-        ],
-      };
+  describe('getVehicleByVin', () => {
+    test('повинен успішно отримувати автомобіль за VIN з деталями', async () => {
+      const db = getDb();
+      const now = new Date().toISOString();
+      const userId = crypto.randomUUID();
+      const vehicleId = crypto.randomUUID();
+      const vin = `VIN-${crypto.randomUUID()}`;
+      const serviceId = crypto.randomUUID();
+      const mechanicId = crypto.randomUUID();
 
-      req.params.vin = 'WBAFR9C50DD123456';
+      db.prepare(
+        'INSERT INTO users (id, email, password, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
+      ).run(userId, 'user@example.com', 'hashed', 'client', now, now);
 
-      mockSupabase.single.mockResolvedValue({ data: mockVehicle, error: null });
+      db.prepare(
+        'INSERT INTO vehicles (id, user_id, vin, make, model, year, color, license_plate, mileage, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+      ).run(vehicleId, userId, vin, 'BMW', 'X5', 2020, 'Чорний', 'AA1234BB', 50000, now, now);
+
+      db.prepare(
+        'INSERT INTO services (id, name, description, price, duration, service_station_id, category_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+      ).run(serviceId, 'Oil Change', 'Desc', 500, 60, null, null, now, now);
+
+      db.prepare(
+        'INSERT INTO mechanics (id, first_name, last_name, phone, email, specialization_id, service_station_id, experience_years, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+      ).run(mechanicId, 'Іван', 'Петренко', null, null, null, null, 5, now, now);
+
+      db.prepare(
+        'INSERT INTO appointments (id, user_id, vehicle_id, vehicle_vin, service_id, mechanic_id, scheduled_time, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+      ).run(
+        crypto.randomUUID(),
+        userId,
+        vehicleId,
+        vin,
+        serviceId,
+        mechanicId,
+        now,
+        'confirmed',
+        now,
+        now
+      );
+
+      req.user.id = userId;
+      req.params.vin = vin;
 
       await vehicleController.getVehicleByVin(req, res);
 
-      expect(mockSupabase.from).toHaveBeenCalledWith('vehicles');
-      expect(mockSupabase.select).toHaveBeenCalledWith(`
-        *,
-        service_history:appointments(
-          id,
-          service_type,
-          scheduled_time,
-          status,
-          completion_notes,
-          mechanics(id, first_name, last_name)
-        )
-      `);
-      expect(mockSupabase.eq).toHaveBeenCalledWith('vin', 'WBAFR9C50DD123456');
-      expect(mockSupabase.eq).toHaveBeenCalledWith('user_id', 1);
-      expect(res.json).toHaveBeenCalledWith(mockVehicle);
+      const result = res.json.mock.calls[0][0];
+      expect(result).toEqual(
+        expect.objectContaining({
+          id: vehicleId,
+          vin,
+          user_id: userId,
+          make: 'BMW',
+          model: 'X5',
+        })
+      );
+      expect(result.licensePlate).toBe('AA1234BB');
+      expect(result.appointments.length).toBe(1);
+      expect(result.appointments[0]).toEqual(
+        expect.objectContaining({
+          services: expect.objectContaining({
+            name: 'Oil Change',
+          }),
+          mechanics: expect.objectContaining({
+            id: mechanicId,
+            first_name: 'Іван',
+            last_name: 'Петренко',
+          }),
+        })
+      );
     });
 
     test('повинен повертати 404 якщо автомобіль не знайдено', async () => {
-      req.params.vin = 'NONEXISTENT123456';
-
-      mockSupabase.single.mockResolvedValue({ data: null, error: null });
+      const userId = crypto.randomUUID();
+      req.user.id = userId;
+      req.params.vin = `VIN-${crypto.randomUUID()}`;
 
       await vehicleController.getVehicleByVin(req, res);
 
       expect(res.status).toHaveBeenCalledWith(404);
       expect(res.json).toHaveBeenCalledWith({ message: 'Автомобіль не знайдено' });
     });
-
-    test('повинен обробляти помилки бази даних', async () => {
-      req.params.vin = 'WBAFR9C50DD123456';
-
-      mockSupabase.single.mockResolvedValue({ data: null, error: new Error('Database error') });
-
-      await vehicleController.getVehicleByVin(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(500);
-      expect(res.json).toHaveBeenCalledWith({ message: 'Помилка сервера' });
-    });
-
-    test('повинен обробляти серверні помилки', async () => {
-      req.params.vin = 'WBAFR9C50DD123456';
-
-      mockSupabase.single.mockRejectedValue(new Error('Server error'));
-
-      await vehicleController.getVehicleByVin(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(500);
-      expect(res.json).toHaveBeenCalledWith({ message: 'Помилка сервера' });
-    });
   });
 
-  describe('addVehicle функція', () => {
-    test('повинен успішно додавати новий автомобіль', async () => {
-      const newVehicleData = {
-        vin: 'WBAFR9C50DD123456',
+  describe('addVehicle', () => {
+    test('повинен успішно додавати новий автомобіль з нормалізованим номерним знаком', async () => {
+      const db = getDb();
+      const now = new Date().toISOString();
+      const userId = crypto.randomUUID();
+
+      db.prepare(
+        'INSERT INTO users (id, email, password, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
+      ).run(userId, 'user@example.com', 'hashed', 'client', now, now);
+
+      req.user.id = userId;
+      req.body = {
+        vin: `VIN-${crypto.randomUUID()}`,
         make: 'BMW',
         model: 'X5',
         year: 2020,
         color: 'Чорний',
-        license_plate: 'AA1234BB',
         mileage: 50000,
+        license_plate: 'aa 1234 bb',
       };
-
-      const createdVehicle = {
-        id: 1,
-        user_id: 1,
-        ...newVehicleData,
-        created_at: '2024-01-01T10:00:00Z',
-      };
-
-      req.body = newVehicleData;
-
-      // Перевірка існуючого VIN
-      mockSupabase.single.mockResolvedValueOnce({ data: null, error: null });
-
-      // Створення автомобіля
-      mockSupabase.single.mockResolvedValueOnce({ data: createdVehicle, error: null });
 
       await vehicleController.addVehicle(req, res);
 
-      expect(mockSupabase.from).toHaveBeenCalledWith('vehicles');
-      expect(mockSupabase.insert).toHaveBeenCalledWith([
-        {
-          user_id: 1,
-          ...newVehicleData,
-        },
-      ]);
       expect(res.status).toHaveBeenCalledWith(201);
-      expect(res.json).toHaveBeenCalledWith(createdVehicle);
+      const created = res.json.mock.calls[0][0];
+      expect(created).toEqual(
+        expect.objectContaining({
+          vin: req.body.vin,
+          make: 'BMW',
+          model: 'X5',
+          user_id: userId,
+        })
+      );
+      expect(created.licensePlate).toBe('AA1234BB');
+      const row = db
+        .prepare('SELECT license_plate FROM vehicles WHERE vin = ? AND user_id = ?')
+        .get(req.body.vin, userId);
+      expect(row.license_plate).toBe('AA1234BB');
     });
 
     test('повинен повертати помилку якщо VIN вже існує', async () => {
-      const existingVehicle = {
-        id: 1,
-        vin: 'WBAFR9C50DD123456',
-        user_id: 2,
-      };
+      const db = getDb();
+      const now = new Date().toISOString();
+      const userId = crypto.randomUUID();
+      const vin = `VIN-${crypto.randomUUID()}`;
 
+      db.prepare(
+        'INSERT INTO users (id, email, password, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
+      ).run(userId, 'user@example.com', 'hashed', 'client', now, now);
+
+      db.prepare(
+        'INSERT INTO vehicles (id, user_id, vin, make, model, year, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+      ).run(crypto.randomUUID(), userId, vin, 'BMW', 'X5', 2020, now, now);
+
+      req.user.id = userId;
       req.body = {
-        vin: 'WBAFR9C50DD123456',
+        vin,
         make: 'BMW',
         model: 'X5',
         year: 2020,
       };
-
-      mockSupabase.single.mockResolvedValue({ data: existingVehicle, error: null });
 
       await vehicleController.addVehicle(req, res);
 
       expect(res.status).toHaveBeenCalledWith(400);
       expect(res.json).toHaveBeenCalledWith({ message: 'Автомобіль з таким VIN вже існує' });
     });
-
-    test('повинен обробляти помилки створення', async () => {
-      req.body = {
-        vin: 'WBAFR9C50DD123456',
-        make: 'BMW',
-        model: 'X5',
-        year: 2020,
-      };
-
-      // VIN не існує
-      mockSupabase.single.mockResolvedValueOnce({ data: null, error: null });
-
-      // Помилка створення
-      mockSupabase.single.mockResolvedValueOnce({
-        data: null,
-        error: new Error('Creation failed'),
-      });
-
-      await vehicleController.addVehicle(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(500);
-      expect(res.json).toHaveBeenCalledWith({ message: 'Помилка сервера' });
-    });
-
-    test('повинен обробляти серверні помилки', async () => {
-      req.body = {
-        vin: 'WBAFR9C50DD123456',
-        make: 'BMW',
-      };
-
-      mockSupabase.single.mockRejectedValue(new Error('Server error'));
-
-      await vehicleController.addVehicle(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(500);
-      expect(res.json).toHaveBeenCalledWith({ message: 'Помилка сервера' });
-    });
-
-    test("повинен додавати автомобіль з усіма обов'язковими полями", async () => {
-      const completeVehicleData = {
-        vin: 'WBAFR9C50DD789012',
-        make: 'Mercedes-Benz',
-        model: 'E-Class',
-        year: 2021,
-        color: 'Сірий',
-        license_plate: 'CC9999DD',
-        mileage: 25000,
-      };
-
-      const createdVehicle = {
-        id: 2,
-        user_id: 1,
-        ...completeVehicleData,
-      };
-
-      req.body = completeVehicleData;
-
-      mockSupabase.single.mockResolvedValueOnce({ data: null, error: null });
-      mockSupabase.single.mockResolvedValueOnce({ data: createdVehicle, error: null });
-
-      await vehicleController.addVehicle(req, res);
-
-      expect(mockSupabase.insert).toHaveBeenCalledWith([
-        {
-          user_id: 1,
-          ...completeVehicleData,
-        },
-      ]);
-      expect(res.status).toHaveBeenCalledWith(201);
-      expect(res.json).toHaveBeenCalledWith(createdVehicle);
-    });
   });
 
-  describe('updateVehicle функція', () => {
-    test('повинен успішно оновлювати автомобіль', async () => {
-      const updateData = {
-        make: 'BMW',
+  describe('updateVehicle', () => {
+    test('повинен успішно оновлювати автомобіль і номерний знак', async () => {
+      const db = getDb();
+      const now = new Date().toISOString();
+      const userId = crypto.randomUUID();
+      const vehicleId = crypto.randomUUID();
+      const vin = `VIN-${crypto.randomUUID()}`;
+
+      db.prepare(
+        'INSERT INTO users (id, email, password, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
+      ).run(userId, 'user@example.com', 'hashed', 'client', now, now);
+
+      db.prepare(
+        'INSERT INTO vehicles (id, user_id, vin, make, model, year, color, license_plate, mileage, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+      ).run(vehicleId, userId, vin, 'BMW', 'X5', 2020, 'Чорний', 'AA1234BB', 50000, now, now);
+
+      req.user.id = userId;
+      req.params.vin = vin;
+      req.body = {
         model: 'X5 Updated',
         year: 2021,
         color: 'Синій',
-        license_plate: 'AA9999BB',
         mileage: 55000,
+        license_plate: 'aa 9999 bb',
       };
-
-      const updatedVehicle = {
-        id: 1,
-        vin: 'WBAFR9C50DD123456',
-        user_id: 1,
-        ...updateData,
-        updated_at: '2024-01-01T12:00:00Z',
-      };
-
-      req.params.vin = 'WBAFR9C50DD123456';
-      req.body = updateData;
-
-      mockSupabase.single.mockResolvedValue({ data: updatedVehicle, error: null });
 
       await vehicleController.updateVehicle(req, res);
 
-      expect(mockSupabase.from).toHaveBeenCalledWith('vehicles');
-      expect(mockSupabase.update).toHaveBeenCalledWith(updateData);
-      expect(mockSupabase.eq).toHaveBeenCalledWith('vin', 'WBAFR9C50DD123456');
-      expect(mockSupabase.eq).toHaveBeenCalledWith('user_id', 1);
-      expect(res.json).toHaveBeenCalledWith(updatedVehicle);
+      const updated = res.json.mock.calls[0][0];
+      expect(updated).toEqual(
+        expect.objectContaining({
+          id: vehicleId,
+          vin,
+          model: 'X5 Updated',
+          year: 2021,
+          color: 'Синій',
+          mileage: 55000,
+        })
+      );
+      expect(updated.licensePlate).toBe('AA9999BB');
+      const row = db
+        .prepare('SELECT license_plate FROM vehicles WHERE vin = ? AND user_id = ?')
+        .get(vin, userId);
+      expect(row.license_plate).toBe('AA9999BB');
     });
 
     test('повинен повертати 404 якщо автомобіль для оновлення не знайдено', async () => {
-      const updateData = {
-        make: 'BMW',
-        model: 'X5',
-      };
-
-      req.params.vin = 'NONEXISTENT123456';
-      req.body = updateData;
-
-      mockSupabase.single.mockResolvedValue({ data: null, error: null });
+      const userId = crypto.randomUUID();
+      req.user.id = userId;
+      req.params.vin = `VIN-${crypto.randomUUID()}`;
+      req.body = { model: 'X5' };
 
       await vehicleController.updateVehicle(req, res);
 
       expect(res.status).toHaveBeenCalledWith(404);
       expect(res.json).toHaveBeenCalledWith({ message: 'Автомобіль не знайдено' });
     });
-
-    test('повинен обробляти помилки оновлення', async () => {
-      req.params.vin = 'WBAFR9C50DD123456';
-      req.body = { make: 'BMW' };
-
-      mockSupabase.single.mockResolvedValue({ data: null, error: new Error('Update failed') });
-
-      await vehicleController.updateVehicle(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(500);
-      expect(res.json).toHaveBeenCalledWith({ message: 'Помилка сервера' });
-    });
-
-    test('повинен обробляти серверні помилки', async () => {
-      req.params.vin = 'WBAFR9C50DD123456';
-      req.body = { make: 'BMW' };
-
-      mockSupabase.single.mockRejectedValue(new Error('Server error'));
-
-      await vehicleController.updateVehicle(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(500);
-      expect(res.json).toHaveBeenCalledWith({ message: 'Помилка сервера' });
-    });
-
-    test('повинен оновлювати тільки передані поля', async () => {
-      const partialUpdateData = {
-        mileage: 60000,
-        color: 'Червоний',
-      };
-
-      const updatedVehicle = {
-        id: 1,
-        vin: 'WBAFR9C50DD123456',
-        make: 'BMW',
-        model: 'X5',
-        year: 2020,
-        license_plate: 'AA1234BB',
-        user_id: 1,
-        ...partialUpdateData,
-      };
-
-      req.params.vin = 'WBAFR9C50DD123456';
-      req.body = partialUpdateData;
-
-      mockSupabase.single.mockResolvedValue({ data: updatedVehicle, error: null });
-
-      await vehicleController.updateVehicle(req, res);
-
-      expect(mockSupabase.update).toHaveBeenCalledWith(partialUpdateData);
-      expect(res.json).toHaveBeenCalledWith(updatedVehicle);
-    });
   });
 
-  describe('deleteVehicle функція', () => {
-    test('повинен обробляти серверні помилки', async () => {
-      req.params.vin = 'WBAFR9C50DD123456';
+  describe('deleteVehicle', () => {
+    test('повинен повертати помилку якщо є активні записи на обслуговування', async () => {
+      const db = getDb();
+      const now = new Date().toISOString();
+      const userId = crypto.randomUUID();
+      const vehicleId = crypto.randomUUID();
+      const vin = `VIN-${crypto.randomUUID()}`;
+      const appointmentId = crypto.randomUUID();
 
-      mockSupabase.limit.mockRejectedValue(new Error('Server error'));
+      db.prepare(
+        'INSERT INTO users (id, email, password, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
+      ).run(userId, 'user@example.com', 'hashed', 'client', now, now);
+
+      db.prepare(
+        'INSERT INTO vehicles (id, user_id, vin, make, model, year, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+      ).run(vehicleId, userId, vin, 'BMW', 'X5', 2020, now, now);
+
+      db.prepare(
+        "INSERT INTO appointments (id, user_id, vehicle_id, vehicle_vin, status, created_at, updated_at) VALUES (?, ?, ?, ?, 'pending', ?, ?)"
+      ).run(appointmentId, userId, vehicleId, vin, now, now);
+
+      req.user.id = userId;
+      req.params.vin = vin;
 
       await vehicleController.deleteVehicle(req, res);
 
-      expect(res.status).toHaveBeenCalledWith(500);
-      expect(res.json).toHaveBeenCalledWith({ message: 'Помилка сервера' });
-    });
-  });
-
-  describe('Інтеграційні тести', () => {
-    test('повинен правильно обробляти ланцюжок викликів Supabase для getUserVehicles', async () => {
-      const mockVehicles = [{ id: 1, vin: 'TEST123' }];
-
-      // Перевіряємо, що методи викликаються в правильному порядку
-      mockSupabase.from.mockReturnValue(mockSupabase);
-      mockSupabase.select.mockReturnValue(mockSupabase);
-      mockSupabase.eq.mockReturnValue(mockSupabase);
-      mockSupabase.order.mockResolvedValue({ data: mockVehicles, error: null });
-
-      await vehicleController.getUserVehicles(req, res);
-
-      expect(mockSupabase.from).toHaveBeenCalled();
-      expect(mockSupabase.select).toHaveBeenCalled();
-      expect(mockSupabase.eq).toHaveBeenCalled();
-      expect(mockSupabase.order).toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({
+        message: 'Неможливо видалити автомобіль з активними записами на обслуговування',
+      });
     });
 
-    test('повинен правильно передавати user_id через всі операції', async () => {
-      req.user.id = 123;
+    test('повинен видаляти автомобіль без активних записів', async () => {
+      const db = getDb();
+      const now = new Date().toISOString();
+      const userId = crypto.randomUUID();
+      const vehicleId = crypto.randomUUID();
+      const vin = `VIN-${crypto.randomUUID()}`;
 
-      mockSupabase.order.mockResolvedValue({ data: [], error: null });
+      db.prepare(
+        'INSERT INTO users (id, email, password, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
+      ).run(userId, 'user@example.com', 'hashed', 'client', now, now);
 
-      await vehicleController.getUserVehicles(req, res);
+      db.prepare(
+        'INSERT INTO vehicles (id, user_id, vin, make, model, year, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+      ).run(vehicleId, userId, vin, 'BMW', 'X5', 2020, now, now);
 
-      expect(mockSupabase.eq).toHaveBeenCalledWith('user_id', 123);
-    });
+      req.user.id = userId;
+      req.params.vin = vin;
 
-    test('повинен правильно обробляти VIN параметри', async () => {
-      const testVin = 'WBAFR9C50DD123456';
-      req.params.vin = testVin;
+      await vehicleController.deleteVehicle(req, res);
 
-      mockSupabase.single.mockResolvedValue({ data: { vin: testVin }, error: null });
+      expect(res.status).toHaveBeenCalledWith(204);
+      expect(res.send).toHaveBeenCalled();
 
-      await vehicleController.getVehicleByVin(req, res);
-
-      expect(mockSupabase.eq).toHaveBeenCalledWith('vin', testVin);
+      const row = db
+        .prepare('SELECT id FROM vehicles WHERE vin = ? AND user_id = ?')
+        .get(vin, userId);
+      expect(row).toBeUndefined();
     });
   });
 });

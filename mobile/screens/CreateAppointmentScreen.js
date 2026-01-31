@@ -21,7 +21,7 @@ import { getAllServices } from '../api/servicesApi';
 import { getMasterAvailability } from '../api/scheduleService';
 import { createAppointmentReminder } from '../api/notificationsService';
 import { getUserSettings } from '../api/userSettingsService';
-import { supabase } from '../api/supabaseClient';
+import { listMasters } from '../api/mastersApi';
 import AppointmentDateTimePicker from '../components/AppointmentDateTimePicker';
 
 const filterServicesByType = (list, type) => {
@@ -48,6 +48,7 @@ export default function CreateAppointmentScreen({ navigation, route }) {
   const [masters, setMasters] = useState([]);
   const [availableSlots, setAvailableSlots] = useState([]);
   const [services, setServices] = useState([]);
+  const [masterCity, setMasterCity] = useState((user?.city || '').trim());
   const [formData, setFormData] = useState({
     vehicleVin: '',
     masterId: '',
@@ -81,7 +82,7 @@ export default function CreateAppointmentScreen({ navigation, route }) {
         }
         
         // Отримуємо список майстрів
-        await fetchMasters(token);
+        await fetchMasters(token, masterCity);
 
         const servicesData = await getAllServices();
         const normalizedServices = Array.isArray(servicesData) ? servicesData : [];
@@ -101,18 +102,37 @@ export default function CreateAppointmentScreen({ navigation, route }) {
     
     fetchInitialData();
   }, []);
+
+  useEffect(() => {
+    if (!masterCity && (user?.city || '').trim()) {
+      setMasterCity((user?.city || '').trim());
+    }
+  }, [user?.city]);
+
+  useEffect(() => {
+    const refresh = async () => {
+      try {
+        const token = await getToken();
+        await fetchMasters(token, masterCity);
+      } catch (error) {
+        console.error('[CreateAppointmentScreen] Помилка при оновленні майстрів:', error);
+      }
+    };
+
+    refresh();
+  }, [masterCity]);
   
   // Отримання списку майстрів
-  const fetchMasters = async (token) => {
+  const fetchMasters = async (token, city) => {
     try {
-      const { data, error } = await supabase
-        .from('mechanics')
-        .select('id, first_name, last_name, specialization, station_id')
-        .order('first_name', { ascending: true });
-      let mastersData = [];
-      if (!error && Array.isArray(data)) {
-        mastersData = data.map(m => ({ id: m.id, name: `${m.first_name} ${m.last_name}`.trim(), specialization: m.specialization || '' }));
-      }
+      const data = await listMasters(city ? { city } : undefined);
+      let mastersData = Array.isArray(data)
+        ? data.map(m => ({
+            id: m.id,
+            name: `${m.first_name || m.name || ''} ${m.last_name || ''}`.trim() || m.name || '',
+            specialization: m.specialization || ''
+          }))
+        : [];
       setMasters(mastersData);
       if (mastersData.length > 0) {
         setFormData(prev => ({ ...prev, masterId: mastersData[0].id }));
@@ -354,6 +374,13 @@ export default function CreateAppointmentScreen({ navigation, route }) {
           )}
           
           <Text style={styles.sectionTitle}>{t('appointments.master_info')}</Text>
+
+          <TextInput
+            style={styles.input}
+            value={masterCity}
+            onChangeText={(text) => setMasterCity(text)}
+            placeholder={t('profile.city', 'Місто')}
+          />
           
           <View style={styles.pickerContainer}>
             <Picker
@@ -465,6 +492,15 @@ const styles = StyleSheet.create({
   },
   picker: {
     height: 50,
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 16,
+    backgroundColor: '#f5f5f5',
+    fontSize: 16,
   },
   addVehicleButton: {
     backgroundColor: '#1976d2',

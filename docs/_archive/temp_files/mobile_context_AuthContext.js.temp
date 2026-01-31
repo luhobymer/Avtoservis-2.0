@@ -1,0 +1,101 @@
+const React = require('react');
+const { createContext, useState, useEffect, useContext } = require('react');
+const AsyncStorage = require('@react-native-async-storage/async-storage');
+const { default: axiosAuth, refreshAuthToken, clearAuthData } = require('../api/axiosConfig');
+
+const AuthContext = createContext();
+
+function AuthProvider({ children }) {
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    const loadToken = async () => {
+      try {
+        const token = await AsyncStorage.getItem('token');
+        const refreshToken = await AsyncStorage.getItem('refresh_token');
+        const userId = await AsyncStorage.getItem('userId');
+        const userData = await AsyncStorage.getItem('userData');
+
+        if (token && userId && userData) {
+          try {
+            const tokenParts = token.split('.');
+            if (tokenParts.length === 3) {
+              const payload = JSON.parse(atob(tokenParts[1]));
+              const currentTime = Date.now() / 1000;
+
+              if (payload.exp && payload.exp > currentTime) {
+                const parsedUserData = JSON.parse(userData);
+                setUser(parsedUserData);
+              } else if (refreshToken) {
+                const newToken = await refreshAuthToken();
+                if (newToken) {
+                  const parsedUserData = JSON.parse(userData);
+                  setUser(parsedUserData);
+                } else {
+                  await clearAuthData();
+                }
+              } else {
+                await clearAuthData();
+              }
+            } else {
+              await clearAuthData();
+            }
+          } catch (tokenError) {
+            await clearAuthData();
+          }
+        }
+      } catch (err) {
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadToken();
+  }, []);
+
+  const login = async (email, password) => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await axiosAuth.post('/api/users/login', {
+        email,
+        password
+      });
+
+      if (response.data?.token && response.data?.user) {
+        await AsyncStorage.setItem('token', response.data.token);
+        if (response.data.refreshToken) {
+          await AsyncStorage.setItem('refresh_token', response.data.refreshToken);
+        }
+        await AsyncStorage.setItem('userId', response.data.user.id.toString());
+        const userData = {
+          id: response.data.user.id,
+          name: response.data.user.name || 'Користувач',
+          email: response.data.user.email,
+          role: response.data.user.role || 'client',
+          phone: response.data.user.phone || 'Не вказано'
+        };
+        await AsyncStorage.setItem('userData', JSON.stringify(userData));
+        setUser(userData);
+        return true;
+      }
+
+      throw new Error('Неправильна відповідь від сервера');
+    } catch (err) {
+      setError('Помилка входу');
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return React.createElement(AuthContext.Provider, { value: { user, loading, error, login } }, children);
+}
+
+module.exports = {
+  AuthContext,
+  AuthProvider
+};

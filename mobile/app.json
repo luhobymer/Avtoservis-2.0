@@ -65,9 +65,7 @@
     "extra": {
       "eas": {
         "projectId": "f1c5fd82-e044-4cca-8bfe-ed15e8856f23"
-      },
-      "SUPABASE_URL": "https://aadrklaiemgilkaflvcy.supabase.co",
-      "SUPABASE_ANON_KEY": "sb_publishable_4XYJuVPZLITeEsX2qtWHdA_q5mZy7pv"
+      }
     }
   }
 }

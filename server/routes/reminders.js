@@ -1,7 +1,19 @@
+const crypto = require('crypto');
 const express = require('express');
 const router = express.Router();
 const auth = require('../middleware/auth');
-const { supabase } = require('../config/supabase.js');
+const { getDb } = require('../db/d1');
+
+const normalizeBoolean = (value) => (value ? 1 : 0);
+
+const mapReminderRow = (row) => ({
+  ...row,
+  reminder_date: row.due_date,
+  mileage_threshold: row.due_mileage,
+  recurring_interval: row.recurrence_interval,
+  is_completed: !!row.is_completed,
+  is_recurring: !!row.is_recurring,
+});
 
 // @route   GET api/reminders
 // @desc    Отримання нагадувань користувача
@@ -10,18 +22,12 @@ router.get('/', auth, async (req, res) => {
   try {
     const userId = req.user.id;
 
-    const { data: reminders, error } = await supabase
-      .from('reminders')
-      .select('*')
-      .eq('user_id', userId)
-      .order('reminder_date', { ascending: true });
+    const db = await getDb();
+    const reminders = await db
+      .prepare('SELECT * FROM reminders WHERE user_id = ? ORDER BY due_date ASC')
+      .all(userId);
 
-    if (error) {
-      console.error('Помилка отримання нагадувань:', error);
-      return res.status(500).json({ message: 'Помилка сервера' });
-    }
-
-    res.json(reminders || []);
+    res.json((reminders || []).map(mapReminderRow));
   } catch (error) {
     console.error('Помилка отримання нагадувань:', error);
     res.status(500).json({ message: 'Помилка сервера' });
@@ -34,26 +40,52 @@ router.get('/', auth, async (req, res) => {
 router.post('/', auth, async (req, res) => {
   try {
     const userId = req.user.id;
-    const { title, description, reminder_date, vehicle_vin } = req.body;
+    const {
+      title,
+      description,
+      reminder_date,
+      due_date,
+      vehicle_vin,
+      reminder_type,
+      due_mileage,
+      mileage_threshold,
+      is_completed,
+      is_recurring,
+      recurrence_interval,
+      recurring_interval,
+      priority,
+    } = req.body;
 
-    const { data: reminder, error } = await supabase
-      .from('reminders')
-      .insert({
-        user_id: userId,
+    const reminderId = crypto.randomUUID();
+    const now = new Date().toISOString();
+    const db = await getDb();
+    await db
+      .prepare(
+        `INSERT INTO reminders
+        (id, user_id, vehicle_vin, title, description, reminder_type, due_date, due_mileage,
+        is_completed, is_recurring, recurrence_interval, priority, notification_sent, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        reminderId,
+        userId,
+        vehicle_vin || null,
         title,
-        description,
-        reminder_date,
-        vehicle_vin,
-      })
-      .select()
-      .single();
+        description || null,
+        reminder_type || 'custom',
+        reminder_date || due_date || null,
+        due_mileage ?? mileage_threshold ?? null,
+        normalizeBoolean(is_completed),
+        normalizeBoolean(is_recurring),
+        recurrence_interval || recurring_interval || null,
+        priority || 'medium',
+        0,
+        now,
+        now
+      );
 
-    if (error) {
-      console.error('Помилка створення нагадування:', error);
-      return res.status(500).json({ message: 'Помилка сервера' });
-    }
-
-    res.status(201).json(reminder);
+    const reminder = await db.prepare('SELECT * FROM reminders WHERE id = ?').get(reminderId);
+    res.status(201).json(mapReminderRow(reminder));
   } catch (error) {
     console.error('Помилка створення нагадування:', error);
     res.status(500).json({ message: 'Помилка сервера' });
@@ -67,31 +99,54 @@ router.put('/:id', auth, async (req, res) => {
   try {
     const userId = req.user.id;
     const reminderId = req.params.id;
-    const { title, description, reminder_date, vehicle_vin } = req.body;
+    const {
+      title,
+      description,
+      reminder_date,
+      due_date,
+      vehicle_vin,
+      reminder_type,
+      due_mileage,
+      mileage_threshold,
+      is_completed,
+      is_recurring,
+      recurrence_interval,
+      recurring_interval,
+      priority,
+    } = req.body;
 
-    const { data: reminder, error } = await supabase
-      .from('reminders')
-      .update({
+    const now = new Date().toISOString();
+    const db = await getDb();
+    const result = await db
+      .prepare(
+        `UPDATE reminders
+         SET title = ?, description = ?, reminder_type = ?, due_date = ?, due_mileage = ?,
+             is_completed = ?, is_recurring = ?, recurrence_interval = ?, priority = ?,
+             vehicle_vin = ?, updated_at = ?
+         WHERE id = ? AND user_id = ?`
+      )
+      .run(
         title,
-        description,
-        reminder_date,
-        vehicle_vin,
-      })
-      .eq('id', reminderId)
-      .eq('user_id', userId)
-      .select()
-      .single();
+        description || null,
+        reminder_type || 'custom',
+        reminder_date || due_date || null,
+        due_mileage ?? mileage_threshold ?? null,
+        normalizeBoolean(is_completed),
+        normalizeBoolean(is_recurring),
+        recurrence_interval || recurring_interval || null,
+        priority || 'medium',
+        vehicle_vin || null,
+        now,
+        reminderId,
+        userId
+      );
 
-    if (error) {
-      console.error('Помилка оновлення нагадування:', error);
-      return res.status(500).json({ message: 'Помилка сервера' });
-    }
-
-    if (!reminder) {
+    if (result.changes === 0) {
       return res.status(404).json({ message: 'Нагадування не знайдено' });
     }
 
-    res.json(reminder);
+    const reminder = await db.prepare('SELECT * FROM reminders WHERE id = ?').get(reminderId);
+    res.json(mapReminderRow(reminder));
   } catch (error) {
     console.error('Помилка оновлення нагадування:', error);
     res.status(500).json({ message: 'Помилка сервера' });
@@ -106,17 +161,8 @@ router.delete('/:id', auth, async (req, res) => {
     const userId = req.user.id;
     const reminderId = req.params.id;
 
-    const { error } = await supabase
-      .from('reminders')
-      .delete()
-      .eq('id', reminderId)
-      .eq('user_id', userId);
-
-    if (error) {
-      console.error('Помилка видалення нагадування:', error);
-      return res.status(500).json({ message: 'Помилка сервера' });
-    }
-
+    const db = await getDb();
+    await db.prepare('DELETE FROM reminders WHERE id = ? AND user_id = ?').run(reminderId, userId);
     res.json({ message: 'Нагадування видалено' });
   } catch (error) {
     console.error('Помилка видалення нагадування:', error);

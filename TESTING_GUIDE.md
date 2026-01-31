@@ -15,7 +15,7 @@ cd server
 npm install
 npm start
 ```
-Сервер запуститься на `http://localhost:3000`
+Сервер запуститься на `http://localhost:5001`
 
 ### 2. Запуск мобільного додатка
 ```bash

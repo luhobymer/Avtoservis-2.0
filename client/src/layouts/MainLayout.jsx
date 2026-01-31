@@ -6,7 +6,8 @@ import MenuIcon from '@mui/icons-material/Menu';
 import DashboardIcon from '@mui/icons-material/Dashboard';
 import DirectionsCarIcon from '@mui/icons-material/DirectionsCar';
 import EventIcon from '@mui/icons-material/Event';
-import BuildIcon from '@mui/icons-material/Build';
+import HistoryIcon from '@mui/icons-material/History';
+import EditIcon from '@mui/icons-material/Edit';
 import AccountCircleIcon from '@mui/icons-material/AccountCircle';
 import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
 import ExitToAppIcon from '@mui/icons-material/ExitToApp';
@@ -19,7 +20,7 @@ const drawerWidth = 240;
 
 const MainLayout = () => {
   const { t } = useTranslation();
-  const { isAuthenticated, loading, logout, user, isAdmin } = useAuth();
+  const { isAuthenticated, loading, logout, user, isAdmin, isMaster } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [fabMode] = useState('speed-dial');
   const location = useLocation();
@@ -27,7 +28,7 @@ const MainLayout = () => {
 
   // Redirect if not authenticated
   if (!isAuthenticated && !loading) {
-    return <Navigate to="/login" />;
+    return <Navigate to="/auth/login" />;
   }
 
   // Show loading state
@@ -43,14 +44,23 @@ const MainLayout = () => {
     setMobileOpen(!mobileOpen);
   };
 
+  const isMasterUser =
+    typeof isMaster === 'function'
+      ? isMaster()
+      : typeof isAdmin === 'function'
+        ? isAdmin()
+        : false;
+
   const menuItems = [
     { text: t('nav.dashboard'), icon: <DashboardIcon />, path: '/' },
     { text: t('nav.vehicles'), icon: <DirectionsCarIcon />, path: '/vehicles' },
     { text: t('nav.appointments'), icon: <EventIcon />, path: '/appointments' },
-    { text: t('nav.serviceRecords'), icon: <BuildIcon />, path: '/service-records' },
+    { text: t('nav.serviceRecords'), icon: <HistoryIcon />, path: '/service-records' },
     { text: t('nav.profile'), icon: <AccountCircleIcon />, path: '/profile' },
-    // Admin menu item - only visible for admin users
-    ...(isAdmin ? [{ text: t('nav.admin'), icon: <AdminPanelSettingsIcon />, path: '/admin' }] : []),
+    ...(isMasterUser
+      ? [{ text: t('nav.masterDashboard'), icon: <AdminPanelSettingsIcon />, path: '/master-dashboard' }]
+      : []),
+    ...(isMasterUser ? [{ text: t('nav.admin'), icon: <AdminPanelSettingsIcon />, path: '/admin' }] : []),
   ];
 
   const drawer = (
@@ -131,7 +141,7 @@ const MainLayout = () => {
             <MenuIcon />
           </IconButton>
           <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
-            {user?.name} - {user?.role === 'admin' ? t('user.admin') : t('user.client')}
+            {user?.name}
           </Typography>
           <NotificationBell />
           <LanguageSwitcher />
@@ -188,13 +198,13 @@ const MainLayout = () => {
               onClick: () => navigate('/appointments/schedule')
             },
             { 
-              icon: <BuildIcon />, 
+              icon: <HistoryIcon />, 
               name: t('fab.serviceHistory'), 
               key: 'service-history',
               onClick: () => navigate('/service-records')
             },
             { 
-              icon: <AccountCircleIcon />, 
+              icon: <EditIcon />, 
               name: t('fab.editProfile'), 
               key: 'edit-profile',
               onClick: () => navigate('/profile')

@@ -16,8 +16,5 @@ module.exports = {
   restoreMocks: true,
   setupFilesAfterEnv: ['<rootDir>/server/tests/setup.js'],
   testTimeout: 10000,
-  verbose: true,
-  moduleNameMapper: {
-    '^../config/supabaseClient.js$': '<rootDir>/server/__mocks__/supabaseClient.js'
-  }
+  verbose: true
 };

@@ -1,47 +1,78 @@
-/**
- * User routes for authentication and registration
- */
-
 const express = require('express');
-console.log('[users.js] Маршрути користувача завантажено');
 const router = express.Router();
 const { check } = require('express-validator');
 const auth = require('../middleware/auth.js');
+const authController = require('../controllers/authController.js');
 const controllers = require('../controllers/users.js');
-console.log('[DEBUG] controllers:', controllers);
-console.log('[DEBUG] getUserProfile:', controllers.getUserProfile);
+const { getDb } = require('../db/d1');
 
-// @route   POST api/users/login
-// @desc    Authenticate user & get token
-// @access  Public
+const adminAuth = async (req, res, next) => {
+  try {
+    const db = await getDb();
+    const user = await db.prepare('SELECT id, role FROM users WHERE id = ?').get(req.user.id);
+
+    if (!user || user.role !== 'master') {
+      return res.status(403).json({ msg: 'Access denied. Master privileges required.' });
+    }
+    next();
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).send('Server error');
+  }
+};
+
 router.post(
   '/login',
-  check('email', 'Некоректний email').isEmail(),
+  check('email', 'Некоректний email').optional().isEmail(),
+  check('identifier', 'Некоректний ідентифікатор').optional().isString(),
   check('password', 'Пароль повинен містити щонайменше 8 символів').isLength({ min: 8 }),
-  controllers.loginUser
+  (req, res) => {
+    const { email, identifier } = req.body || {};
+    if (!identifier && email) {
+      req.body.identifier = email;
+    }
+    if (!req.body?.identifier) {
+      return res.status(400).json({
+        status: 'error',
+        code: 'MISSING_CREDENTIALS',
+        message: 'Необхідно вказати email або identifier',
+      });
+    }
+    return authController.login(req, res);
+  }
 );
 
-// @route   GET api/users/me
-// @desc    Get current user data
-// @access  Private
-router.get('/me', auth, controllers.getUserProfile);
+router.get('/me', auth, authController.getCurrentUser);
 
-// @route   POST api/users/register
-// @desc    Register a new user
-// @access  Public
+router.get('/', auth, adminAuth, controllers.listUsers);
+
+router.get('/:id/settings', auth, controllers.getUserSettings);
+router.put('/:id/settings', auth, controllers.updateUserSettings);
+
+router.get('/:id', auth, controllers.getUserById);
+
+router.put(
+  '/:id',
+  auth,
+  adminAuth,
+  check('name', 'Name is required').optional(),
+  check('email', 'Please include a valid email').optional().isEmail(),
+  check('phone', 'Phone number is required').optional(),
+  check('role', 'Некоректна роль')
+    .optional()
+    .isIn(['client', 'mechanic', 'admin', 'master', 'master_admin']),
+  controllers.updateUserById
+);
+
+router.delete('/:id', auth, adminAuth, controllers.deleteUserById);
+
 router.post(
   '/register',
-  check('email', 'Некоректний email').isEmail(),
+  check('email', 'Некоректний email').optional().isEmail(),
   check('password', 'Пароль повинен містити щонайменше 8 символів').isLength({ min: 8 }),
-  check('name', 'Імʼя обовʼязкове').not().isEmpty(),
-  check('phone', 'Телефон обовʼязковий').not().isEmpty(),
-  check('role', 'Роль обовʼязкова').not().isEmpty(),
-  controllers.registerUser
+  (req, res) => authController.register(req, res)
 );
 
-// @route   PUT api/users/profile
-// @desc    Оновлення профілю користувача
-// @access  Private
 router.put(
   '/profile',
   auth,

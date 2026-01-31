@@ -46,7 +46,12 @@ const config = {
   telegramToken: process.env.TELEGRAM_BOT_TOKEN,
   // За замовчуванням використовуємо порт 5001 для локального сервера
   serverUrl: process.env.SERVER_API_URL || 'http://localhost:5001',
-  port: process.env.PORT || 3001
+  port: process.env.PORT || 3001,
+  registryUrl:
+    process.env.VEHICLE_REGISTRY_URL ||
+    process.env.REGISTRY_API_URL ||
+    process.env.SERVER_API_URL ||
+    'http://localhost:5001'
 };
 
 // Перевірка конфігурації
@@ -726,6 +731,23 @@ class AutoServiceAPI {
     } catch (error) {
       console.error(`[Bot] Помилка отримання автомобіля за номерним знаком ${licensePlate}:`, 
                    error.response?.data || error.message);
+      return null;
+    }
+  }
+
+  static async getVehicleRegistryByLicensePlate(licensePlate) {
+    try {
+      const encoded = encodeURIComponent(licensePlate);
+      const response = await axios.get(
+        `${config.registryUrl}/api/vehicle-registry?license_plate=${encoded}`,
+        { timeout: 10000 }
+      );
+      return response.data;
+    } catch (error) {
+      console.error(
+        `[Bot] Помилка отримання даних реєстру за номерним знаком ${licensePlate}:`,
+        error.response?.data || error.message
+      );
       return null;
     }
   }
@@ -1913,100 +1935,24 @@ async function searchVehicleByLicensePlate(chatId, licensePlate, waitingMessageI
       console.error('Error searching vehicle in database:', error);
       // Продовжуємо пошук у локальному CSV, якщо не знайдено в нашій базі
     }
-    // Додаємо пошук у локальному CSV, якщо не знайдено через API
-    const fs = require('fs');
-    const path = require('path');
-    const csvPath = path.join(__dirname, '..', 'mysql_export', 'reestrtz31.07.2025.csv');
-    let foundVehicles = [];
-    if (fs.existsSync(csvPath)) {
-      const data = fs.readFileSync(csvPath, 'utf8');
-      const rows = data
-        .split(/\r?\n/)
-        .filter(line => line.trim().length > 0)
-        .map(r => r.replace(/"/g, '').split(';'));
-      
-      const headersRow = rows[0] || [];
-      const headers = headersRow.map(h => h.replace(/^\uFEFF/, '').trim());
-      let idxReg = headers.indexOf('N_REG_NEW');
-      let idxBrand = headers.indexOf('BRAND');
-      let idxModel = headers.indexOf('MODEL');
-      let idxYear = headers.indexOf('MAKE_YEAR');
-      let idxVin = headers.indexOf('VIN');
-      let idxColor = headers.indexOf('COLOR');
+    const registryVehicle = await AutoServiceAPI.getVehicleRegistryByLicensePlate(licensePlate);
+    if (registryVehicle) {
+      const registryPlate =
+        registryVehicle.n_reg_new ||
+        registryVehicle.license_plate_normalized ||
+        licensePlate;
+      const availableData = {
+        vin: registryVehicle.vin || '',
+        make: registryVehicle.brand || registryVehicle.make || '',
+        model: registryVehicle.model || '',
+        year: registryVehicle.make_year || '',
+        color: registryVehicle.color || '',
+        mileage: 0,
+        licensePlate: registryPlate
+      };
+      const missingFields = getMissingFields(availableData);
+      const message = formatVehicleDataMessage(availableData, missingFields);
 
-      // Якщо файл без заголовків або заголовки не знайдені — використовуємо резервні індекси
-      if (idxReg === -1) {
-        console.log(`[Bot] Заголовки не знайдені у CSV, використовуємо резервні індекси`);
-        const sample = rows[1] || headersRow; // перший рядок з даними
-        const len = (sample && sample.length) ? sample.length : 0;
-        console.log(`[Bot] Кількість колонок у CSV: ${len}`);
-        
-        // За замовчуванням номерний знак в останній колонці для формату МВС
-        idxReg = len > 0 ? len - 1 : -1;
-        // Типові позиції для експорту реєстру МВС
-        idxBrand = (len > 7) ? 7 : -1;
-        idxModel = (len > 8) ? 8 : -1;
-        idxVin   = (len > 9) ? 9 : -1;
-        idxYear  = (len > 10) ? 10 : -1;
-        idxColor = (len > 11) ? 11 : -1;
-        
-        console.log(`[Bot] Індекси колонок: номер=${idxReg}, марка=${idxBrand}, модель=${idxModel}, VIN=${idxVin}`);
-      }
-
-      // 1) Точний збіг
-      for (let i = 1; i < rows.length; i++) {
-        const row = rows[i];
-        if (!row || row.length === 0) continue;
-        if (idxReg === -1 || idxReg >= row.length) continue;
-        
-        const csvPlateRaw = row[idxReg] || '';
-        if (normalizeLicensePlate(csvPlateRaw) === normalizeLicensePlate(licensePlate)) {
-          foundVehicles.push({
-            make: idxBrand !== -1 && idxBrand < row.length ? row[idxBrand] : '',
-            model: idxModel !== -1 && idxModel < row.length ? row[idxModel] : '',
-            year: idxYear !== -1 && idxYear < row.length ? row[idxYear] : '',
-            vin: idxVin !== -1 && idxVin < row.length ? row[idxVin] : '',
-            color: idxColor !== -1 && idxColor < row.length ? row[idxColor] : '',
-            licensePlate: csvPlateRaw
-          });
-        }
-      }
-
-      // 2) Якщо точного збігу немає — шукаємо варіанти з однаковими цифрами
-      if (foundVehicles.length === 0) {
-        const normalizedInput = normalizeLicensePlate(licensePlate);
-        const inputNumbers = normalizedInput.match(/\d+/g)?.join('') || '';
-        if (inputNumbers.length >= 3) {
-          for (let i = 1; i < rows.length; i++) {
-            const row = rows[i];
-            if (!row || row.length === 0) continue;
-            if (idxReg === -1 || idxReg >= row.length) continue;
-            
-            const csvPlateRaw = row[idxReg] || '';
-            const csvPlateNormalized = normalizeLicensePlate(csvPlateRaw);
-            const csvNumbers = csvPlateNormalized.match(/\d+/g)?.join('') || '';
-            if (csvNumbers === inputNumbers) {
-              foundVehicles.push({
-                make: idxBrand !== -1 && idxBrand < row.length ? row[idxBrand] : '',
-                model: idxModel !== -1 && idxModel < row.length ? row[idxModel] : '',
-                year: idxYear !== -1 && idxYear < row.length ? row[idxYear] : '',
-                vin: idxVin !== -1 && idxVin < row.length ? row[idxVin] : '',
-                color: idxColor !== -1 && idxColor < row.length ? row[idxColor] : '',
-                licensePlate: csvPlateRaw
-              });
-              if (foundVehicles.length >= 5) break; // обмеження варіантів
-            }
-          }
-        }
-      }
-    }
-
-    if (foundVehicles.length === 1) {
-      const foundVehicle = foundVehicles[0];
-      const formattedLicensePlate = formatLicensePlate(foundVehicle.licensePlate);
-      const csvMissing = getMissingFields(foundVehicle);
-      const csvMessage = formatVehicleDataMessage(foundVehicle, csvMissing);
-      // Видаляємо повідомлення про очікування якщо воно є
       if (waitingMessageId) {
         try {
           await bot.deleteMessage(chatId, waitingMessageId);
@@ -2014,56 +1960,17 @@ async function searchVehicleByLicensePlate(chatId, licensePlate, waitingMessageI
           console.error('Помилка при видаленні повідомлення про очікування:', error);
         }
       }
-      await bot.sendMessage(chatId,
-        csvMessage,
-        {
-          parse_mode: 'HTML',
-          reply_markup: {
-            inline_keyboard: [
-              [
-                { text: '✅ Використати ці дані', callback_data: 'use_existing_vehicle_data' },
-                ...(csvMissing.length > 0 ? [{ text: '✏️ Доповнити відсутні', callback_data: 'complete_missing_vehicle_fields' }] : []),
-                { text: '❌ Ввести нові дані', callback_data: 'enter_new_vehicle_data' }
-              ]
-            ]
-          }
-        }
-      );
-      if (!vehicleData.has(chatId)) {
-        vehicleData.set(chatId, {});
-      }
-      const carData = vehicleData.get(chatId);
-      Object.assign(carData, foundVehicle);
-      return;
-    } else if (foundVehicles.length > 1) {
-      let message = `🔍 Знайдено ${foundVehicles.length} автомобілів з номером "${licensePlate}":\n\n`;
-      const inlineKeyboard = [];
-      foundVehicles.forEach((vehicle, index) => {
-        const formattedPlate = formatLicensePlate(vehicle.licensePlate);
-        message += `${index + 1}. ${vehicle.make} ${vehicle.model} (${vehicle.year})\n`;
-        message += `   📋 ${formattedPlate}\n`;
-        if (vehicle.color) message += `   🎨 ${vehicle.color}\n`;
-        message += `   🔢 ${vehicle.vin}\n\n`;
-        inlineKeyboard.push([{
-          text: `${index + 1}. ${formattedPlate} - ${vehicle.make} ${vehicle.model}`,
-          callback_data: `select_vehicle_${index}`
-        }]);
-      });
-      inlineKeyboard.push([{ text: '❌ Ввести дані вручну', callback_data: 'enter_new_vehicle_data' }]);
-      inlineKeyboard.push([{ text: '🔙 Назад', callback_data: 'back_to_vehicles' }]);
 
-      // Видаляємо повідомлення про очікування якщо воно є
-      if (waitingMessageId) {
-        try {
-          await bot.deleteMessage(chatId, waitingMessageId);
-        } catch (error) {
-          console.error('Помилка при видаленні повідомлення про очікування:', error);
-        }
-      }
-      await bot.sendMessage(chatId, message + 'Оберіть потрібний автомобіль:', {
+      await bot.sendMessage(chatId, message, {
         parse_mode: 'HTML',
         reply_markup: {
-          inline_keyboard: inlineKeyboard
+          inline_keyboard: [
+            [
+              { text: '✅ Використати ці дані', callback_data: 'use_existing_vehicle_data' },
+              ...(missingFields.length > 0 ? [{ text: '✏️ Доповнити відсутні', callback_data: 'complete_missing_vehicle_fields' }] : []),
+              { text: '❌ Ввести нові дані', callback_data: 'enter_new_vehicle_data' }
+            ]
+          ]
         }
       });
 
@@ -2071,10 +1978,11 @@ async function searchVehicleByLicensePlate(chatId, licensePlate, waitingMessageI
         vehicleData.set(chatId, {});
       }
       const carData = vehicleData.get(chatId);
-      carData.foundVehicles = foundVehicles;
-      carData.searchedLicensePlate = licensePlate;
+      Object.assign(carData, availableData);
       return;
     }
+    // Якщо через API нічого не знайдено, пропонуємо ввести дані вручну
+
     // Якщо не знайдено ніде, переходимо до введення VIN-коду
     userStates.set(chatId, 'add_vehicle_vin');
     // Видаляємо повідомлення про очікування якщо воно є
@@ -2087,7 +1995,7 @@ async function searchVehicleByLicensePlate(chatId, licensePlate, waitingMessageI
     }
     await bot.sendMessage(chatId, 
       `✅ Держномер: <b>${formatLicensePlate(licensePlate)}</b>\n\n` +
-      'Тепер введіть VIN-код вашого автомобіля (17 символів):\n\n' +
+      'Автомобіль не знайдено в базі. Тепер введіть VIN-код вашого автомобіля (17 символів):\n\n' +
       '<i>Приклад: WVWZZZ1KZAM123456</i>', 
       {
         parse_mode: 'HTML',

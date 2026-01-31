@@ -1,7 +1,8 @@
-import { supabase } from './supabaseClient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { scheduleLocalNotification } from './pushNotificationsService';
 import { getVehicleServiceIntervals } from './vehiclesApi';
+import axiosAuth from './axiosConfig';
+import secureStorage, { SECURE_STORAGE_KEYS } from '../utils/secureStorage';
 
 /**
  * Сервіс для роботи з нагадуваннями про ТО, запитами пробігу та сповіщеннями про статус ремонту
@@ -21,15 +22,23 @@ export const REMINDER_TYPES = {
  */
 export const getUserReminders = async (token) => {
   try {
-    const { data } = await supabase.auth.getSession();
-    const uid = data?.user?.id;
-    if (!uid) return [];
-    const { data: rows, error } = await supabase
-      .from('reminders')
-      .select('id, user_id, vehicle_vin, title, description, reminder_type, due_date, due_mileage, is_completed, is_recurring, recurrence_interval, priority, notification_sent, created_at')
-      .eq('user_id', uid)
-      .order('due_date', { ascending: true });
-    if (error) throw error;
+    let userId = null;
+
+    try {
+      const storedUser = await secureStorage.secureGet(SECURE_STORAGE_KEYS.USER_DATA, true);
+      if (storedUser && storedUser.id) {
+        userId = storedUser.id;
+      }
+    } catch {}
+
+    if (!userId) {
+      return [];
+    }
+
+    const response = await axiosAuth.get('/api/reminders', {
+      params: { user_id: userId },
+    });
+    const rows = Array.isArray(response.data) ? response.data : [];
     const normalized = (rows || []).map(r => ({
       id: r.id,
       user_id: r.user_id,
@@ -65,27 +74,22 @@ export const getUserReminders = async (token) => {
  */
 export const createMaintenanceReminder = async (data, token) => {
   try {
-    const { data: session } = await supabase.auth.getSession();
-    const uid = session?.user?.id;
-    if (!uid) throw new Error('Не знайдено користувача');
+    if (!token) throw new Error('Не знайдено користувача');
+    const uid = token;
     const vin = data.vehicleId || null;
     const dueDate = new Date(data.dueDate);
-    const { data: inserted, error } = await supabase
-      .from('reminders')
-      .insert({
-        user_id: uid,
-        vehicle_vin: vin,
-        title: 'Нагадування про ТО',
-        description: `Час пройти ${data.maintenanceType} для вашого автомобіля`,
-        reminder_type: REMINDER_TYPES.MAINTENANCE,
-        due_date: dueDate.toISOString().split('T')[0],
-        due_mileage: data.mileage,
-        is_recurring: false,
-        priority: 'medium'
-      })
-      .select('*')
-      .single();
-    if (error) throw error;
+    const response = await axiosAuth.post('/api/reminders', {
+      user_id: uid,
+      vehicle_vin: vin,
+      title: 'Нагадування про ТО',
+      description: `Час пройти ${data.maintenanceType} для вашого автомобіля`,
+      reminder_type: REMINDER_TYPES.MAINTENANCE,
+      due_date: dueDate.toISOString().split('T')[0],
+      due_mileage: data.mileage,
+      is_recurring: false,
+      priority: 'medium'
+    });
+    const inserted = response.data;
     const now = new Date();
     const secondsUntilNotification = Math.max(1, Math.floor((dueDate - now) / 1000));
     await scheduleLocalNotification({
@@ -98,10 +102,6 @@ export const createMaintenanceReminder = async (data, token) => {
       },
       seconds: secondsUntilNotification
     });
-    await supabase
-      .from('reminders')
-      .update({ notification_sent: true })
-      .eq('id', inserted.id);
     return inserted;
   } catch (error) {
     console.error('[ReminderService] Помилка при створенні нагадування про ТО:', error);
@@ -119,26 +119,21 @@ export const createMaintenanceReminder = async (data, token) => {
  */
 export const createMileageRequest = async (data, token) => {
   try {
-    const { data: session } = await supabase.auth.getSession();
-    const uid = session?.user?.id;
-    if (!uid) throw new Error('Не знайдено користувача');
+    if (!token) throw new Error('Не знайдено користувача');
+    const uid = token;
     const vin = data.vehicleId || null;
     const today = new Date();
-    const { data: inserted, error } = await supabase
-      .from('reminders')
-      .insert({
-        user_id: uid,
-        vehicle_vin: vin,
-        title: 'Запит пробігу',
-        description: `Будь ласка, вкажіть поточний пробіг для ${data.vehicleName}`,
-        reminder_type: 'custom',
-        due_date: today.toISOString().split('T')[0],
-        is_recurring: false,
-        priority: 'medium'
-      })
-      .select('*')
-      .single();
-    if (error) throw error;
+    const response = await axiosAuth.post('/api/reminders', {
+      user_id: uid,
+      vehicle_vin: vin,
+      title: 'Запит пробігу',
+      description: `Будь ласка, вкажіть поточний пробіг для ${data.vehicleName}`,
+      reminder_type: 'custom',
+      due_date: today.toISOString().split('T')[0],
+      is_recurring: false,
+      priority: 'medium'
+    });
+    const inserted = response.data;
     await scheduleLocalNotification({
       title: 'Запит пробігу',
       body: `Будь ласка, вкажіть поточний пробіг для ${data.vehicleName}`,
@@ -149,10 +144,6 @@ export const createMileageRequest = async (data, token) => {
       },
       seconds: 1
     });
-    await supabase
-      .from('reminders')
-      .update({ notification_sent: true })
-      .eq('id', inserted.id);
     return inserted;
   } catch (error) {
     console.error('[ReminderService] Помилка при створенні запиту пробігу:', error);
@@ -171,22 +162,17 @@ export const createMileageRequest = async (data, token) => {
  */
 export const createAppointmentStatusNotification = async (data, token) => {
   try {
-    const { data: session } = await supabase.auth.getSession();
-    const uid = session?.user?.id;
-    if (!uid) throw new Error('Не знайдено користувача');
-    const { data: inserted, error } = await supabase
-      .from('notifications')
-      .insert({
-        user_id: uid,
-        title: 'Статус запису',
-        message: data.message,
-        type: REMINDER_TYPES.APPOINTMENT_STATUS,
-        status: 'pending',
-        data: { appointmentId: data.appointmentId, status: data.status }
-      })
-      .select('*')
-      .single();
-    if (error) throw error;
+    if (!token) throw new Error('Не знайдено користувача');
+    const uid = token;
+    const response = await axiosAuth.post('/api/notifications', {
+      user_id: uid,
+      title: 'Статус запису',
+      message: data.message,
+      type: REMINDER_TYPES.APPOINTMENT_STATUS,
+      status: 'pending',
+      data: { appointmentId: data.appointmentId, status: data.status }
+    });
+    const inserted = response.data;
     await scheduleLocalNotification({
       title: 'Статус запису',
       body: data.message,
@@ -212,15 +198,39 @@ export const createAppointmentStatusNotification = async (data, token) => {
  */
 export const deleteReminder = async (reminderId, token) => {
   try {
-    const { error } = await supabase
-      .from('reminders')
-      .delete()
-      .eq('id', reminderId);
-    if (error) throw error;
+    await axiosAuth.delete(`/api/reminders/${reminderId}`);
     return true;
   } catch (error) {
     console.error(`[ReminderService] Помилка при видаленні нагадування ${reminderId}:`, error);
     return false;
+  }
+};
+
+/**
+ * Оновлення нагадування
+ * @param {string} reminderId - ID нагадування
+ * @param {Object} updates - поля для оновлення
+ * @returns {Promise<Object|null>} - оновлене нагадування або null
+ */
+export const updateReminder = async (reminderId, updates) => {
+  try {
+    const payload = {
+      title: updates.title,
+      description: updates.description,
+      reminder_type: updates.reminder_type,
+      due_date: updates.due_date,
+      due_mileage: updates.due_mileage,
+      is_completed: updates.is_completed,
+      is_recurring: updates.is_recurring,
+      recurrence_interval: updates.recurrence_interval,
+      priority: updates.priority,
+    };
+
+    const response = await axiosAuth.put(`/api/reminders/${reminderId}`, payload);
+    return response.data || null;
+  } catch (error) {
+    console.error(`[ReminderService] Помилка при оновленні нагадування ${reminderId}:`, error);
+    return null;
   }
 };
 

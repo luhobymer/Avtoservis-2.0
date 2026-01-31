@@ -3,7 +3,6 @@
  * Перевіряє сценарії з недійсними токенами та безпечне зберігання
  */
 
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AuthContext } from '../context/AuthContext';
 import { isTokenValid } from '../api/axiosConfig';
 import React from 'react';
@@ -14,9 +13,9 @@ const mockAsyncStorage = {
   getItem: jest.fn(),
   setItem: jest.fn(),
   removeItem: jest.fn(),
+  clear: jest.fn(),
 };
 
-// Мокуємо AsyncStorage для всіх тестів
 jest.mock('@react-native-async-storage/async-storage', () => mockAsyncStorage);
 
 // Створюємо власну версію функції clearAuthData для тестів

@@ -14,6 +14,7 @@
     "info": "Информация",
     "loading": "Загрузка...",
     "save": "Сохранить",
+    "update": "Обновить",
     "cancel": "Отменить",
     "delete": "Удалить",
     "edit": "Редактировать",
@@ -44,6 +45,7 @@
   "dashboard": {
     "title": "Панель управления",
     "welcome": "Добро пожаловать",
+    "good_morning": "Доброе утро",
     "good_afternoon": "Добрый день",
     "good_evening": "Добрый вечер",
     "your_vehicles": "Ваши автомобили",
@@ -60,7 +62,12 @@
     "quick_actions": "Быстрые действия",
     "upcoming_appointments": "Предстоящие записи",
     "recent_service_records": "Последние записи сервиса",
-    "vehicles_status": "Статус автомобилей"
+    "vehicles_status": "Статус автомобилей",
+    "no_upcoming_appointments": "Нет предстоящих записей",
+    "schedule_appointment": "Записаться на сервис",
+    "no_recent_service_records": "Нет последних записей сервиса",
+    "view_service_book": "Открыть сервисную книгу",
+    "user": "Пользователь"
   },
   "auth": {
     "login": "Вход",
@@ -126,6 +133,7 @@
     "fetch_error": "Ошибка загрузки автомобилей",
     "edit": "Редактировать авто",
     "delete": "Удалить авто",
+    "vehicle_details": "Детали авто",
     "details": "Детали авто",
     "make": "Марка",
     "model": "Модель",
@@ -203,6 +211,7 @@
     "select_color": "Выберите цвет",
     "engine_types": {
       "petrol": "Бензин",
+      "gas": "Газ",
       "diesel": "Дизель",
       "electric": "Электрический",
       "hybrid": "Гибрид"
@@ -210,7 +219,8 @@
     "transmissions": {
       "manual": "Механическая",
       "automatic": "Автоматическая",
-      "cvt": "Вариатор"
+      "cvt": "Вариатор",
+      "semi_auto": "Полуавтомат"
     },
     "no_cached_data": "Нет сохраненных данных",
     "network_error": "Ошибка сети",
@@ -226,12 +236,14 @@
     "title": "Сервисная книга",
     "export": "Экспорт",
     "no_records": "Нет записей сервиса",
-    "select_vehicle": "Выберите автомобиль"
+    "select_vehicle": "Выберите автомобиль",
+    "add_record": "Добавить запись"
   },
   "service_records": {
     "title": "Записи сервиса",
     "empty": "Нет записей сервиса",
     "add": "Добавить запись",
+    "details": "Детали",
     "fetch_error": "Ошибка загрузки записей сервиса",
     "add_record": "Добавить запись",
     "vehicle": "Автомобиль",
@@ -363,6 +375,7 @@
     "name": "Имя",
     "email": "Email",
     "phone": "Телефон",
+    "city": "Город",
     "role": "Роль",
     "edit_profile": "Редактировать профиль",
     "settings": "Настройки",
@@ -483,11 +496,15 @@
   },
   "master": {
     "title": "Панель мастера",
+    "dashboard_title": "Панель управления мастера",
     "welcome": "Добро пожаловать, мастер",
     "today_schedule": "Расписание на сегодня",
     "upcoming_appointments": "Предстоящие записи",
     "no_appointments_today": "Нет записей на сегодня",
     "no_upcoming_appointments": "Нет предстоящих записей",
+    "schedule_appointment": "Записаться на прием",
+    "no_recent_service_records": "Нет последних записей сервиса",
+    "view_service_book": "Открыть сервисную книгу",
     "view_all_appointments": "Просмотреть все записи",
     "stats": "Статистика",
     "total_appointments": "Всего записей",

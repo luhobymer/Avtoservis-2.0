@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { supabase } from './supabaseClient';
+import axiosAuth from './axiosConfig';
 
 const SETTINGS_STORAGE_KEY = 'user_settings';
 const REQUEST_TIMEOUT = 10000; // 10 секунд таймаут для запитів
@@ -32,14 +32,9 @@ const DEFAULT_SETTINGS = {
  */
 export const getUserSettings = async (userId, token) => {
   try {
-    const { data, error } = await supabase
-      .from('user_settings')
-      .select('settings')
-      .eq('user_id', userId)
-      .single();
-
-    if (!error && data && data.settings) {
-      const settings = data.settings;
+    const response = await axiosAuth.get(`/api/users/${userId}/settings`);
+    if (response && response.data && response.data.settings) {
+      const settings = response.data.settings;
       await AsyncStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
       return settings;
     }
@@ -83,11 +78,7 @@ export const saveUserSettings = async (userId, settings, token) => {
   try {
     // Зберігаємо налаштування локально
     await AsyncStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
-    const { error } = await supabase
-      .from('user_settings')
-      .upsert({ user_id: userId, settings }, { onConflict: 'user_id' });
-    if (error) throw error;
-    
+    await axiosAuth.put(`/api/users/${userId}/settings`, { settings });
     return true;
   } catch (error) {
     console.error('[userSettingsService] Помилка збереження налаштувань:', error);

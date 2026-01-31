@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { getById as getVehicleById, create as createVehicle, update as updateVehicle, remove as removeVehicle } from '../api/dao/vehiclesDao';
+import { getById as getVehicleById, create as createVehicle, update as updateVehicle, remove as removeVehicle, lookupRegistryByLicensePlate } from '../api/dao/vehiclesDao';
+import useAuth from '../context/useAuth';
+import { brandModelYears } from '../data/vehicleData';
 import {
   Container,
   Typography,
@@ -15,6 +17,7 @@ const VehicleDetails = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const { t } = useTranslation();
+  const { user } = useAuth();
   const isNewVehicle = !id;
 
   const [formData, setFormData] = useState({
@@ -33,12 +36,14 @@ const VehicleDetails = () => {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [lookupLoading, setLookupLoading] = useState(false);
+  const [lookupError, setLookupError] = useState(null);
 
   const loadVehicleData = useCallback(async () => {
     try {
       const v = await getVehicleById(id);
       setFormData({
-        brand: v.make || '',
+        brand: v.brand || v.make || '',
         model: v.model || '',
         year: v.year || '',
         vin: v.vin || '',
@@ -84,7 +89,7 @@ const VehicleDetails = () => {
           mileage: formData.mileage,
           color: formData.color
         };
-        await createVehicle(payload);
+        await createVehicle(payload, user?.id || null);
       } else {
         const payload = {
           make: formData.brand,
@@ -101,6 +106,56 @@ const VehicleDetails = () => {
     } catch (err) {
       setError(t('errors.saveFailed', 'Помилка збереження даних'));
       setSaving(false);
+    }
+  };
+
+  const handleLookupByPlate = async () => {
+    if (!formData.licensePlate) return;
+    setLookupLoading(true);
+    setLookupError(null);
+
+    try {
+      const registry = await lookupRegistryByLicensePlate(formData.licensePlate);
+      const rawBrand = registry?.brand || registry?.make || '';
+      const rawModel = registry?.model || '';
+      const brandKey = rawBrand
+        ? Object.keys(brandModelYears).find(
+            (key) => key.toLowerCase() === String(rawBrand).toLowerCase()
+          )
+        : null;
+      const modelKey =
+        brandKey && rawModel
+          ? Object.keys(brandModelYears[brandKey]).find(
+              (key) => key.toLowerCase() === String(rawModel).toLowerCase()
+            )
+          : null;
+      const registryYear = registry?.make_year || registry?.year || null;
+      const licenseValue =
+        registry?.n_reg_new ||
+        registry?.license_plate_normalized ||
+        formData.licensePlate;
+
+      setFormData((prev) => {
+        const next = { ...prev };
+        if (brandKey) next.brand = brandKey;
+        if (modelKey) next.model = modelKey;
+        if (
+          brandKey &&
+          modelKey &&
+          registryYear &&
+          brandModelYears[brandKey][modelKey].includes(Number(registryYear))
+        ) {
+          next.year = Number(registryYear);
+        }
+        if (registry?.vin) next.vin = registry.vin;
+        if (registry?.color) next.color = registry.color;
+        if (licenseValue) next.licensePlate = licenseValue;
+        return next;
+      });
+    } catch (err) {
+      setLookupError(t('vehicle.lookupFailed', 'Не вдалося знайти дані за номером'));
+    } finally {
+      setLookupLoading(false);
     }
   };
 
@@ -146,6 +201,9 @@ const VehicleDetails = () => {
           saving={saving}
           isNewVehicle={isNewVehicle}
           onDeleteClick={() => setDeleteDialogOpen(true)}
+          onLookupByPlate={handleLookupByPlate}
+          lookupLoading={lookupLoading}
+          lookupError={lookupError}
         />
       </Paper>
 

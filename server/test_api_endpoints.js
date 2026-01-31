@@ -5,14 +5,14 @@ const BASE_URL = 'http://localhost:5001/api';
 // Тестові дані для входу
 const testUser = {
   email: 'luhobymer@gmail.com',
-  password: '123456'
+  password: '123456',
 };
 
 async function testAPIEndpoints() {
   console.log('🔍 Тестування API ендпоінтів...\n');
-  
+
   let authToken = null;
-  
+
   try {
     // 1. Тест входу
     console.log('1. Тестування входу...');
@@ -24,13 +24,13 @@ async function testAPIEndpoints() {
     console.log('❌ Помилка входу:', error.response?.status, error.response?.data);
     return;
   }
-  
+
   // Заголовки з токеном
   const headers = {
-    'Authorization': `Bearer ${authToken}`,
-    'Content-Type': 'application/json'
+    Authorization: `Bearer ${authToken}`,
+    'Content-Type': 'application/json',
   };
-  
+
   // 2. Тест отримання профілю користувача
   try {
     console.log('2. Тестування отримання профілю...');
@@ -40,7 +40,7 @@ async function testAPIEndpoints() {
   } catch (error) {
     console.log('❌ Помилка профілю:', error.response?.status, error.response?.data, '\n');
   }
-  
+
   // 3. Тест отримання транспортних засобів
   try {
     console.log('3. Тестування отримання транспортних засобів...');
@@ -48,9 +48,14 @@ async function testAPIEndpoints() {
     console.log('✅ Транспортні засоби отримано:', vehiclesResponse.status);
     console.log('🚗 Кількість:', vehiclesResponse.data?.length || 0, '\n');
   } catch (error) {
-    console.log('❌ Помилка транспортних засобів:', error.response?.status, error.response?.data, '\n');
+    console.log(
+      '❌ Помилка транспортних засобів:',
+      error.response?.status,
+      error.response?.data,
+      '\n'
+    );
   }
-  
+
   // 4. Тест отримання сервісних записів
   try {
     console.log('4. Тестування отримання сервісних записів...');
@@ -58,9 +63,14 @@ async function testAPIEndpoints() {
     console.log('✅ Сервісні записи отримано:', servicesResponse.status);
     console.log('🔧 Кількість:', servicesResponse.data?.length || 0, '\n');
   } catch (error) {
-    console.log('❌ Помилка сервісних записів:', error.response?.status, error.response?.data, '\n');
+    console.log(
+      '❌ Помилка сервісних записів:',
+      error.response?.status,
+      error.response?.data,
+      '\n'
+    );
   }
-  
+
   // 5. Тест отримання нотифікацій
   try {
     console.log('5. Тестування отримання нотифікацій...');
@@ -70,7 +80,7 @@ async function testAPIEndpoints() {
   } catch (error) {
     console.log('❌ Помилка нотифікацій:', error.response?.status, error.response?.data, '\n');
   }
-  
+
   // 6. Тест адмін ендпоінтів (якщо користувач адмін)
   try {
     console.log('6. Тестування адмін ендпоінтів...');
@@ -78,9 +88,14 @@ async function testAPIEndpoints() {
     console.log('✅ Адмін користувачі отримано:', adminUsersResponse.status);
     console.log('👥 Кількість користувачів:', adminUsersResponse.data?.length || 0, '\n');
   } catch (error) {
-    console.log('❌ Помилка адмін користувачів:', error.response?.status, error.response?.data, '\n');
+    console.log(
+      '❌ Помилка адмін користувачів:',
+      error.response?.status,
+      error.response?.data,
+      '\n'
+    );
   }
-  
+
   console.log('🏁 Тестування завершено');
 }
 

@@ -83,17 +83,31 @@ const VehiclesManagement = () => {
   };
 
   const handleOpenDialog = (vehicle) => {
-    setSelectedVehicle(vehicle);
-    setFormData({
-      make: vehicle.make,
-      model: vehicle.model,
-      year: vehicle.year,
-      vin: vehicle.vin,
-      licensePlate: vehicle.licensePlate,
-      mileage: vehicle.mileage,
-      lastService: vehicle.lastService ? new Date(vehicle.lastService) : null,
-      UserId: vehicle.UserId
-    });
+    if (vehicle) {
+      setSelectedVehicle(vehicle);
+      setFormData({
+        make: vehicle.make,
+        model: vehicle.model,
+        year: vehicle.year,
+        vin: vehicle.vin,
+        licensePlate: vehicle.licensePlate,
+        mileage: vehicle.mileage,
+        lastService: vehicle.lastService ? new Date(vehicle.lastService) : null,
+        UserId: vehicle.UserId || ''
+      });
+    } else {
+      setSelectedVehicle(null);
+      setFormData({
+        make: '',
+        model: '',
+        year: '',
+        vin: '',
+        licensePlate: '',
+        mileage: '',
+        lastService: null,
+        UserId: ''
+      });
+    }
     setOpenDialog(true);
   };
 
@@ -127,11 +141,26 @@ const VehiclesManagement = () => {
         mileage: parseInt(formData.mileage, 10),
         user_id: formData.UserId || null
       };
-      await vehiclesDao.update(selectedVehicle.id, payload);
+      if (selectedVehicle) {
+        await vehiclesDao.update(selectedVehicle.vin, payload);
+      } else {
+        await vehiclesDao.create(payload, formData.UserId);
+      }
       fetchVehicles();
       handleCloseDialog();
     } catch (err) {
-      setError(err.message || 'Failed to update vehicle');
+      setError(err.message || 'Failed to save vehicle');
+    }
+  };
+
+  const handleDeleteVehicle = async (vin) => {
+    if (window.confirm(t('admin.confirmDelete'))) {
+      try {
+        await vehiclesDao.remove(vin);
+        fetchVehicles();
+      } catch (err) {
+        setError(err.message || 'Failed to delete vehicle');
+      }
     }
   };
 
@@ -150,9 +179,14 @@ const VehiclesManagement = () => {
 
   return (
     <Paper elevation={3} sx={{ p: 3, mt: 3 }}>
-      <Typography variant="h5" gutterBottom>
-        {t('admin.vehicles')}
-      </Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+        <Typography variant="h5" gutterBottom>
+          {t('admin.vehicles')}
+        </Typography>
+        <Button variant="contained" onClick={() => handleOpenDialog(null)}>
+          {t('admin.addVehicle', 'Додати авто')}
+        </Button>
+      </Box>
       <Divider sx={{ mb: 3 }} />
       
       {error && (
@@ -195,6 +229,14 @@ const VehiclesManagement = () => {
                     >
                       {t('common.edit')}
                     </Button>
+                    <Button
+                      size="small"
+                      color="error"
+                      onClick={() => handleDeleteVehicle(vehicle.vin)}
+                      sx={{ ml: 1 }}
+                    >
+                      {t('common.delete')}
+                    </Button>
                   </TableCell>
                 </TableRow>
               ))}
@@ -206,11 +248,13 @@ const VehiclesManagement = () => {
       {/* Edit Dialog */}
       <Dialog open={openDialog} onClose={handleCloseDialog}>
         <DialogTitle>
-          {t('common.edit')} {t('vehicle.title')}
+          {selectedVehicle ? `${t('common.edit')} ${t('vehicle.title')}` : t('admin.addVehicle', 'Додати авто')}
         </DialogTitle>
         <DialogContent>
           <DialogContentText sx={{ mb: 2 }}>
-            {selectedVehicle?.make} {selectedVehicle?.model} ({selectedVehicle?.licensePlate})
+            {selectedVehicle
+              ? `${selectedVehicle?.make} ${selectedVehicle?.model} (${selectedVehicle?.licensePlate})`
+              : t('admin.addVehicleDesc', 'Створіть авто та прив’яжіть до клієнта')}
           </DialogContentText>
           <Grid container spacing={2}>
             <Grid item xs={12}>

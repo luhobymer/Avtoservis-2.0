@@ -23,6 +23,10 @@ const Register = () => {
   
   const [formData, setFormData] = useState({
     name: '',
+    lastName: '',
+    patronymic: '',
+    region: '',
+    city: '',
     email: '',
     phone: '',
     password: '',
@@ -55,9 +59,25 @@ const Register = () => {
     setError(null);
     
     try {
+      const isMaster = formData.role === 'master';
+      const missingRequired =
+        !formData.name?.trim() ||
+        !formData.lastName?.trim() ||
+        !formData.region?.trim() ||
+        !formData.city?.trim() ||
+        (isMaster && !formData.patronymic?.trim());
+
+      if (missingRequired) {
+        throw new Error(t('auth.errors.required_field'));
+      }
+
       // Логування початкових даних
       console.log('Початок реєстрації користувача:', {
         name: formData.name,
+        lastName: formData.lastName,
+        patronymic: formData.patronymic,
+        region: formData.region,
+        city: formData.city,
         email: formData.email,
         phone: formData.phone,
         role: formData.role
@@ -129,11 +149,70 @@ const Register = () => {
               margin="normal"
               required
               fullWidth
+              select
+              name="role"
+              label={t('auth.role')}
+              id="role"
+              value={formData.role}
+              onChange={handleChange}
+              SelectProps={{
+                native: true
+              }}
+            >
+              <option value="client">{t('auth.roleClient')}</option>
+              <option value="master">{t('auth.roleMaster')}</option>
+            </TextField>
+            <TextField
+              margin="normal"
+              required
+              fullWidth
               id="name"
               label={t('auth.name')}
               name="name"
               autoFocus
               value={formData.name}
+              onChange={handleChange}
+            />
+            <TextField
+              margin="normal"
+              required
+              fullWidth
+              id="lastName"
+              label={t('auth.lastName')}
+              name="lastName"
+              value={formData.lastName}
+              onChange={handleChange}
+            />
+            {formData.role === 'master' && (
+              <TextField
+                margin="normal"
+                required
+                fullWidth
+                id="patronymic"
+                label={t('auth.patronymic')}
+                name="patronymic"
+                value={formData.patronymic}
+                onChange={handleChange}
+              />
+            )}
+            <TextField
+              margin="normal"
+              required
+              fullWidth
+              id="region"
+              label={t('auth.region')}
+              name="region"
+              value={formData.region}
+              onChange={handleChange}
+            />
+            <TextField
+              margin="normal"
+              required
+              fullWidth
+              id="city"
+              label={t('auth.city')}
+              name="city"
+              value={formData.city}
               onChange={handleChange}
             />
             <TextField
@@ -173,24 +252,6 @@ const Register = () => {
               value={formData.password}
               onChange={handleChange}
             />
-            <TextField
-              margin="normal"
-              required
-              fullWidth
-              select
-              name="role"
-              label={t('auth.role')}
-              id="role"
-              value={formData.role}
-              onChange={handleChange}
-              SelectProps={{
-                native: true
-              }}
-            >
-              <option value="client">{t('auth.roleClient')}</option>
-              <option value="master">{t('auth.roleMaster')}</option>
-              <option value="admin">{t('auth.roleAdmin')}</option>
-            </TextField>
             <Button
               type="submit"
               fullWidth

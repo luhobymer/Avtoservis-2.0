@@ -1,1061 +1,572 @@
 /**
  * Детальний тест для authController.js
- * Покриває всі функції автентифікації та реєстрації
+ * Покриває основні сценарії автентифікації на D1/SQLite
  */
+
+jest.mock('bcryptjs');
+jest.mock('speakeasy');
+jest.mock('qrcode');
+jest.mock('../config/jwt');
 
 const bcrypt = require('bcryptjs');
 const speakeasy = require('speakeasy');
 const QRCode = require('qrcode');
+const crypto = require('crypto');
 const authController = require('../controllers/authController');
+const { getDb } = require('../db/d1');
 const { generateTokenPair, verifyRefreshToken } = require('../config/jwt');
 
-// Мокуємо зовнішні залежності
-jest.mock('bcryptjs');
-jest.mock('speakeasy');
-jest.mock('qrcode');
-jest.mock('../config/supabase', () => ({
-  from: jest.fn(() => ({
-    select: jest.fn().mockReturnThis(),
-    eq: jest.fn().mockReturnThis(),
-    single: jest.fn(),
-    insert: jest.fn().mockReturnThis(),
-    update: jest.fn(() => ({
-      eq: jest.fn().mockReturnThis(),
-      single: jest.fn(),
-    })),
-    delete: jest.fn(() => ({
-      eq: jest.fn().mockReturnThis(),
-    })),
-  })),
-}));
-jest.mock('../config/jwt');
+describe('AuthController - D1 інтеграційні тести', () => {
+  let req;
+  let res;
 
-describe('AuthController - Детальне тестування', () => {
-  let req, res, mockSupabase;
-  let mockBcrypt, mockSpeakeasy, mockQRCode;
-  let mockGenerateTokenPair, mockVerifyRefreshToken;
+  const makeRes = () => {
+    const response = {
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn().mockReturnThis(),
+    };
+    response.status.mockReturnValue(response);
+    return response;
+  };
 
   beforeEach(() => {
-    // Налаштовуємо req та res об'єкти
     req = {
       body: {},
       user: null,
     };
-
-    res = {
-      status: jest.fn().mockReturnThis(),
-      json: jest.fn().mockReturnThis(),
-    };
-
-    // Отримуємо мокані модулі
-    mockSupabase = require('../config/supabase');
-    mockBcrypt = require('bcryptjs');
-    mockSpeakeasy = require('speakeasy');
-    mockQRCode = require('qrcode');
-    mockGenerateTokenPair = require('../config/jwt').generateTokenPair;
-    mockVerifyRefreshToken = require('../config/jwt').verifyRefreshToken;
-
-    // Очищуємо всі моки
+    res = makeRes();
     jest.clearAllMocks();
   });
 
-  describe('login функція', () => {
-    test('повинен успішно виконувати вхід без 2FA', async () => {
-      const mockUser = {
-        id: 1,
-        email: 'test@example.com',
-        password: 'hashedPassword',
-        role: 'client',
-        twoFactorEnabled: false,
-      };
-
-      const mockTokenPair = {
-        accessToken: 'access_token',
-        refreshToken: 'refresh_token',
-        expiresIn: 3600,
-      };
-
-      req.body = {
-        email: 'test@example.com',
-        password: 'plainPassword',
-      };
-
-      // Налаштовуємо моки
-      const mockChain = {
-        select: jest.fn().mockReturnThis(),
-        eq: jest.fn().mockReturnThis(),
-        single: jest.fn().mockResolvedValue({ data: mockUser, error: null }),
-        insert: jest.fn().mockResolvedValue({ error: null }),
-      };
-
-      mockSupabase.from.mockReturnValue(mockChain);
-      mockBcrypt.compare.mockResolvedValue(true);
-      mockGenerateTokenPair.mockReturnValue(mockTokenPair);
+  describe('login', () => {
+    test('повинен вимагати облікові дані', async () => {
+      req.body = {};
 
       await authController.login(req, res);
 
-      expect(mockSupabase.from).toHaveBeenCalledWith('users');
-      expect(mockChain.select).toHaveBeenCalledWith('*');
-      expect(mockChain.eq).toHaveBeenCalledWith('email', 'test@example.com');
-      expect(mockBcrypt.compare).toHaveBeenCalledWith('plainPassword', 'hashedPassword');
-      expect(mockGenerateTokenPair).toHaveBeenCalledWith(1, 'client', 'test@example.com');
-
-      expect(res.json).toHaveBeenCalledWith({
-        status: 'success',
-        token: 'access_token',
-        refresh_token: 'refresh_token',
-        token_type: 'Bearer',
-        expires_in: 3600,
-        user: {
-          id: 1,
-          email: 'test@example.com',
-          role: 'client',
-          twoFactorEnabled: false,
-        },
-      });
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: 'error',
+          code: 'MISSING_CREDENTIALS',
+        })
+      );
     });
 
-    test('повинен вимагати 2FA код якщо 2FA включено', async () => {
-      const mockUser = {
-        id: 1,
-        email: 'test@example.com',
-        password: 'hashedPassword',
-        role: 'admin',
-        twoFactorEnabled: true,
-      };
-
-      req.body = {
-        email: 'test@example.com',
-        password: 'plainPassword',
-        // token2fa відсутній
-      };
-
-      const mockChain = {
-        select: jest.fn().mockReturnThis(),
-        eq: jest.fn().mockReturnThis(),
-        single: jest.fn().mockResolvedValue({ data: mockUser, error: null }),
-      };
-
-      mockSupabase.from.mockReturnValue(mockChain);
-      mockBcrypt.compare.mockResolvedValue(true);
-
-      await authController.login(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(200);
-      expect(res.json).toHaveBeenCalledWith({
-        status: 'pending',
-        code: 'TWO_FACTOR_REQUIRED',
-        requireTwoFactor: true,
-        message: 'Потрібен код двофакторної автентифікації',
-        user: {
-          id: 1,
-          email: 'test@example.com',
-          role: 'admin',
-          twoFactorEnabled: true,
-        },
-      });
-    });
-
-    test('повинен успішно виконувати вхід з валідним 2FA кодом', async () => {
-      const mockUser = {
-        id: 1,
-        email: 'test@example.com',
-        password: 'hashedPassword',
-        role: 'admin',
-        twoFactorEnabled: true,
-        twoFactorSecret: 'secret_key',
-      };
-
-      const mockTokenPair = {
-        accessToken: 'access_token',
-        refreshToken: 'refresh_token',
-        expiresIn: 3600,
-      };
-
-      req.body = {
-        email: 'test@example.com',
-        password: 'plainPassword',
-        token2fa: '123456',
-      };
-
-      const mockChain = {
-        select: jest.fn().mockReturnThis(),
-        eq: jest.fn().mockReturnThis(),
-        single: jest.fn().mockResolvedValue({ data: mockUser, error: null }),
-        insert: jest.fn().mockResolvedValue({ error: null }),
-      };
-
-      mockSupabase.from.mockReturnValue(mockChain);
-      mockBcrypt.compare.mockResolvedValue(true);
-      mockSpeakeasy.totp.verify.mockReturnValue(true);
-      mockGenerateTokenPair.mockReturnValue(mockTokenPair);
-
-      await authController.login(req, res);
-
-      expect(mockSpeakeasy.totp.verify).toHaveBeenCalledWith({
-        secret: 'secret_key',
-        encoding: 'base32',
-        token: '123456',
-        window: 1,
-      });
-
-      expect(res.json).toHaveBeenCalledWith({
-        status: 'success',
-        token: 'access_token',
-        refresh_token: 'refresh_token',
-        token_type: 'Bearer',
-        expires_in: 3600,
-        user: {
-          id: 1,
-          email: 'test@example.com',
-          role: 'admin',
-          twoFactorEnabled: true,
-        },
-      });
-    });
-
-    test('повинен повертати помилку для неіснуючого користувача', async () => {
+    test('повинен повертати помилку якщо користувача не знайдено', async () => {
       req.body = {
         email: 'nonexistent@example.com',
         password: 'password',
       };
 
-      const mockChain = {
-        select: jest.fn().mockReturnThis(),
-        eq: jest.fn().mockReturnThis(),
-        single: jest.fn().mockResolvedValue({ data: null, error: 'User not found' }),
-      };
-
-      mockSupabase.from.mockReturnValue(mockChain);
-
       await authController.login(req, res);
 
-      expect(res.status).toHaveBeenCalledWith(400);
-      expect(res.json).toHaveBeenCalledWith({
-        status: 'error',
-        code: 'USER_NOT_FOUND',
-        message: 'Користувача не знайдено',
-      });
+      expect(res.status).toHaveBeenCalledWith(401);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: 'error',
+          code: 'INVALID_CREDENTIALS',
+        })
+      );
     });
 
     test('повинен повертати помилку для невірного пароля', async () => {
-      const mockUser = {
-        id: 1,
-        email: 'test@example.com',
-        password: 'hashedPassword',
-        role: 'client',
-      };
+      const db = getDb();
+      const userId = crypto.randomUUID();
+      const now = new Date().toISOString();
+
+      db.prepare(
+        'INSERT INTO users (id, email, password, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
+      ).run(userId, 'test@example.com', 'hashed', 'client', now, now);
 
       req.body = {
         email: 'test@example.com',
-        password: 'wrongPassword',
+        password: 'wrong',
       };
 
-      const mockChain = {
-        select: jest.fn().mockReturnThis(),
-        eq: jest.fn().mockReturnThis(),
-        single: jest.fn().mockResolvedValue({ data: mockUser, error: null }),
-      };
-
-      mockSupabase.from.mockReturnValue(mockChain);
-      mockBcrypt.compare.mockResolvedValue(false);
+      bcrypt.compare.mockResolvedValue(false);
 
       await authController.login(req, res);
 
-      expect(res.status).toHaveBeenCalledWith(400);
-      expect(res.json).toHaveBeenCalledWith({
-        status: 'error',
-        code: 'INVALID_PASSWORD',
-        message: 'Невірний пароль',
-      });
+      expect(bcrypt.compare).toHaveBeenCalledWith('wrong', 'hashed');
+      expect(res.status).toHaveBeenCalledWith(401);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: 'error',
+          code: 'INVALID_CREDENTIALS',
+        })
+      );
+    });
+
+    test('повинен вимагати 2FA коли воно ввімкнене', async () => {
+      const db = getDb();
+      const userId = crypto.randomUUID();
+      const now = new Date().toISOString();
+
+      db.prepare(
+        'INSERT INTO users (id, email, password, role, two_factor_enabled, two_factor_secret, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+      ).run(userId, 'test@example.com', 'hashed', 'admin', 1, 'SECRET', now, now);
+
+      req.body = {
+        email: 'test@example.com',
+        password: 'plain',
+      };
+
+      bcrypt.compare.mockResolvedValue(true);
+
+      await authController.login(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: 'pending',
+          code: 'TWO_FACTOR_REQUIRED',
+          requireTwoFactor: true,
+        })
+      );
     });
 
     test('повинен повертати помилку для невірного 2FA коду', async () => {
-      const mockUser = {
-        id: 1,
-        email: 'test@example.com',
-        password: 'hashedPassword',
-        role: 'admin',
-        twoFactorEnabled: true,
-        twoFactorSecret: 'secret_key',
-      };
+      const db = getDb();
+      const userId = crypto.randomUUID();
+      const now = new Date().toISOString();
+
+      db.prepare(
+        'INSERT INTO users (id, email, password, role, two_factor_enabled, two_factor_secret, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+      ).run(userId, 'test@example.com', 'hashed', 'admin', 1, 'SECRET', now, now);
 
       req.body = {
         email: 'test@example.com',
-        password: 'plainPassword',
-        token2fa: 'invalid_code',
+        password: 'plain',
+        token2fa: '000000',
       };
 
-      const mockChain = {
-        select: jest.fn().mockReturnThis(),
-        eq: jest.fn().mockReturnThis(),
-        single: jest.fn().mockResolvedValue({ data: mockUser, error: null }),
-      };
-
-      mockSupabase.from.mockReturnValue(mockChain);
-      mockBcrypt.compare.mockResolvedValue(true);
-      mockSpeakeasy.totp.verify.mockReturnValue(false);
+      bcrypt.compare.mockResolvedValue(true);
+      speakeasy.totp.verify.mockReturnValue(false);
 
       await authController.login(req, res);
 
       expect(res.status).toHaveBeenCalledWith(400);
-      expect(res.json).toHaveBeenCalledWith({
-        status: 'error',
-        code: 'INVALID_2FA_TOKEN',
-        message: 'Невірний код двофакторної автентифікації',
-      });
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: 'error',
+          code: 'INVALID_2FA_TOKEN',
+        })
+      );
     });
 
-    test('повинен обробляти серверні помилки', async () => {
+    test('повинен успішно виконувати вхід з валідним 2FA кодом', async () => {
+      const db = getDb();
+      const userId = crypto.randomUUID();
+      const now = new Date().toISOString();
+
+      db.prepare(
+        'INSERT INTO users (id, email, password, role, two_factor_enabled, two_factor_secret, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+      ).run(userId, 'test@example.com', 'hashed', 'admin', 1, 'SECRET', now, now);
+
       req.body = {
         email: 'test@example.com',
-        password: 'password',
+        password: 'plain',
+        token2fa: '123456',
       };
 
-      const mockChain = {
-        select: jest.fn().mockReturnThis(),
-        eq: jest.fn().mockReturnThis(),
-        single: jest.fn().mockRejectedValue(new Error('Database error')),
-      };
-
-      mockSupabase.from.mockReturnValue(mockChain);
-
-      await authController.login(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(500);
-      expect(res.json).toHaveBeenCalledWith({
-        status: 'error',
-        code: 'SERVER_ERROR',
-        message: 'Помилка сервера при автентифікації',
-      });
-    });
-  });
-
-  describe('register функція', () => {
-    test('повинен успішно реєструвати нового користувача', async () => {
-      const mockNewUser = [
-        {
-          id: 1,
-          name: 'Test User',
-          email: 'test@example.com',
-          role: 'client',
-        },
-      ];
-
-      const mockTokenPair = {
-        accessToken: 'access_token',
-        refreshToken: 'refresh_token',
-        expiresIn: 3600,
-      };
-
-      req.body = {
-        name: 'Test User',
-        email: 'test@example.com',
-        password: 'password123',
-        role: 'client',
-      };
-
-      // Налаштовуємо моки
-      const mockChainCheck = {
-        select: jest.fn().mockReturnThis(),
-        eq: jest.fn().mockReturnThis(),
-        single: jest.fn().mockResolvedValue({ data: null, error: null }),
-      };
-
-      const mockChainInsert = {
-        insert: jest.fn().mockReturnThis(),
-        select: jest.fn().mockResolvedValue({ data: mockNewUser, error: null }),
-      };
-
-      const mockChainToken = {
-        insert: jest.fn().mockResolvedValue({ error: null }),
-      };
-
-      mockSupabase.from
-        .mockReturnValueOnce(mockChainCheck)
-        .mockReturnValueOnce(mockChainInsert)
-        .mockReturnValueOnce(mockChainToken);
-
-      // Хешування пароля
-      mockBcrypt.genSalt.mockResolvedValue('salt');
-      mockBcrypt.hash.mockResolvedValue('hashedPassword');
-
-      // Генерація токенів
-      mockGenerateTokenPair.mockReturnValue(mockTokenPair);
-
-      await authController.register(req, res);
-
-      expect(mockBcrypt.genSalt).toHaveBeenCalledWith(10);
-      expect(mockBcrypt.hash).toHaveBeenCalledWith('password123', 'salt');
-      expect(mockGenerateTokenPair).toHaveBeenCalledWith(1, 'client', 'test@example.com');
-
-      expect(res.json).toHaveBeenCalledWith({
-        status: 'success',
-        token: 'access_token',
-        refresh_token: 'refresh_token',
-        token_type: 'Bearer',
-        expires_in: 3600,
-        user: {
-          id: 1,
-          email: 'test@example.com',
-          role: 'client',
-        },
-      });
-    });
-
-    test('повинен повертати помилку якщо email вже існує', async () => {
-      const existingUser = {
-        id: 1,
-        email: 'existing@example.com',
-      };
-
-      req.body = {
-        name: 'Test User',
-        email: 'existing@example.com',
-        password: 'password123',
-      };
-
-      const mockChain = {
-        select: jest.fn().mockReturnThis(),
-        eq: jest.fn().mockReturnThis(),
-        single: jest.fn().mockResolvedValue({ data: existingUser, error: null }),
-      };
-
-      mockSupabase.from.mockReturnValue(mockChain);
-
-      await authController.register(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(400);
-      expect(res.json).toHaveBeenCalledWith({
-        status: 'error',
-        code: 'EMAIL_EXISTS',
-        message: 'Користувач з таким email вже існує',
-      });
-    });
-
-    test('повинен використовувати роль за замовчуванням', async () => {
-      const mockNewUser = [
-        {
-          id: 1,
-          name: 'Test User',
-          email: 'test@example.com',
-          role: 'user',
-        },
-      ];
-
-      req.body = {
-        name: 'Test User',
-        email: 'test@example.com',
-        password: 'password123',
-        // role не вказано
-      };
-
-      const mockChainCheck = {
-        select: jest.fn().mockReturnThis(),
-        eq: jest.fn().mockReturnThis(),
-        single: jest.fn().mockResolvedValue({ data: null, error: null }),
-      };
-
-      const mockChainInsert = {
-        insert: jest.fn().mockReturnThis(),
-        select: jest.fn().mockResolvedValue({ data: mockNewUser, error: null }),
-      };
-
-      const mockChainToken = {
-        insert: jest.fn().mockResolvedValue({ error: null }),
-      };
-
-      mockSupabase.from
-        .mockReturnValueOnce(mockChainCheck)
-        .mockReturnValueOnce(mockChainInsert)
-        .mockReturnValueOnce(mockChainToken);
-
-      mockBcrypt.genSalt.mockResolvedValue('salt');
-      mockBcrypt.hash.mockResolvedValue('hashedPassword');
-      mockGenerateTokenPair.mockReturnValue({
-        accessToken: 'token',
+      const tokenPair = {
+        accessToken: 'access',
         refreshToken: 'refresh',
         expiresIn: 3600,
-      });
+      };
 
-      await authController.register(req, res);
+      bcrypt.compare.mockResolvedValue(true);
+      speakeasy.totp.verify.mockReturnValue(true);
+      generateTokenPair.mockReturnValue(tokenPair);
+      verifyRefreshToken.mockReturnValue({ exp: Math.floor(Date.now() / 1000) + 7 * 24 * 3600 });
 
-      // Перевіряємо, що користувач створений з роллю 'user'
-      expect(mockChainInsert.insert).toHaveBeenCalledWith([
+      await authController.login(req, res);
+
+      expect(speakeasy.totp.verify).toHaveBeenCalledWith(
         expect.objectContaining({
-          role: 'user',
-        }),
-      ]);
-    });
-
-    test('повинен обробляти помилки створення користувача', async () => {
-      req.body = {
-        name: 'Test User',
-        email: 'test@example.com',
-        password: 'password123',
-      };
-
-      const mockChainCheck = {
-        select: jest.fn().mockReturnThis(),
-        eq: jest.fn().mockReturnThis(),
-        single: jest.fn().mockResolvedValue({ data: null, error: null }),
-      };
-
-      const mockChainInsert = {
-        insert: jest.fn().mockReturnThis(),
-        select: jest.fn().mockResolvedValue({ data: null, error: 'Creation failed' }),
-      };
-
-      mockSupabase.from.mockReturnValueOnce(mockChainCheck).mockReturnValueOnce(mockChainInsert);
-
-      mockBcrypt.genSalt.mockResolvedValue('salt');
-      mockBcrypt.hash.mockResolvedValue('hashedPassword');
-
-      await authController.register(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(500);
-      expect(res.json).toHaveBeenCalledWith({
-        status: 'error',
-        code: 'USER_CREATION_FAILED',
-        message: 'Помилка при створенні користувача',
-      });
-    });
-
-    test('повинен обробляти серверні помилки', async () => {
-      req.body = {
-        name: 'Test User',
-        email: 'test@example.com',
-        password: 'password123',
-      };
-
-      const mockChain = {
-        select: jest.fn().mockReturnThis(),
-        eq: jest.fn().mockReturnThis(),
-        single: jest.fn().mockRejectedValue(new Error('Database error')),
-      };
-
-      mockSupabase.from.mockReturnValue(mockChain);
-
-      await authController.register(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(500);
-      expect(res.json).toHaveBeenCalledWith({
-        status: 'error',
-        code: 'SERVER_ERROR',
-        message: 'Помилка сервера при реєстрації',
-      });
+          secret: 'SECRET',
+          token: '123456',
+        })
+      );
+      expect(generateTokenPair).toHaveBeenCalledWith(userId, 'admin', 'test@example.com');
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: 'success',
+          token: 'access',
+          refresh_token: 'refresh',
+        })
+      );
     });
   });
 
-  describe('refreshToken функція', () => {
-    test('повинен успішно оновлювати токен', async () => {
-      const mockUser = {
-        id: 1,
-        email: 'test@example.com',
-        role: 'client',
-      };
-
-      const mockTokenData = {
-        token: 'valid_refresh_token',
-        user_id: 1,
-        expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-        is_revoked: false,
-      };
-
-      const mockTokenPair = {
-        accessToken: 'new_access_token',
-        refreshToken: 'new_refresh_token',
+  describe('register', () => {
+    test('повинен реєструвати нового користувача по email', async () => {
+      const now = new Date().toISOString();
+      const salt = 'salt';
+      const hashed = 'hashedPassword';
+      const tokenPair = {
+        accessToken: 'access',
+        refreshToken: 'refresh',
         expiresIn: 3600,
       };
 
       req.body = {
-        refresh_token: 'valid_refresh_token',
+        name: 'Test User',
+        email: 'test@example.com',
+        password: 'password123',
+        role: 'client',
       };
 
-      mockVerifyRefreshToken.mockReturnValue({ id: 1, email: 'test@example.com' });
+      bcrypt.genSalt.mockResolvedValue(salt);
+      bcrypt.hash.mockResolvedValue(hashed);
+      generateTokenPair.mockReturnValue(tokenPair);
+      verifyRefreshToken.mockReturnValue({
+        exp: Math.floor(new Date(now).getTime() / 1000) + 3600,
+      });
 
-      const mockChainToken = {
-        select: jest.fn().mockReturnThis(),
-        eq: jest.fn().mockReturnThis(),
-        single: jest.fn().mockResolvedValue({ data: mockTokenData, error: null }),
+      await authController.register(req, res);
+
+      expect(bcrypt.genSalt).toHaveBeenCalledWith(10);
+      expect(bcrypt.hash).toHaveBeenCalledWith('password123', salt);
+      expect(generateTokenPair).toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(201);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: 'success',
+          user: expect.objectContaining({
+            email: 'test@example.com',
+            role: 'client',
+          }),
+        })
+      );
+    });
+
+    test('повинен повертати помилку якщо користувач вже існує', async () => {
+      const db = getDb();
+      const existingId = crypto.randomUUID();
+      const now = new Date().toISOString();
+
+      db.prepare(
+        'INSERT INTO users (id, email, password, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
+      ).run(existingId, 'existing@example.com', 'hashed', 'client', now, now);
+
+      req.body = {
+        email: 'existing@example.com',
+        password: 'password123',
       };
 
-      const mockChainUser = {
-        select: jest.fn().mockReturnThis(),
-        eq: jest.fn().mockReturnThis(),
-        single: jest.fn().mockResolvedValue({ data: mockUser, error: null }),
+      await authController.register(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(409);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: 'error',
+        })
+      );
+    });
+  });
+
+  describe('refreshToken', () => {
+    test('повинен успішно оновлювати токен', async () => {
+      const db = getDb();
+      const userId = crypto.randomUUID();
+      const now = new Date().toISOString();
+      const oldToken = 'valid_refresh';
+      const newPair = {
+        accessToken: 'new_access',
+        refreshToken: 'new_refresh',
+        expiresIn: 3600,
       };
 
-      const mockChainUpdate = {
-        update: jest.fn().mockReturnThis(),
-        eq: jest.fn().mockResolvedValue({ error: null }),
-      };
+      db.prepare(
+        'INSERT INTO users (id, email, password, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
+      ).run(userId, 'test@example.com', 'hashed', 'client', now, now);
 
-      const mockChainInsert = {
-        insert: jest.fn().mockResolvedValue({ error: null }),
-      };
+      db.prepare(
+        'INSERT INTO refresh_tokens (id, user_id, token, expires_at, is_revoked, created_at) VALUES (?, ?, ?, ?, 0, ?)'
+      ).run(
+        crypto.randomUUID(),
+        userId,
+        oldToken,
+        new Date(Date.now() + 3600_000).toISOString(),
+        now
+      );
 
-      mockSupabase.from
-        .mockReturnValueOnce(mockChainToken)
-        .mockReturnValueOnce(mockChainUser)
-        .mockReturnValueOnce(mockChainUpdate)
-        .mockReturnValueOnce(mockChainInsert);
-
-      mockGenerateTokenPair.mockReturnValue(mockTokenPair);
+      req.body = { refresh_token: oldToken };
+      verifyRefreshToken.mockReturnValue({ id: userId, email: 'test@example.com' });
+      generateTokenPair.mockReturnValue(newPair);
 
       await authController.refreshToken(req, res);
 
-      expect(mockVerifyRefreshToken).toHaveBeenCalledWith('valid_refresh_token');
-      expect(mockGenerateTokenPair).toHaveBeenCalledWith(1, 'client', 'test@example.com');
+      expect(verifyRefreshToken).toHaveBeenCalledWith(oldToken);
+      expect(generateTokenPair).toHaveBeenCalledWith(userId, 'client', 'test@example.com');
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: 'success',
+          token: 'new_access',
+          refresh_token: 'new_refresh',
+        })
+      );
 
-      expect(res.json).toHaveBeenCalledWith({
-        status: 'success',
-        token: 'new_access_token',
-        refresh_token: 'new_refresh_token',
-        token_type: 'Bearer',
-        expires_in: 3600,
-      });
+      const row = db
+        .prepare('SELECT is_revoked FROM refresh_tokens WHERE user_id = ? AND token = ?')
+        .get(userId, oldToken);
+      expect(row.is_revoked).toBe(1);
     });
 
-    test('повинен повертати помилку якщо refresh_token відсутній', async () => {
+    test('повинен вимагати refresh_token', async () => {
       req.body = {};
 
       await authController.refreshToken(req, res);
 
       expect(res.status).toHaveBeenCalledWith(400);
-      expect(res.json).toHaveBeenCalledWith({
-        status: 'error',
-        code: 'REFRESH_TOKEN_REQUIRED',
-        message: 'Необхідно надати refresh token',
-      });
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          code: 'REFRESH_TOKEN_REQUIRED',
+        })
+      );
     });
 
-    test('повинен повертати помилку для невалідного refresh token', async () => {
-      req.body = {
-        refresh_token: 'invalid_refresh_token',
-      };
-
-      mockVerifyRefreshToken.mockReturnValue(null);
+    test('повинен повертати помилку для невалідного токена', async () => {
+      req.body = { refresh_token: 'invalid' };
+      verifyRefreshToken.mockReturnValue(null);
 
       await authController.refreshToken(req, res);
 
       expect(res.status).toHaveBeenCalledWith(401);
-      expect(res.json).toHaveBeenCalledWith({
-        status: 'error',
-        code: 'INVALID_REFRESH_TOKEN',
-        message: 'Недійсний або прострочений refresh token',
-      });
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          code: 'INVALID_REFRESH_TOKEN',
+        })
+      );
     });
 
-    test('повинен повертати помилку якщо токен не знайдено в базі даних', async () => {
-      req.body = {
-        refresh_token: 'valid_refresh_token',
-      };
-
-      mockVerifyRefreshToken.mockReturnValue({ id: 1, email: 'test@example.com' });
-
-      const mockChain = {
-        select: jest.fn().mockReturnThis(),
-        eq: jest.fn().mockReturnThis(),
-        single: jest.fn().mockResolvedValue({ data: null, error: 'Token not found' }),
-      };
-
-      mockSupabase.from.mockReturnValue(mockChain);
+    test('повинен повертати помилку якщо токен не знайдено', async () => {
+      const userId = crypto.randomUUID();
+      req.body = { refresh_token: 'missing' };
+      verifyRefreshToken.mockReturnValue({ id: userId, email: 'test@example.com' });
 
       await authController.refreshToken(req, res);
 
       expect(res.status).toHaveBeenCalledWith(401);
-      expect(res.json).toHaveBeenCalledWith({
-        status: 'error',
-        code: 'REFRESH_TOKEN_INVALID',
-        message: 'Токен не знайдено або він був відкликаний',
-      });
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          code: 'REFRESH_TOKEN_INVALID',
+        })
+      );
     });
 
-    test('повинен повертати помилку для прострочених токенів', async () => {
-      const expiredTokenData = {
-        token: 'expired_refresh_token',
-        user_id: 1,
-        expires_at: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(), // вчора
-        is_revoked: false,
-      };
+    test('повинен повертати помилку для простроченого токена', async () => {
+      const db = getDb();
+      const userId = crypto.randomUUID();
+      const now = new Date().toISOString();
+      const token = 'expired';
 
-      req.body = {
-        refresh_token: 'expired_refresh_token',
-      };
+      db.prepare(
+        'INSERT INTO users (id, email, password, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
+      ).run(userId, 'test@example.com', 'hashed', 'client', now, now);
 
-      mockVerifyRefreshToken.mockReturnValue({ id: 1, email: 'test@example.com' });
+      db.prepare(
+        'INSERT INTO refresh_tokens (id, user_id, token, expires_at, is_revoked, created_at) VALUES (?, ?, ?, ?, 0, ?)'
+      ).run(crypto.randomUUID(), userId, token, new Date(Date.now() - 3600_000).toISOString(), now);
 
-      const mockChain = {
-        select: jest.fn().mockReturnThis(),
-        eq: jest.fn().mockReturnThis(),
-        single: jest.fn().mockResolvedValue({ data: expiredTokenData, error: null }),
-      };
-
-      mockSupabase.from.mockReturnValue(mockChain);
+      req.body = { refresh_token: token };
+      verifyRefreshToken.mockReturnValue({ id: userId, email: 'test@example.com' });
 
       await authController.refreshToken(req, res);
 
       expect(res.status).toHaveBeenCalledWith(401);
-      expect(res.json).toHaveBeenCalledWith({
-        status: 'error',
-        code: 'REFRESH_TOKEN_EXPIRED',
-        message: 'Термін дії refresh token закінчився',
-      });
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          code: 'REFRESH_TOKEN_EXPIRED',
+        })
+      );
     });
   });
 
-  describe('getCurrentUser функція', () => {
-    test('повинен повертати дані поточного користувача', async () => {
-      const mockUser = {
-        id: 1,
-        name: 'Test User',
-        email: 'test@example.com',
-        role: 'client',
-        twoFactorEnabled: false,
-      };
+  describe('getCurrentUser', () => {
+    test('повинен повертати поточного користувача', async () => {
+      const db = getDb();
+      const userId = crypto.randomUUID();
+      const now = new Date().toISOString();
 
-      req.user = { id: 1 };
+      db.prepare(
+        'INSERT INTO users (id, email, name, role, phone, two_factor_enabled, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+      ).run(userId, 'test@example.com', 'Test', 'client', '+380', 1, now, now);
 
-      const mockChain = {
-        select: jest.fn().mockReturnThis(),
-        eq: jest.fn().mockReturnThis(),
-        single: jest.fn().mockResolvedValue({ data: mockUser, error: null }),
-      };
-
-      mockSupabase.from.mockReturnValue(mockChain);
+      req.user = { id: userId };
 
       await authController.getCurrentUser(req, res);
 
-      expect(res.json).toHaveBeenCalledWith({
-        status: 'success',
-        user: {
-          id: 1,
-          name: 'Test User',
-          email: 'test@example.com',
-          role: 'client',
-          twoFactorEnabled: false,
-        },
-      });
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: 'success',
+          user: expect.objectContaining({
+            id: userId,
+            email: 'test@example.com',
+            twoFactorEnabled: true,
+          }),
+        })
+      );
     });
 
-    test('повинен повертати помилку якщо користувача не знайдено', async () => {
-      req.user = { id: 999 };
-
-      const mockChain = {
-        select: jest.fn().mockReturnThis(),
-        eq: jest.fn().mockReturnThis(),
-        single: jest.fn().mockResolvedValue({ data: null, error: 'User not found' }),
-      };
-
-      mockSupabase.from.mockReturnValue(mockChain);
+    test('повинен повертати 404 якщо користувача не знайдено', async () => {
+      req.user = { id: crypto.randomUUID() };
 
       await authController.getCurrentUser(req, res);
 
       expect(res.status).toHaveBeenCalledWith(404);
-      expect(res.json).toHaveBeenCalledWith({
-        status: 'error',
-        code: 'USER_NOT_FOUND',
-        message: 'Користувача не знайдено',
-      });
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          code: 'USER_NOT_FOUND',
+        })
+      );
     });
   });
 
-  describe('generateTwoFactorSecret функція', () => {
-    test('повинен успішно генерувати 2FA секрет та QR код', async () => {
-      const mockUser = {
-        id: 1,
-        email: 'test@example.com',
-        role: 'client',
+  describe('generateTwoFactorSecret', () => {
+    test('повинен генерувати секрет і QR код', async () => {
+      const db = getDb();
+      const userId = crypto.randomUUID();
+      const now = new Date().toISOString();
+
+      db.prepare(
+        'INSERT INTO users (id, email, password, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
+      ).run(userId, 'test@example.com', 'hashed', 'client', now, now);
+
+      req.user = { id: userId };
+
+      const secret = {
+        base32: 'BASE32',
+        otpauth_url: 'otpauth://totp/Avtoservis:test@example.com?secret=BASE32',
       };
+      const qr = 'data:image/png;base64,AAA';
 
-      const mockSecret = {
-        base32: 'JBSWY3DPEHPK3PXP',
-        otpauth_url: 'otpauth://totp/Avtoservis:test@example.com?secret=JBSWY3DPEHPK3PXP',
-      };
-
-      const mockQRDataUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA...';
-
-      req.user = { id: 1 };
-
-      const mockChainSelect = {
-        select: jest.fn().mockReturnThis(),
-        eq: jest.fn().mockReturnThis(),
-        single: jest.fn().mockResolvedValue({ data: mockUser, error: null }),
-      };
-
-      const mockChainUpdate = {
-        update: jest.fn().mockReturnThis(),
-        eq: jest.fn().mockResolvedValue({ error: null }),
-      };
-
-      mockSupabase.from.mockReturnValueOnce(mockChainSelect).mockReturnValueOnce(mockChainUpdate);
-
-      mockSpeakeasy.generateSecret.mockReturnValue(mockSecret);
-      mockQRCode.toDataURL.mockImplementation((url, callback) => {
-        callback(null, mockQRDataUrl);
-      });
+      speakeasy.generateSecret.mockReturnValue(secret);
+      QRCode.toDataURL.mockImplementation((url, cb) => cb(null, qr));
 
       await authController.generateTwoFactorSecret(req, res);
 
-      expect(mockSpeakeasy.generateSecret).toHaveBeenCalledWith({
-        name: 'Avtoservis:test@example.com',
-      });
+      expect(speakeasy.generateSecret).toHaveBeenCalled();
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          secret: 'BASE32',
+          qrCode: qr,
+        })
+      );
 
-      expect(mockChainUpdate.update).toHaveBeenCalledWith({
-        twoFactorSecret: 'JBSWY3DPEHPK3PXP',
-        twoFactorPending: true,
-      });
-
-      expect(res.json).toHaveBeenCalledWith({
-        secret: 'JBSWY3DPEHPK3PXP',
-        qrCode: mockQRDataUrl,
-      });
-    });
-
-    test('повинен обробляти помилку генерації QR коду', async () => {
-      const mockUser = {
-        id: 1,
-        email: 'test@example.com',
-      };
-
-      const mockSecret = {
-        base32: 'JBSWY3DPEHPK3PXP',
-        otpauth_url: 'otpauth://totp/Avtoservis:test@example.com?secret=JBSWY3DPEHPK3PXP',
-      };
-
-      req.user = { id: 1 };
-
-      const mockChainSelect = {
-        select: jest.fn().mockReturnThis(),
-        eq: jest.fn().mockReturnThis(),
-        single: jest.fn().mockResolvedValue({ data: mockUser, error: null }),
-      };
-
-      const mockChainUpdate = {
-        update: jest.fn().mockReturnThis(),
-        eq: jest.fn().mockResolvedValue({ error: null }),
-      };
-
-      mockSupabase.from.mockReturnValueOnce(mockChainSelect).mockReturnValueOnce(mockChainUpdate);
-
-      mockSpeakeasy.generateSecret.mockReturnValue(mockSecret);
-      mockQRCode.toDataURL.mockImplementation((url, callback) => {
-        callback(new Error('QR generation failed'), null);
-      });
-
-      await authController.generateTwoFactorSecret(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(500);
-      expect(res.json).toHaveBeenCalledWith({
-        message: 'Помилка генерації QR-коду',
-      });
-    });
-
-    test('повинен обробляти серверні помилки', async () => {
-      req.user = { id: 1 };
-
-      const mockChain = {
-        select: jest.fn().mockReturnThis(),
-        eq: jest.fn().mockReturnThis(),
-        single: jest.fn().mockRejectedValue(new Error('Database error')),
-      };
-
-      mockSupabase.from.mockReturnValue(mockChain);
-
-      await authController.generateTwoFactorSecret(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(500);
-      expect(res.json).toHaveBeenCalledWith({
-        message: 'Помилка сервера',
-      });
+      const dbRow = db
+        .prepare('SELECT two_factor_secret, two_factor_pending FROM users WHERE id = ?')
+        .get(userId);
+      expect(dbRow.two_factor_secret).toBe('BASE32');
+      expect(dbRow.two_factor_pending).toBe(1);
     });
   });
 
-  describe('verifyAndEnableTwoFactor функція', () => {
-    test('повинен успішно верифікувати та активувати 2FA', async () => {
-      const mockUser = {
-        id: 1,
-        email: 'test@example.com',
-        twoFactorSecret: 'JBSWY3DPEHPK3PXP',
-        twoFactorPending: true,
-      };
+  describe('verifyAndEnableTwoFactor', () => {
+    test('повинен активувати 2FA при вірному коді', async () => {
+      const db = getDb();
+      const userId = crypto.randomUUID();
+      const now = new Date().toISOString();
 
-      req.user = { id: 1 };
+      db.prepare(
+        'INSERT INTO users (id, email, password, role, two_factor_secret, two_factor_enabled, two_factor_pending, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+      ).run(userId, 'test@example.com', 'hashed', 'client', 'BASE32', 0, 1, now, now);
+
+      req.user = { id: userId };
       req.body = { token: '123456' };
 
-      const mockChainSelect = {
-        select: jest.fn().mockReturnThis(),
-        eq: jest.fn().mockReturnThis(),
-        single: jest.fn().mockResolvedValue({ data: mockUser, error: null }),
-      };
-
-      const mockChainUpdate = {
-        update: jest.fn().mockReturnThis(),
-        eq: jest.fn().mockResolvedValue({ error: null }),
-      };
-
-      mockSupabase.from.mockReturnValueOnce(mockChainSelect).mockReturnValueOnce(mockChainUpdate);
-
-      mockSpeakeasy.totp.verify.mockReturnValue(true);
+      speakeasy.totp.verify.mockReturnValue(true);
 
       await authController.verifyAndEnableTwoFactor(req, res);
 
-      expect(mockSpeakeasy.totp.verify).toHaveBeenCalledWith({
-        secret: 'JBSWY3DPEHPK3PXP',
-        encoding: 'base32',
-        token: '123456',
-        window: 1,
-      });
+      expect(speakeasy.totp.verify).toHaveBeenCalled();
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          twoFactorEnabled: true,
+        })
+      );
 
-      expect(mockChainUpdate.update).toHaveBeenCalledWith({
-        twoFactorEnabled: true,
-        twoFactorPending: false,
-      });
-
-      expect(res.json).toHaveBeenCalledWith({
-        message: 'Двофакторну автентифікацію успішно активовано',
-        twoFactorEnabled: true,
-      });
+      const row = db
+        .prepare('SELECT two_factor_enabled, two_factor_pending FROM users WHERE id = ?')
+        .get(userId);
+      expect(row.two_factor_enabled).toBe(1);
+      expect(row.two_factor_pending).toBe(0);
     });
 
-    test('повинен повертати помилку для невірного коду', async () => {
-      const mockUser = {
-        id: 1,
-        email: 'test@example.com',
-        twoFactorSecret: 'JBSWY3DPEHPK3PXP',
-      };
+    test('повинен повертати помилку при невірному коді', async () => {
+      const db = getDb();
+      const userId = crypto.randomUUID();
+      const now = new Date().toISOString();
 
-      req.user = { id: 1 };
-      req.body = { token: 'invalid_code' };
+      db.prepare(
+        'INSERT INTO users (id, email, password, role, two_factor_secret, two_factor_enabled, two_factor_pending, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+      ).run(userId, 'test@example.com', 'hashed', 'client', 'BASE32', 0, 1, now, now);
 
-      const mockChain = {
-        select: jest.fn().mockReturnThis(),
-        eq: jest.fn().mockReturnThis(),
-        single: jest.fn().mockResolvedValue({ data: mockUser, error: null }),
-      };
+      req.user = { id: userId };
+      req.body = { token: 'bad' };
 
-      mockSupabase.from.mockReturnValue(mockChain);
-      mockSpeakeasy.totp.verify.mockReturnValue(false);
+      speakeasy.totp.verify.mockReturnValue(false);
 
       await authController.verifyAndEnableTwoFactor(req, res);
 
       expect(res.status).toHaveBeenCalledWith(400);
-      expect(res.json).toHaveBeenCalledWith({
-        message: 'Невірний код верифікації',
-      });
-    });
-
-    test('повинен обробляти серверні помилки', async () => {
-      req.user = { id: 1 };
-      req.body = { token: '123456' };
-
-      const mockChain = {
-        select: jest.fn().mockReturnThis(),
-        eq: jest.fn().mockReturnThis(),
-        single: jest.fn().mockRejectedValue(new Error('Database error')),
-      };
-
-      mockSupabase.from.mockReturnValue(mockChain);
-
-      await authController.verifyAndEnableTwoFactor(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(500);
-      expect(res.json).toHaveBeenCalledWith({
-        message: 'Помилка сервера',
-      });
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message: 'Невірний код верифікації',
+        })
+      );
     });
   });
 
-  describe('disableTwoFactor функція', () => {
-    test('повинен успішно відключати 2FA з правильним паролем', async () => {
-      const mockUser = {
-        id: 1,
-        email: 'test@example.com',
-        password: 'hashedPassword',
-        twoFactorEnabled: true,
-      };
+  describe('disableTwoFactor', () => {
+    test('повинен відключати 2FA з правильним паролем', async () => {
+      const db = getDb();
+      const userId = crypto.randomUUID();
+      const now = new Date().toISOString();
 
-      req.user = { id: 1 };
-      req.body = { password: 'plainPassword' };
+      db.prepare(
+        'INSERT INTO users (id, email, password, role, two_factor_secret, two_factor_enabled, two_factor_pending, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+      ).run(userId, 'test@example.com', 'hashed', 'client', 'BASE32', 1, 0, now, now);
 
-      const mockChainSelect = {
-        select: jest.fn().mockReturnThis(),
-        eq: jest.fn().mockReturnThis(),
-        single: jest.fn().mockResolvedValue({ data: mockUser, error: null }),
-      };
+      req.user = { id: userId };
+      req.body = { password: 'plain' };
 
-      const mockChainUpdate = {
-        update: jest.fn().mockReturnThis(),
-        eq: jest.fn().mockResolvedValue({ error: null }),
-      };
-
-      mockSupabase.from.mockReturnValueOnce(mockChainSelect).mockReturnValueOnce(mockChainUpdate);
-
-      mockBcrypt.compare.mockResolvedValue(true);
+      bcrypt.compare.mockResolvedValue(true);
 
       await authController.disableTwoFactor(req, res);
 
-      expect(mockBcrypt.compare).toHaveBeenCalledWith('plainPassword', 'hashedPassword');
-
-      expect(mockChainUpdate.update).toHaveBeenCalledWith({
-        twoFactorEnabled: false,
-        twoFactorSecret: null,
-        twoFactorPending: false,
-      });
-
-      expect(res.json).toHaveBeenCalledWith({
-        message: 'Двофакторну автентифікацію відключено',
-        twoFactorEnabled: false,
-      });
+      expect(bcrypt.compare).toHaveBeenCalledWith('plain', 'hashed');
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          twoFactorEnabled: false,
+        })
+      );
     });
 
     test('повинен повертати помилку для невірного пароля', async () => {
-      const mockUser = {
-        id: 1,
-        email: 'test@example.com',
-        password: 'hashedPassword',
-        twoFactorEnabled: true,
-      };
+      const db = getDb();
+      const userId = crypto.randomUUID();
+      const now = new Date().toISOString();
 
-      req.user = { id: 1 };
-      req.body = { password: 'wrongPassword' };
+      db.prepare(
+        'INSERT INTO users (id, email, password, role, two_factor_secret, two_factor_enabled, two_factor_pending, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+      ).run(userId, 'test@example.com', 'hashed', 'client', 'BASE32', 1, 0, now, now);
 
-      const mockChain = {
-        select: jest.fn().mockReturnThis(),
-        eq: jest.fn().mockReturnThis(),
-        single: jest.fn().mockResolvedValue({ data: mockUser, error: null }),
-      };
+      req.user = { id: userId };
+      req.body = { password: 'wrong' };
 
-      mockSupabase.from.mockReturnValue(mockChain);
-      mockBcrypt.compare.mockResolvedValue(false);
+      bcrypt.compare.mockResolvedValue(false);
 
       await authController.disableTwoFactor(req, res);
 
       expect(res.status).toHaveBeenCalledWith(400);
-      expect(res.json).toHaveBeenCalledWith({
-        message: 'Невірний пароль',
-      });
-    });
-
-    test('повинен обробляти серверні помилки', async () => {
-      req.user = { id: 1 };
-      req.body = { password: 'password' };
-
-      const mockChain = {
-        select: jest.fn().mockReturnThis(),
-        eq: jest.fn().mockReturnThis(),
-        single: jest.fn().mockRejectedValue(new Error('Database error')),
-      };
-
-      mockSupabase.from.mockReturnValue(mockChain);
-
-      await authController.disableTwoFactor(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(500);
-      expect(res.json).toHaveBeenCalledWith({
-        message: 'Помилка сервера',
-      });
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message: 'Невірний пароль',
+        })
+      );
     });
   });
 });

@@ -3,7 +3,8 @@ import * as Device from 'expo-device';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { supabase } from './supabaseClient';
+import axiosAuth from './axiosConfig';
+import secureStorage, { SECURE_STORAGE_KEYS } from '../utils/secureStorage';
 
 // Налаштування обробки сповіщень
 Notifications.setNotificationHandler({
@@ -77,8 +78,11 @@ export const registerForPushNotifications = async () => {
 export const sendPushTokenToServer = async (pushToken, authToken) => {
   try {
     if (!pushToken) return false;
-    const { data } = await supabase.auth.getSession();
-    const uid = data?.session?.user?.id || null;
+    const storedUser = await secureStorage.secureGet(
+      SECURE_STORAGE_KEYS.USER_DATA,
+      true
+    );
+    const uid = storedUser && storedUser.id ? storedUser.id : null;
     if (!uid) return false;
     let installationId = await AsyncStorage.getItem('installation_id');
     if (!installationId) {
@@ -93,10 +97,7 @@ export const sendPushTokenToServer = async (pushToken, authToken) => {
       app_version: Constants.expoConfig?.version || '1.0.0',
       last_used_at: new Date().toISOString()
     };
-    const { error } = await supabase
-      .from('push_tokens')
-      .upsert(payload, { onConflict: 'user_id,device_id' });
-    if (error) throw error;
+    await axiosAuth.post('/api/push-tokens', payload);
     return true;
   } catch (error) {
     console.error('[PushNotifications] Помилка при відправці токена на сервер:', error);

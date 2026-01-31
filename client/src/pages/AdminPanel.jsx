@@ -26,8 +26,8 @@ const AdminPanel = () => {
   const { isAdmin } = useAuth();
   const [activeTab, setActiveTab] = useState(0);
 
-  // Redirect if not admin
-  if (!isAdmin) {
+  // Redirect if not master-mechanic (єдиний "адмін")
+  if (!isAdmin()) {
     return <Navigate to="/" />;
   }
 

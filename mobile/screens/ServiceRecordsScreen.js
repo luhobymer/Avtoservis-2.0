@@ -3,7 +3,6 @@ import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, Ale
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
-import { supabase } from '../api/supabaseClient';
 import { getAllServiceRecords } from '../api/serviceRecordsService';
 
 export default function ServiceRecordsScreen({ navigation }) {
@@ -21,21 +20,11 @@ export default function ServiceRecordsScreen({ navigation }) {
       const data = await getAllServiceRecords();
       const recordsData = Array.isArray(data) ? data : [];
 
-      const vehicleIds = [...new Set(recordsData.map(r => r.vehicle_id).filter(Boolean))];
-      let vehiclesMap = {};
-      if (vehicleIds.length > 0) {
-        const { data: vehicles } = await supabase
-          .from('vehicles')
-          .select('id, make, model')
-          .in('id', vehicleIds);
-        (vehicles || []).forEach(v => { vehiclesMap[v.id] = v; });
-      }
-
       const normalized = recordsData.map(r => ({
         id: r.id,
         vehicle: {
-          brand: vehiclesMap[r.vehicle_id]?.make || '',
-          model: vehiclesMap[r.vehicle_id]?.model || ''
+          brand: r.vehicle?.make || r.vehicle?.brand || '',
+          model: r.vehicle?.model || ''
         },
         date: r.service_date,
         serviceType: (r.description || '').split(':')[0] || 'Сервіс',
