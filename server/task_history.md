@@ -18,3 +18,4 @@
 | 2026-02-04 | Інтеграція OCR (Tesseract.js) для зчитування запчастин з фото | [ocrController.js](./controllers/ocrController.js) |
 | 2026-02-04 | Додано можливість завантаження фото в "Мої запчастини" та при завершенні запису | [MyParts.jsx](../client/src/pages/MyParts.jsx), [AppointmentDetails.jsx](../client/src/pages/AppointmentDetails.jsx) |
 | 2026-02-04 | Додано можливість ручного додавання запчастин клієнтом при створенні запису | [AppointmentDetails.jsx](../client/src/pages/AppointmentDetails.jsx) |
+| 2026-02-04 | Виправлено відображення ключів замість перекладів та даних у формі редагування запису | [AppointmentDetails.jsx](../client/src/pages/AppointmentDetails.jsx), locales |
