@@ -324,22 +324,18 @@ const AppointmentDetails = ({ isNew }) => {
     const selectedService = formData.service_id
       ? (services || []).find((s) => String(s.id) === String(formData.service_id))
       : null;
-    const selectedCategory =
-      (selectedService?.category && selectedService.category.id) ||
-      selectedService?.category_id ||
-      selectedService?.categoryId ||
-      '';
-    if (selectedCategory) {
+    if (selectedService) {
+      const selectedCategory =
+        (selectedService?.category && selectedService.category.id) ||
+        selectedService?.category_id ||
+        selectedService?.categoryId ||
+        '__none__';
       setServiceCategoryId(String(selectedCategory));
       return;
     }
     // If no service selected, or service has no category, don't auto-select first category if we are editing
     if (!isNewAppointment && !serviceCategoryId) {
-        // try to find category if service_id is present but not in services list yet? 
-        // Or if just loaded. 
-        // If we have services, but no category is selected, maybe we shouldn't force one.
-        // But for UX, showing first is okay if new.
-        // For editing, we want to show the category of the current service.
+       // Do nothing, let user select
     }
     
     if (!serviceCategoryId && serviceCategories.length > 0 && isNewAppointment) {
