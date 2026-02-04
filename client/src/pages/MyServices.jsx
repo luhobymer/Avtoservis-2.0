@@ -57,6 +57,17 @@ const formatServiceDuration = (service) => {
   return '';
 };
 
+const parseNumericOrText = (value) => {
+  const raw = value == null ? '' : String(value).trim();
+  if (!raw) return { number: null, text: null };
+  const isPureNumber = /^-?\d+(?:[.,]\d+)?$/.test(raw);
+  if (isPureNumber) {
+    const n = Number(raw.replace(',', '.'));
+    if (Number.isFinite(n)) return { number: n, text: null };
+  }
+  return { number: null, text: raw };
+};
+
 const MyServices = () => {
   const { t } = useTranslation();
   const { isAdmin, isMaster } = useAuth();
@@ -108,16 +119,23 @@ const MyServices = () => {
         setLoading(true);
         setError('');
         setCanSelectMechanic(false);
-        try {
-          const current = await getCurrentMechanic();
-          if (current?.id) {
-            setMechanics([current]);
-            setMechanicId(String(current.id));
-            setCanSelectMechanic(false);
-            return;
+        if (isMasterUser) {
+          try {
+            const current = await getCurrentMechanic();
+            if (current?.id) {
+              setMechanics([current]);
+              setMechanicId(String(current.id));
+              setCanSelectMechanic(false);
+              return;
+            }
+          } catch (_) {
+            void _;
           }
-        } catch (_) {
-          void _;
+          setMechanics([]);
+          setMechanicId('');
+          setCanSelectMechanic(false);
+          setError(t('errors.mechanicProfileNotFound', 'Профіль механіка не знайдено'));
+          return;
         }
 
         const list = await listMechanics();
@@ -165,8 +183,8 @@ const MyServices = () => {
       id: service?.id || '',
       name: service?.name || '',
       description: service?.description || '',
-      price: service?.price != null ? String(service.price) : '',
-      duration: service?.duration != null ? String(service.duration) : '',
+      price: service?.price_text != null ? String(service.price_text) : service?.price != null ? String(service.price) : '',
+      duration: service?.duration_text != null ? String(service.duration_text) : service?.duration != null ? String(service.duration) : '',
       isOwned
     });
     setEditOpen(true);
@@ -182,11 +200,15 @@ const MyServices = () => {
 
     setSaving(true);
     try {
+      const priceParsed = parseNumericOrText(draft.price);
+      const durationParsed = parseNumericOrText(draft.duration);
       await createMechanicService(mechanicId, {
         name,
         description: String(draft.description || '').trim() || null,
-        price: draft.price === '' ? null : Number(draft.price),
-        duration: draft.duration === '' ? null : Number(draft.duration)
+        price: priceParsed.number,
+        price_text: priceParsed.text,
+        duration: durationParsed.number,
+        duration_text: durationParsed.text
       });
       await reloadServices(mechanicId);
       setAddOpen(false);
@@ -208,6 +230,21 @@ const MyServices = () => {
 
     setSaving(true);
     try {
+      const priceParsed = parseNumericOrText(draft.price);
+      const durationParsed = parseNumericOrText(draft.duration);
+
+      if (!draft.isOwned) {
+        if (priceParsed.text || durationParsed.text) {
+          setSnackbar({
+            open: true,
+            message: t('errors.validation', 'Для не власних послуг можна змінювати лише числову ціну/час'),
+            severity: 'error'
+          });
+          setSaving(false);
+          return;
+        }
+      }
+
       await updateMechanicServiceDetails(
         mechanicId,
         draft.id,
@@ -215,12 +252,14 @@ const MyServices = () => {
           ? {
               name,
               description: String(draft.description || '').trim() || null,
-              price: draft.price === '' ? null : Number(draft.price),
-              duration: draft.duration === '' ? null : Number(draft.duration)
+              price: priceParsed.number,
+              price_text: priceParsed.text,
+              duration: durationParsed.number,
+              duration_text: durationParsed.text
             }
           : {
-              price: draft.price === '' ? null : Number(draft.price),
-              duration: draft.duration === '' ? null : Number(draft.duration)
+              price: priceParsed.number,
+              duration: durationParsed.number
             }
       );
       await reloadServices(mechanicId);

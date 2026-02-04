@@ -1,3 +1,3 @@
 // Реекспорт App для Expo
-import App from './expo-app/App';
+import App from './mobile/App';
 export default App;

@@ -150,6 +150,8 @@ CREATE TABLE IF NOT EXISTS appointments (
   service_id TEXT,
   service_ids TEXT,
   mechanic_id TEXT,
+  appointment_price REAL,
+  appointment_duration INTEGER,
   scheduled_time TEXT,
   status TEXT DEFAULT 'pending',
   appointment_date TEXT,

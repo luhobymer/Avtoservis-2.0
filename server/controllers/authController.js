@@ -45,7 +45,9 @@ const insertRefreshToken = async (userId, token, expiresAt) => {
  */
 exports.login = async (req, res) => {
   try {
-    const { email, password, token2fa, phone, identifier } = req.body;
+    const { password, token2fa, identifier } = req.body;
+    const email = req.body.email ? req.body.email.trim() : null;
+    const phone = req.body.phone ? req.body.phone.trim() : null;
 
     const normalizedIdentifier =
       identifier && typeof identifier === 'string' ? identifier.trim() : null;
@@ -78,6 +80,20 @@ exports.login = async (req, res) => {
         status: 'error',
         code: 'INVALID_CREDENTIALS',
         message: 'Невірні дані для входу',
+      });
+    }
+
+    const requiresEmailConfirmation =
+      Boolean(user.email) &&
+      Boolean(user.email_verification_token_hash) &&
+      Number(user.email_verified || 0) !== 1;
+
+    if (requiresEmailConfirmation) {
+      return res.status(403).json({
+        status: 'error',
+        code: 'EMAIL_NOT_VERIFIED',
+        requiresEmailConfirmation: true,
+        message: 'Потрібно підтвердити email перед входом',
       });
     }
 
@@ -223,10 +239,10 @@ exports.register = async (req, res) => {
   try {
     const {
       name,
-      email,
       password,
       role,
-      phone,
+      phone: rawPhone,
+      email: rawEmail,
       firstName,
       lastName,
       patronymic,
@@ -234,6 +250,9 @@ exports.register = async (req, res) => {
       city,
       username,
     } = req.body;
+
+    const email = rawEmail ? rawEmail.trim() : null;
+    const phone = rawPhone ? rawPhone.trim() : null;
 
     // Використовуємо ім'я з параметрів або комбінуємо firstName і lastName
     const normalizedRole = (role || 'client').toLowerCase();
@@ -287,6 +306,27 @@ exports.register = async (req, res) => {
       });
     }
 
+    const hasAppBaseUrl = Boolean(process.env.APP_BASE_URL);
+    const appBaseUrl = hasAppBaseUrl
+      ? String(process.env.APP_BASE_URL).trim()
+      : 'http://localhost:5173';
+
+    const requiresEmailConfirmation = Boolean(hasEmail);
+    const verificationTokenPlain = requiresEmailConfirmation
+      ? crypto.randomBytes(32).toString('hex')
+      : null;
+    const verificationTokenHash = verificationTokenPlain
+      ? crypto.createHash('sha256').update(verificationTokenPlain).digest('hex')
+      : null;
+    const verificationExpiresAt = verificationTokenPlain
+      ? new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
+      : null;
+
+    const verificationLink =
+      verificationTokenPlain && hasEmail
+        ? `${appBaseUrl.replace(/\/$/, '')}/auth/verify-email?email=${encodeURIComponent(email)}&token=${encodeURIComponent(verificationTokenPlain)}`
+        : null;
+
     // Хешуємо пароль
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(userPassword, salt);
@@ -301,6 +341,10 @@ exports.register = async (req, res) => {
       patronymic: normalizedPatronymic,
       region: normalizedRegion,
       city: normalizedCity,
+      email_verified: requiresEmailConfirmation ? 0 : 1,
+      email_verification_token_hash: verificationTokenHash,
+      email_verification_expires_at: verificationExpiresAt,
+      email_verified_at: null,
     };
 
     // Додаємо email або телефон в залежності від наявності
@@ -327,10 +371,14 @@ exports.register = async (req, res) => {
         city,
         two_factor_enabled,
         two_factor_pending,
+        email_verified,
+        email_verification_token_hash,
+        email_verification_expires_at,
+        email_verified_at,
         created_at,
         updated_at
       )
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?)`
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         createdUserId,
@@ -344,6 +392,10 @@ exports.register = async (req, res) => {
         userData.patronymic || null,
         userData.region || null,
         userData.city || null,
+        userData.email_verified,
+        userData.email_verification_token_hash,
+        userData.email_verification_expires_at,
+        userData.email_verified_at,
         now,
         now
       );
@@ -353,19 +405,19 @@ exports.register = async (req, res) => {
         'SELECT id, email, phone, role, name, first_name, last_name, patronymic, region, city FROM users WHERE id = ?'
       )
       .get(createdUserId);
-    // Генеруємо пару токенів
-    const tokenPair = generateTokenPair(
-      createdUser.id,
-      createdUser.role,
-      createdUser.email || createdUser.phone
-    );
-
-    // Зберігаємо refresh token у базі даних
-    try {
-      await insertRefreshToken(createdUser.id, tokenPair.refreshToken);
-    } catch (tokenError) {
-      console.error('[Auth] Error saving refresh token:', tokenError);
-      // Продовжуємо виконання, навіть якщо не вдалося зберегти refresh token
+    if (requiresEmailConfirmation && verificationLink) {
+      try {
+        if (mailer.isConfigured()) {
+          await mailer.sendMail({
+            to: createdUser.email,
+            subject: 'Підтвердження реєстрації',
+            text: `Дякуємо за реєстрацію. Для підтвердження email відкрийте посилання: ${verificationLink}`,
+            html: `<p>Дякуємо за реєстрацію.</p><p>Для підтвердження email відкрийте посилання:</p><p><a href="${verificationLink}">${verificationLink}</a></p>`,
+          });
+        }
+      } catch (mailError) {
+        console.error('[Auth] Email verification send failed:', mailError?.message || mailError);
+      }
     }
 
     // Підготовка даних користувача для відповіді
@@ -383,7 +435,31 @@ exports.register = async (req, res) => {
     if (createdUser.region) userResponse.region = createdUser.region;
     if (createdUser.city) userResponse.city = createdUser.city;
 
-    res.status(201).json({
+    if (requiresEmailConfirmation) {
+      return res.status(201).json({
+        status: 'success',
+        requiresEmailConfirmation: true,
+        message: 'Реєстрація успішна. Підтвердіть email, щоб увійти в систему.',
+        verificationLink:
+          mailer.isConfigured() || process.env.NODE_ENV === 'production'
+            ? undefined
+            : verificationLink,
+      });
+    }
+
+    const tokenPair = generateTokenPair(
+      createdUser.id,
+      createdUser.role,
+      createdUser.email || createdUser.phone
+    );
+
+    try {
+      await insertRefreshToken(createdUser.id, tokenPair.refreshToken);
+    } catch (tokenError) {
+      console.error('[Auth] Error saving refresh token:', tokenError);
+    }
+
+    return res.status(201).json({
       status: 'success',
       token: tokenPair.accessToken,
       refresh_token: tokenPair.refreshToken,
@@ -397,6 +473,116 @@ exports.register = async (req, res) => {
       status: 'error',
       code: 'SERVER_ERROR',
       message: 'Помилка сервера при реєстрації',
+    });
+  }
+};
+
+exports.verifyEmail = async (req, res) => {
+  try {
+    const { email, token } = req.body || {};
+    const normalizedEmail = email && typeof email === 'string' ? email.trim() : null;
+    const normalizedToken = token && typeof token === 'string' ? token.trim() : null;
+
+    if (!normalizedEmail || !normalizedToken) {
+      return res.status(400).json({
+        status: 'error',
+        code: 'MISSING_TOKEN',
+        message: 'Необхідно надати email та токен підтвердження',
+      });
+    }
+
+    const tokenHash = crypto.createHash('sha256').update(normalizedToken).digest('hex');
+    const db = await getDb();
+    let user = await db
+      .prepare(
+        'SELECT id, email, email_verified, email_verification_token_hash, email_verification_expires_at FROM users WHERE lower(email) = lower(?) LIMIT 1'
+      )
+      .get(normalizedEmail);
+
+    // Якщо користувача не знайдено за trimmed email, спробуємо знайти за оригінальним (на випадок, якщо при реєстрації потрапив пробіл)
+    if (!user && email !== normalizedEmail) {
+      user = await db
+        .prepare(
+          'SELECT id, email, email_verified, email_verification_token_hash, email_verification_expires_at FROM users WHERE lower(email) = lower(?) LIMIT 1'
+        )
+        .get(email);
+    }
+
+    if (!user) {
+      return res.status(404).json({
+        status: 'error',
+        code: 'USER_NOT_FOUND',
+        message: 'Користувача не знайдено',
+      });
+    }
+
+    if (Number(user.email_verified || 0) === 1) {
+      return res.json({
+        status: 'success',
+        message: 'Email вже підтверджено',
+      });
+    }
+
+    if (
+      !user.email_verification_token_hash ||
+      String(user.email_verification_token_hash) !== tokenHash
+    ) {
+      return res.status(400).json({
+        status: 'error',
+        code: 'INVALID_TOKEN',
+        message: 'Недійсний токен підтвердження',
+      });
+    }
+
+    if (user.email_verification_expires_at) {
+      const expiry = new Date(user.email_verification_expires_at);
+      if (Number.isNaN(expiry.getTime()) || expiry < new Date()) {
+        return res.status(400).json({
+          status: 'error',
+          code: 'TOKEN_EXPIRED',
+          message: 'Термін дії токена підтвердження закінчився',
+        });
+      }
+    }
+
+    const now = new Date().toISOString();
+
+    // Спробуємо виправити email в базі, якщо він містить пробіли
+    let emailToUpdate = null;
+    if (user.email && user.email !== user.email.trim()) {
+      const trimmed = user.email.trim();
+      const conflict = await db
+        .prepare('SELECT id FROM users WHERE lower(email) = lower(?) AND id != ?')
+        .get(trimmed, user.id);
+      if (!conflict) {
+        emailToUpdate = trimmed;
+      }
+    }
+
+    if (emailToUpdate) {
+      await db
+        .prepare(
+          'UPDATE users SET email_verified = 1, email_verification_token_hash = NULL, email_verification_expires_at = NULL, email_verified_at = ?, updated_at = ?, email = ? WHERE id = ?'
+        )
+        .run(now, now, emailToUpdate, user.id);
+    } else {
+      await db
+        .prepare(
+          'UPDATE users SET email_verified = 1, email_verification_token_hash = NULL, email_verification_expires_at = NULL, email_verified_at = ?, updated_at = ? WHERE id = ?'
+        )
+        .run(now, now, user.id);
+    }
+
+    return res.json({
+      status: 'success',
+      message: 'Email підтверджено. Тепер можна увійти.',
+    });
+  } catch (err) {
+    console.error('[Auth] Verify email error:', err);
+    return res.status(500).json({
+      status: 'error',
+      code: 'SERVER_ERROR',
+      message: 'Помилка сервера при підтвердженні email',
     });
   }
 };

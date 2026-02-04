@@ -8,7 +8,9 @@
     "addVehicle": "Add Vehicle",
     "newAppointment": "New Appointment",
     "serviceHistory": "Service History",
-    "editProfile": "Edit Profile"
+    "editProfile": "Edit Profile",
+    "myServices": "My Services",
+    "myChats": "My Chats"
   },
   "common": {
     "loading": "Loading...",
@@ -25,7 +27,12 @@
     "error": "Error",
     "actions": "Actions",
     "page": "Page",
-    "notAvailable": "Not available"
+    "notAvailable": "Not available",
+    "km": "km",
+    "all": "All",
+    "accept": "Accept",
+    "reject": "Reject",
+    "saved": "Saved"
   },
   "auth": {
     "login": "Login",
@@ -33,13 +40,32 @@
     "logout": "Logout",
     "email": "Email",
     "password": "Password",
+    "currentPassword": "Current Password",
+    "newPassword": "New Password",
+    "confirmPassword": "Confirm New Password",
+    "emailCannotBeChanged": "Email cannot be changed",
+    "leaveBlankPassword": "Leave blank if you don't want to change the password",
     "name": "Name",
-    "phone": "Phone",
-    "forgotPassword": "Forgot Password?",
-    "resetPassword": "Reset Password",
+    "lastName": "Last Name",
+    "patronymic": "Patronymic",
+    "region": "Region",
+    "city": "City",
+    "phone": "Phone (format: +380XXXXXXXXX or 0XXXXXXXXX)",
     "role": "Role",
-    "owner": "Owner",
-    "serviceTypes": {
+    "roleClient": "Client",
+    "roleMaster": "Master",
+    "registrationSuccess": "Registration successful. You can now log in.",
+    "registrationRequiresEmailConfirmation": "Registration successful. Please confirm your email to log in.",
+    "openEmailVerificationLink": "Open verification link (dev)",
+    "verifyEmailTitle": "Email verification",
+    "verifyEmailMissingParams": "Invalid verification link (missing email or token)",
+    "verifyEmailSuccess": "Email verified. You can now log in.",
+    "verifyEmailFailed": "Failed to verify email",
+    "goToLogin": "Go to login",
+    "forgotPassword": "Forgot Password?",
+    "resetPassword": "Reset Password"
+  },
+  "serviceTypes": {
     "air_conditioning": "Air Conditioning",
     "alignment": "Alignment",
     "battery_check": "Battery Check",
@@ -58,23 +84,56 @@
     "transmission_service": "Transmission Service",
     "wipers": "Wipers",
     "other": "Other"
-  ,
-    "oil_change": "Oil Change",
-    "brake_service": "Brake Service",
-    "tire_rotation": "Tire Rotation",
-    "battery_check": "Battery Check",
-    "inspection": "Inspection",
-    "engine_diagnostics": "Engine Diagnostics",
-    "other": "Other"
+  },
+  "validation": {
+    "required_field": "Required field",
+    "invalid_vin": "Invalid VIN format (17 characters)",
+    "invalid_license_plate": "Invalid license plate format",
+    "invalid_engine_volume": "Invalid engine volume",
+    "invalid_mileage": "Invalid mileage",
+    "vin_format": "Enter 17 characters",
+    "license_plate_format": "Example: AA1234AA",
+    "engine_volume_format": "Example: 2.0",
+    "mileage_format": "In kilometers"
   },
   "errors": {
-      "required_field": "This field is required",
-      "phone_format": "Invalid phone format"
-    }
+    "required_field": "This field is required",
+    "phone_format": "Invalid phone format",
+    "rate_limit": "Too many attempts. Try again in {{seconds}} seconds.",
+    "forgotPassword": "Forgot Password?",
+    "resetPassword": "Reset Password",
+    "role": "Role",
+    "owner": "Owner",
+    "roleAdmin": "Administrator",
+    "roleMaster": "Master",
+    "roleClient": "Client",
+    "registrationSuccess": "Registration successful. You can now log in.",
+    "registrationRequiresEmailConfirmation": "Registration successful. Please confirm your email to log in.",
+    "verifyEmailMissingParams": "Invalid verification link (missing email or token)",
+    "verifyEmailSuccess": "Email verified. You can now log in.",
+    "verifyEmailFailed": "Failed to verify email",
+    "unauthorized": "Please log in to view data",
+    "forbidden": "You do not have permission to view this data",
+    "notFound": "Data not found",
+    "serverError": "Server error. Try again later",
+    "networkError": "Could not connect to server. Check your network connection",
+    "unknownError": "Unknown error occurred. Try again later",
+    "currentPasswordRequired": "Current password is required to set a new password",
+    "passwordsDoNotMatch": "New passwords do not match",
+    "failedToUpdateProfile": "Failed to update profile",
+    "failedToLoadAppointments": "Failed to load appointments",
+    "failedToSaveServiceRecord": "Failed to save service record",
+    "loadFailed": "Failed to load data",
+    "saveFailed": "Failed to save data",
+    "deleteFailed": "Failed to delete",
+    "openEmailVerificationLink": "Open verification link (dev)",
+    "verifyEmailTitle": "Email verification",
+    "goToLogin": "Go to login"
   },
   "vehicle": {
     "title": "My Vehicles",
     "add": "Add Vehicle",
+    "uploadPhoto": "Upload Photo",
     "make": "Make",
     "model": "Model",
     "year": "Year",
@@ -82,7 +141,47 @@
     "licensePlate": "License Plate",
     "mileage": "Mileage",
     "lastService": "Last Service",
-    "noVehicles": "You don't have any vehicles yet"
+    "noVehicles": "You don't have any vehicles yet",
+    "engineType": "Engine Type",
+    "transmission": "Transmission",
+    "engineVolume": "Engine Volume",
+    "color": "Color",
+    "lookup": "Lookup by plate",
+    "lookupFailed": "Failed to find data by plate",
+    "ownerVehiclesFound": "This owner already has vehicles",
+    "importHint": "Select vehicles to add to my serviced list, or continue creating a new vehicle.",
+    "addNewInstead": "Add new vehicle",
+    "addSelected": "Add selected",
+    "addThis": "Add this vehicle",
+    "addedToServiced": "Added to serviced",
+    "ownerNoVehicles": "This owner has no vehicles yet. Fill the form below.",
+    "colors": {
+      "black": "Black",
+      "white": "White",
+      "gray": "Gray",
+      "silver": "Silver",
+      "red": "Red",
+      "blue": "Blue",
+      "green": "Green",
+      "yellow": "Yellow",
+      "brown": "Brown",
+      "orange": "Orange",
+      "purple": "Purple",
+      "beige": "Beige"
+    },
+    "engineTypes": {
+      "petrol": "Petrol",
+      "diesel": "Diesel",
+      "hybrid": "Hybrid",
+      "electric": "Electric",
+      "gas": "Gas/Petrol"
+    },
+    "transmissionTypes": {
+      "manual": "Manual",
+      "automatic": "Automatic",
+      "robot": "Robot",
+      "variator": "CVT"
+    }
   },
   "appointment": {
     "title": "Service Appointments",
@@ -137,11 +236,57 @@
     "dashboard": "Dashboard",
     "vehicles": "My Vehicles",
     "appointments": "Appointments",
+    "myAppointments": "My Appointments",
     "serviceRecords": "Service Book",
     "profile": "Profile",
     "masterDashboard": "Master Dashboard",
     "admin": "Master Panel",
+    "myMechanics": "My Mechanics",
+    "myClients": "My Clients",
+    "myServices": "My Services",
+    "myChats": "My Chats",
     "logout": "Logout"
+  },
+  "services": {
+    "myServices": "My Services",
+    "add": "Add service",
+    "empty": "No services",
+    "name": "Name",
+    "description": "Description",
+    "price": "Price",
+    "duration": "Duration (min)",
+    "category": "Category",
+    "noCategory": "No category"
+  },
+  "chat": {
+    "title": "Chat",
+    "empty": "No messages yet",
+    "placeholder": "Type a message...",
+    "send": "Send"
+  },
+  "chats": {
+    "myChats": "My Chats",
+    "empty": "No chats",
+    "appointmentChat": "Appointment chat"
+  },
+  "mechanics": {
+    "title": "My Mechanics",
+    "add": "Add Mechanic",
+    "empty": "You have no mechanics yet",
+    "find": "Find Mechanic",
+    "noResults": "No results found",
+    "invite": "Invite"
+  },
+  "clients": {
+    "title": "My Clients",
+    "empty": "List is empty",
+    "add": "Add client"
+  },
+  "status": {
+    "pending": "Pending",
+    "accepted": "Accepted",
+    "rejected": "Rejected",
+    "active": "Active"
   },
   "user": {
     "admin": "Master mechanic",
@@ -176,5 +321,10 @@
     "markAllRead": "Mark All as Read",
     "deleteAll": "Delete All",
     "viewAll": "View All"
+  },
+  "settings": {
+    "settings": "Settings",
+    "admin": "Administration",
+    "logout": "Logout"
   }
 }

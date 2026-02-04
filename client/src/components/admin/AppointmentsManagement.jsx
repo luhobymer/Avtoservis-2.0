@@ -296,6 +296,8 @@ const AppointmentsManagement = () => {
                   onChange={handleDateChange}
                   disabled={formData.status !== 'completed'}
                   minDateTime={selectedAppointment?.scheduledDate ? new Date(selectedAppointment.scheduledDate) : undefined}
+                  ampm={false}
+                  format="dd.MM.yyyy HH:mm"
                   renderInput={(params) => <TextField {...params} fullWidth margin="normal" />}
                 />
               </LocalizationProvider>

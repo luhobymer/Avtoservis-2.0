@@ -105,7 +105,7 @@ describe('AuthController - D1 інтеграційні тести', () => {
 
       db.prepare(
         'INSERT INTO users (id, email, password, role, two_factor_enabled, two_factor_secret, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-      ).run(userId, 'test@example.com', 'hashed', 'admin', 1, 'SECRET', now, now);
+      ).run(userId, 'test@example.com', 'hashed', 'master', 1, 'SECRET', now, now);
 
       req.body = {
         email: 'test@example.com',
@@ -133,7 +133,7 @@ describe('AuthController - D1 інтеграційні тести', () => {
 
       db.prepare(
         'INSERT INTO users (id, email, password, role, two_factor_enabled, two_factor_secret, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-      ).run(userId, 'test@example.com', 'hashed', 'admin', 1, 'SECRET', now, now);
+      ).run(userId, 'test@example.com', 'hashed', 'master', 1, 'SECRET', now, now);
 
       req.body = {
         email: 'test@example.com',
@@ -162,7 +162,7 @@ describe('AuthController - D1 інтеграційні тести', () => {
 
       db.prepare(
         'INSERT INTO users (id, email, password, role, two_factor_enabled, two_factor_secret, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-      ).run(userId, 'test@example.com', 'hashed', 'admin', 1, 'SECRET', now, now);
+      ).run(userId, 'test@example.com', 'hashed', 'master', 1, 'SECRET', now, now);
 
       req.body = {
         email: 'test@example.com',
@@ -189,7 +189,7 @@ describe('AuthController - D1 інтеграційні тести', () => {
           token: '123456',
         })
       );
-      expect(generateTokenPair).toHaveBeenCalledWith(userId, 'admin', 'test@example.com');
+      expect(generateTokenPair).toHaveBeenCalledWith(userId, 'master', 'test@example.com');
       expect(res.json).toHaveBeenCalledWith(
         expect.objectContaining({
           status: 'success',
@@ -221,23 +221,17 @@ describe('AuthController - D1 інтеграційні тести', () => {
       bcrypt.genSalt.mockResolvedValue(salt);
       bcrypt.hash.mockResolvedValue(hashed);
       generateTokenPair.mockReturnValue(tokenPair);
-      verifyRefreshToken.mockReturnValue({
-        exp: Math.floor(new Date(now).getTime() / 1000) + 3600,
-      });
 
       await authController.register(req, res);
 
       expect(bcrypt.genSalt).toHaveBeenCalledWith(10);
       expect(bcrypt.hash).toHaveBeenCalledWith('password123', salt);
-      expect(generateTokenPair).toHaveBeenCalled();
+      expect(generateTokenPair).not.toHaveBeenCalled();
       expect(res.status).toHaveBeenCalledWith(201);
       expect(res.json).toHaveBeenCalledWith(
         expect.objectContaining({
           status: 'success',
-          user: expect.objectContaining({
-            email: 'test@example.com',
-            role: 'client',
-          }),
+          requiresEmailConfirmation: true,
         })
       );
     });

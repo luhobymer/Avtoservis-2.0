@@ -8,7 +8,9 @@
     "addVehicle": "Додати автомобіль",
     "newAppointment": "Новий запис",
     "serviceHistory": "Історія обслуговування",
-    "editProfile": "Редагувати профіль"
+    "editProfile": "Редагувати профіль",
+    "myServices": "Мої послуги",
+    "myChats": "Мої чати"
   },
   "common": {
     "loading": "Завантаження...",
@@ -25,7 +27,12 @@
     "error": "Помилка",
     "actions": "Дії",
     "page": "Сторінка",
-    "notAvailable": "Недоступно"
+    "notAvailable": "Недоступно",
+    "km": "км",
+    "all": "Всі",
+    "accept": "Прийняти",
+    "reject": "Відхилити",
+    "saved": "Збережено"
   },
   "auth": {
     "login": "Увійти",
@@ -44,50 +51,69 @@
     "region": "Область",
     "city": "Місто",
     "phone": "Телефон (формат: +380XXXXXXXXX або 0XXXXXXXXX)",
-    "serviceTypes": {
-    "air_conditioning": "Кондиціонер",
-    "alignment": "Розвал-сходження",
-    "battery_check": "Перевірка акумулятора",
-    "brake_service": "Гальмівне обслуговування",
-    "cooling_system": "Охолоджувальна система",
-    "electrical": "Електрика",
-    "engine_diagnostics": "Діагностика двигуна",
-    "exhaust": "Вихлопна система",
-    "filter_replacement": "Заміна фільтрів",
-    "fluid_change": "Заміна рідин",
-    "inspection": "Інспекція",
-    "lights": "Освітлення",
-    "oil_change": "Заміна оливи",
-    "suspension": "Підвіска",
-    "tire_rotation": "Шиномонтаж",
-    "transmission_service": "Обслуговування трансмісії",
-    "wipers": "Щітки склоочисника",
-    "other": "Інше"
-  ,
-    "oil_change": "Заміна оливи",
-    "brake_service": "Гальмівне обслуговування",
-    "tire_rotation": "Шиномонтаж",
-    "battery_check": "Перевірка акумулятора",
-    "inspection": "Інспекція",
-    "engine_diagnostics": "Діагностика двигуна",
-    "other": "Інше"
+    "role": "Роль",
+    "roleClient": "Клієнт",
+    "roleMaster": "Майстер",
+    "openEmailVerificationLink": "Відкрити посилання для підтвердження (dev)",
+    "goToLogin": "Перейти до входу",
+    "verifyEmailTitle": "Підтвердження email",
+    "forgotPassword": "Забули пароль?",
+    "resetPassword": "Скинути пароль",
+    "registrationSuccess": "Реєстрація успішна. Тепер можна увійти.",
+    "registrationRequiresEmailConfirmation": "Реєстрація успішна. Підтвердіть email, щоб увійти в систему.",
+    "verifyEmailMissingParams": "Невірне посилання підтвердження (немає email або токена)",
+    "verifyEmailSuccess": "Email підтверджено. Тепер можна увійти.",
+    "verifyEmailFailed": "Не вдалося підтвердити email"
+  },
+  "validation": {
+    "required_field": "Обов'язкове поле",
+    "invalid_vin": "Невірний формат VIN-коду (17 символів)",
+    "invalid_license_plate": "Невірний формат номерного знаку",
+    "invalid_engine_volume": "Невірний об'єм двигуна",
+    "invalid_mileage": "Невірний пробіг",
+    "vin_format": "Введіть 17 символів",
+    "license_plate_format": "Наприклад: AA1234AA",
+    "engine_volume_format": "Наприклад: 2.0",
+    "mileage_format": "У кілометрах"
   },
   "errors": {
-      "required_field": "Обов'язкове поле",
-      "phone_format": "Невірний формат телефону. Використовуйте +380XXXXXXXXX або 0XXXXXXXXX. Приклад: +380991234567",
-      "rate_limit": "Занадто багато спроб. Спробуйте через {{seconds}} секунд."
-    },
+    "required_field": "Обов'язкове поле",
+    "phone_format": "Невірний формат телефону. Використовуйте +380XXXXXXXXX або 0XXXXXXXXX",
+    "rate_limit": "Занадто багато спроб. Спробуйте через {{seconds}} секунд.",
     "forgotPassword": "Забули пароль?",
     "resetPassword": "Скинути пароль",
     "role": "Роль",
     "owner": "Власник",
     "roleAdmin": "Адміністратор",
     "roleMaster": "Майстер",
-    "roleClient": "Клієнт"
+    "roleClient": "Клієнт",
+    "registrationSuccess": "Реєстрація успішна. Тепер можна увійти.",
+    "registrationRequiresEmailConfirmation": "Реєстрація успішна. Підтвердіть email, щоб увійти в систему.",
+    "verifyEmailMissingParams": "Невірне посилання підтвердження (немає email або токена)",
+    "verifyEmailSuccess": "Email підтверджено. Тепер можна увійти.",
+    "verifyEmailFailed": "Не вдалося підтвердити email",
+    "unauthorized": "Будь ласка, увійдіть в систему для перегляду даних",
+    "forbidden": "У вас немає прав для перегляду цих даних",
+    "notFound": "Дані не знайдено",
+    "serverError": "Помилка сервера. Спробуйте пізніше",
+    "networkError": "Не вдалося з'єднатися з сервером. Перевірте підключення до мережі",
+    "unknownError": "Виникла невідома помилка. Спробуйте пізніше",
+    "currentPasswordRequired": "Поточний пароль необхідний для встановлення нового пароля",
+    "passwordsDoNotMatch": "Нові паролі не співпадають",
+    "failedToUpdateProfile": "Не вдалося оновити профіль",
+    "failedToLoadAppointments": "Не вдалося завантажити записи на обслуговування",
+    "failedToSaveServiceRecord": "Не вдалося зберегти сервісний запис",
+    "loadFailed": "Помилка завантаження даних",
+    "saveFailed": "Помилка збереження даних",
+    "deleteFailed": "Помилка видалення",
+    "openEmailVerificationLink": "Відкрити посилання для підтвердження (dev)",
+    "verifyEmailTitle": "Підтвердження email",
+    "goToLogin": "Перейти до входу"
   },
   "vehicle": {
     "title": "Мої автомобілі",
     "add": "Додати автомобіль",
+    "uploadPhoto": "Завантажити фото",
     "make": "Марка",
     "model": "Модель",
     "year": "Рік",
@@ -95,11 +121,51 @@
     "licensePlate": "Номерний знак",
     "mileage": "Пробіг",
     "lastService": "Останнє обслуговування",
-    "noVehicles": "У вас ще немає доданих автомобілів"
+    "noVehicles": "У вас ще немає доданих автомобілів",
+    "engineType": "Тип двигуна",
+    "transmission": "Коробка передач",
+    "engineVolume": "Об'єм двигуна",
+    "color": "Колір",
+    "lookup": "Знайти за номером",
+    "lookupFailed": "Не вдалося знайти дані за номером",
+    "ownerVehiclesFound": "У цього власника вже є авто",
+    "importHint": "Оберіть авто, які додати до моїх обслуговуємих, або продовжіть створення нового авто.",
+    "addNewInstead": "Додати нове авто",
+    "addSelected": "Додати вибрані",
+    "addThis": "Додати це авто",
+    "addedToServiced": "Додано до обслуговуємих",
+    "ownerNoVehicles": "У цього власника ще немає авто. Заповніть форму нижче.",
+    "colors": {
+      "black": "Чорний",
+      "white": "Білий",
+      "gray": "Сірий",
+      "silver": "Сріблястий",
+      "red": "Червоний",
+      "blue": "Синій",
+      "green": "Зелений",
+      "yellow": "Жовтий",
+      "brown": "Коричневий",
+      "orange": "Помаранчевий",
+      "purple": "Фіолетовий",
+      "beige": "Бежевий"
+    },
+    "engineTypes": {
+      "petrol": "Бензин",
+      "diesel": "Дизель",
+      "hybrid": "Гібрид",
+      "electric": "Електро",
+      "gas": "Газ/Бензин"
+    },
+    "transmissionTypes": {
+      "manual": "Механіка",
+      "automatic": "Автомат",
+      "robot": "Робот",
+      "variator": "Варіатор"
+    }
   },
   "appointment": {
     "title": "Записи на обслуговування",
-    "schedule": "Записатися на обслуговування",
+    "schedule": "Записати на обслуговування",
     "serviceType": "Тип обслуговування",
     "description": "Опис",
     "status": "Статус",
@@ -128,7 +194,8 @@
     "noRecords": "У сервісній книзі ще немає записів",
     "exportTitle": "Експорт сервісної книги",
     "exportPdf": "Експорт у PDF",
-    "exportedOn": "Експортовано"
+    "exportedOn": "Експортовано",
+    "servicebook": "Сервісна книга"
   },
   "dashboard": {
     "title": "Панель керування",
@@ -141,11 +208,57 @@
     "dashboard": "Головна",
     "vehicles": "Мої автомобілі",
     "appointments": "Записи на обслуговування",
+    "myAppointments": "Мої записи",
     "serviceRecords": "Сервісна книга",
     "profile": "Профіль",
     "masterDashboard": "Дашборд майстра",
     "admin": "Панель майстра",
+    "myMechanics": "Мої Механіки",
+    "myClients": "Мої Клієнти",
+    "myServices": "Мої послуги",
+    "myChats": "Мої чати",
     "logout": "Вийти"
+  },
+  "services": {
+    "myServices": "Мої послуги",
+    "add": "Додати послугу",
+    "empty": "Немає послуг",
+    "name": "Назва",
+    "description": "Опис",
+    "price": "Ціна",
+    "duration": "Час (хв)",
+    "category": "Категорія",
+    "noCategory": "Без категорії"
+  },
+  "chat": {
+    "title": "Чат",
+    "empty": "Повідомлень ще немає",
+    "placeholder": "Напишіть повідомлення...",
+    "send": "Надіслати"
+  },
+  "chats": {
+    "myChats": "Мої чати",
+    "empty": "Немає чатів",
+    "appointmentChat": "Чат по запису"
+  },
+  "mechanics": {
+    "title": "Мої Механіки",
+    "add": "Додати механіка",
+    "empty": "У вас ще немає доданих механіків",
+    "find": "Знайти механіка",
+    "noResults": "Нікого не знайдено",
+    "invite": "Запросити"
+  },
+  "clients": {
+    "title": "Мої Клієнти",
+    "empty": "Список порожній",
+    "add": "Додати клієнта"
+  },
+  "status": {
+    "pending": "Очікує",
+    "accepted": "Підтверджено",
+    "rejected": "Відхилено",
+    "active": "Активні"
   },
   "notifications": {
     "title": "Сповіщення",
@@ -155,6 +268,14 @@
     "markAllRead": "Позначити всі як прочитані",
     "deleteAll": "Видалити всі",
     "viewAll": "Переглянути всі"
+  },
+  "navigation": {
+    "dashboard": "Головна",
+    "vehicles": "Мої автомобілі",
+    "appointments": "Записи на обслуговування",
+    "serviceRecords": "Сервісна книга",
+    "profile": "Профіль",
+    "settings": "Налаштування"
   },
   "settings": {
     "settings": "Налаштування",
@@ -185,28 +306,6 @@
     "transmission_service": "Обслуговування трансмісії",
     "wipers": "Щітки склоочисника",
     "other": "Інше"
-  ,
-    "oil_change": "Заміна оливи",
-    "brake_service": "Гальмівне обслуговування",
-    "tire_rotation": "Шиномонтаж",
-    "battery_check": "Перевірка акумулятора",
-    "inspection": "Інспекція",
-    "engine_diagnostics": "Діагностика двигуна",
-    "other": "Інше"
-  },
-  "errors": {
-    "phone_format": "Невірний формат телефону. Використовуйте +380XXXXXXXXX або 0XXXXXXXXX",
-    "unauthorized": "Будь ласка, увійдіть в систему для перегляду даних",
-    "forbidden": "У вас немає прав для перегляду цих даних",
-    "notFound": "Дані не знайдено",
-    "serverError": "Помилка сервера. Спробуйте пізніше",
-    "networkError": "Не вдалося з'єднатися з сервером. Перевірте підключення до мережі",
-    "unknownError": "Виникла невідома помилка. Спробуйте пізніше",
-    "currentPasswordRequired": "Поточний пароль необхідний для встановлення нового пароля",
-    "passwordsDoNotMatch": "Нові паролі не співпадають",
-    "failedToUpdateProfile": "Не вдалося оновити профіль",
-    "failedToLoadAppointments": "Не вдалося завантажити записи на обслуговування",
-    "failedToSaveServiceRecord": "Не вдалося зберегти сервісний запис"
   },
   "admin": {
     "title": "Панель майстра",

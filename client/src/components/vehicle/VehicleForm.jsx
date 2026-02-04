@@ -10,10 +10,11 @@ import {
   Button,
   Box,
   CircularProgress,
-  FormHelperText
+  FormHelperText,
+  Typography
 } from '@mui/material';
 import { Link } from 'react-router-dom';
-import { brandModelYears } from '../../data/vehicleData';
+import { brandModelYears, getVehicleSpecs } from '../../data/vehicleData';
 
 const VehicleForm = ({ 
   formData, 
@@ -24,10 +25,24 @@ const VehicleForm = ({
   onDeleteClick,
   onLookupByPlate,
   lookupLoading,
-  lookupError
+  lookupError,
+  handlePhotoChange,
+  photoPreview
 }) => {
   const { t } = useTranslation();
   const [errors, setErrors] = useState({});
+  const [availableSpecs, setAvailableSpecs] = useState({
+    engines: ['petrol', 'diesel', 'gas', 'hybrid', 'electric'],
+    transmissions: ['manual', 'automatic', 'robot', 'variator']
+  });
+
+  // Оновлення доступних специфікацій при зміні авто/року
+  useEffect(() => {
+    if (formData.brand && formData.model && formData.year) {
+      const specs = getVehicleSpecs(formData.brand, formData.model, formData.year);
+      setAvailableSpecs(specs);
+    }
+  }, [formData.brand, formData.model, formData.year]);
   
   // Валідація VIN-коду (17 символів, літери та цифри)
   const validateVin = (vin) => {
@@ -107,77 +122,25 @@ const VehicleForm = ({
   return (
     <Box component="form" onSubmit={onSubmit} sx={{ mt: 2 }}>
       <Grid container spacing={2}>
-        <Grid item xs={12} sm={6}>
-          <FormControl fullWidth error={!!errors.brand}>
-            <InputLabel>{t('vehicle.brand', 'Марка')} *</InputLabel>
-            <Select
-              name="brand"
-              value={formData.brand}
-              label={t('vehicle.brand', 'Марка') + ' *'}
-              onChange={handleChange}
-              required
-            >
-              {Object.keys(brandModelYears).map((brand) => (
-                <MenuItem key={brand} value={brand}>{brand}</MenuItem>
-              ))}
-            </Select>
-            {errors.brand && <FormHelperText>{errors.brand}</FormHelperText>}
-          </FormControl>
-        </Grid>
-
-        <Grid item xs={12} sm={6}>
-          <FormControl fullWidth error={!!errors.model}>
-            <InputLabel>{t('vehicle.model', 'Модель')} *</InputLabel>
-            <Select
-              name="model"
-              value={formData.model}
-              label={t('vehicle.model', 'Модель') + ' *'}
-              onChange={handleChange}
-              disabled={!formData.brand}
-              required
-            >
-              {formData.brand && 
-                Object.keys(brandModelYears[formData.brand]).map((model) => (
-                  <MenuItem key={model} value={model}>{model}</MenuItem>
-                ))
-              }
-            </Select>
-            {errors.model && <FormHelperText>{errors.model}</FormHelperText>}
-          </FormControl>
-        </Grid>
-
-        <Grid item xs={12} sm={6}>
-          <FormControl fullWidth error={!!errors.year}>
-            <InputLabel>{t('vehicle.year', 'Рік випуску')} *</InputLabel>
-            <Select
-              name="year"
-              value={formData.year}
-              label={t('vehicle.year', 'Рік випуску') + ' *'}
-              onChange={handleChange}
-              disabled={!formData.brand || !formData.model}
-              required
-            >
-              {formData.brand && formData.model && 
-                brandModelYears[formData.brand][formData.model].map((year) => (
-                  <MenuItem key={year} value={year}>{year}</MenuItem>
-                ))
-              }
-            </Select>
-            {errors.year && <FormHelperText>{errors.year}</FormHelperText>}
-          </FormControl>
-        </Grid>
-
-        <Grid item xs={12} sm={6}>
-          <TextField
-            fullWidth
-            label={t('vehicle.vin', 'VIN-код')}
-            name="vin"
-            value={formData.vin}
-            onChange={handleChange}
-            error={!!errors.vin}
-            helperText={errors.vin || t('validation.vin_format')}
-            inputProps={{ maxLength: 17 }}
-          />
+        <Grid item xs={12}>
+           <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mb: 2 }}>
+             {photoPreview ? (
+                <Box 
+                  component="img" 
+                  src={photoPreview} 
+                  alt="Vehicle preview" 
+                  sx={{ width: '100%', maxWidth: 300, height: 200, objectFit: 'cover', borderRadius: 2, mb: 2 }}
+                />
+             ) : (
+                <Box sx={{ width: '100%', maxWidth: 300, height: 200, bgcolor: 'grey.200', borderRadius: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', mb: 2 }}>
+                   <Typography color="text.secondary">No photo</Typography>
+                </Box>
+             )}
+             <Button variant="contained" component="label">
+               {t('vehicle.uploadPhoto', 'Завантажити фото')}
+               <input type="file" hidden accept="image/*" onChange={handlePhotoChange} />
+             </Button>
+           </Box>
         </Grid>
 
         <Grid item xs={12} sm={6}>
@@ -210,6 +173,79 @@ const VehicleForm = ({
         </Grid>
 
         <Grid item xs={12} sm={6}>
+          <FormControl fullWidth error={!!errors.brand}>
+            <InputLabel>{t('vehicle.brand', 'Марка')} *</InputLabel>
+            <Select
+              name="brand"
+              value={formData.brand}
+              label={t('vehicle.brand', 'Марка') + ' *'}
+              onChange={handleChange}
+              required
+            >
+              {Object.keys(brandModelYears).sort().map((brand) => (
+                <MenuItem key={brand} value={brand}>{brand}</MenuItem>
+              ))}
+            </Select>
+            {errors.brand && <FormHelperText>{errors.brand}</FormHelperText>}
+          </FormControl>
+        </Grid>
+
+        <Grid item xs={12} sm={6}>
+          <FormControl fullWidth error={!!errors.model}>
+            <InputLabel>{t('vehicle.model', 'Модель')} *</InputLabel>
+            <Select
+              name="model"
+              value={formData.model}
+              label={t('vehicle.model', 'Модель') + ' *'}
+              onChange={handleChange}
+              disabled={!formData.brand}
+              required
+            >
+              {formData.brand && brandModelYears[formData.brand] && 
+                Object.keys(brandModelYears[formData.brand]).sort().map((model) => (
+                  <MenuItem key={model} value={model}>{model}</MenuItem>
+                ))
+              }
+            </Select>
+            {errors.model && <FormHelperText>{errors.model}</FormHelperText>}
+          </FormControl>
+        </Grid>
+
+        <Grid item xs={12} sm={6}>
+          <FormControl fullWidth error={!!errors.year}>
+            <InputLabel>{t('vehicle.year', 'Рік випуску')} *</InputLabel>
+            <Select
+              name="year"
+              value={formData.year}
+              label={t('vehicle.year', 'Рік випуску') + ' *'}
+              onChange={handleChange}
+              disabled={!formData.brand || !formData.model}
+              required
+            >
+              {formData.brand && formData.model && brandModelYears[formData.brand] && brandModelYears[formData.brand][formData.model] &&
+                brandModelYears[formData.brand][formData.model].map((year) => (
+                  <MenuItem key={year} value={year}>{year}</MenuItem>
+                ))
+              }
+            </Select>
+            {errors.year && <FormHelperText>{errors.year}</FormHelperText>}
+          </FormControl>
+        </Grid>
+
+        <Grid item xs={12} sm={6}>
+          <TextField
+            fullWidth
+            label={t('vehicle.vin', 'VIN-код')}
+            name="vin"
+            value={formData.vin}
+            onChange={handleChange}
+            error={!!errors.vin}
+            helperText={errors.vin || t('validation.vin_format')}
+            inputProps={{ maxLength: 17 }}
+          />
+        </Grid>
+
+        <Grid item xs={12} sm={6}>
           <FormControl fullWidth>
             <InputLabel>{t('vehicle.engineType', 'Тип двигуна')}</InputLabel>
             <Select
@@ -217,11 +253,32 @@ const VehicleForm = ({
               value={formData.engineType}
               label={t('vehicle.engineType', 'Тип двигуна')}
               onChange={handleChange}
+              disabled={!formData.year}
             >
-              <MenuItem value="Бензин">{t('vehicle.engineTypes.petrol', 'Бензин')}</MenuItem>
-              <MenuItem value="Дизель">{t('vehicle.engineTypes.diesel', 'Дизель')}</MenuItem>
-              <MenuItem value="Гібрид">{t('vehicle.engineTypes.hybrid', 'Гібрид')}</MenuItem>
-              <MenuItem value="Електро">{t('vehicle.engineTypes.electric', 'Електро')}</MenuItem>
+              {availableSpecs.engines.map((type) => (
+                <MenuItem key={type} value={type}>
+                  {t(`vehicle.engineTypes.${type}`, type)}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        </Grid>
+
+        <Grid item xs={12} sm={6}>
+          <FormControl fullWidth>
+            <InputLabel>{t('vehicle.transmission', 'Коробка передач')}</InputLabel>
+            <Select
+              name="transmission"
+              value={formData.transmission || ''}
+              label={t('vehicle.transmission', 'Коробка передач')}
+              onChange={handleChange}
+              disabled={!formData.year}
+            >
+              {availableSpecs.transmissions.map((type) => (
+                <MenuItem key={type} value={type}>
+                  {t(`vehicle.transmissionTypes.${type}`, type)}
+                </MenuItem>
+              ))}
             </Select>
           </FormControl>
         </Grid>
@@ -236,6 +293,7 @@ const VehicleForm = ({
             error={!!errors.engineVolume}
             helperText={errors.engineVolume || t('validation.engine_volume_format')}
             type="number"
+            disabled={!formData.engineType || formData.engineType === 'electric'}
             inputProps={{ 
               step: "0.1", 
               min: "0.1", 
@@ -253,9 +311,9 @@ const VehicleForm = ({
               label={t('vehicle.color', 'Забарвлення')}
               onChange={handleChange}
             >
-              {['Чорний', 'Білий', 'Сірий', 'Синій', 'Червоний', 'Зелений', 'Жовтий', 'Коричневий', 'Сріблястий'].map((color) => (
+              {['black', 'white', 'gray', 'silver', 'red', 'blue', 'green', 'yellow', 'brown'].map((color) => (
                 <MenuItem key={color} value={color}>
-                  {t(`vehicle.colors.${color.toLowerCase()}`, color)}
+                  {t(`vehicle.colors.${color}`, color)}
                 </MenuItem>
               ))}
             </Select>

@@ -7,8 +7,65 @@ const logger = require('../middleware/logger.js');
 
 const isPrivileged = (user) => {
   const role = String(user?.role || '').toLowerCase();
-  return role === 'master' || role === 'admin';
+  return role === 'master' || role === 'mechanic';
 };
+
+router.get('/conversations', auth, async (req, res) => {
+  try {
+    if (!req.user?.id) {
+      return res.status(401).json({ msg: 'Unauthorized' });
+    }
+
+    const relatedEntity = req.query.related_entity ? String(req.query.related_entity) : 'appointment';
+    const limit = Math.min(1000, Math.max(50, Number(req.query.limit || 400)));
+    const db = await getDb();
+    const uid = String(req.user.id);
+
+    const rows = await db
+      .prepare(
+        `SELECT * FROM interactions
+         WHERE (sender_id = ? OR recipient_id = ?) AND related_entity = ?
+         ORDER BY datetime(created_at) DESC, created_at DESC
+         LIMIT ${limit}`
+      )
+      .all(uid, uid, relatedEntity);
+
+    const list = Array.isArray(rows) ? rows : [];
+    const map = new Map();
+
+    for (const row of list) {
+      const entityId = row.related_entity_id ? String(row.related_entity_id) : '';
+      if (!entityId) continue;
+
+      if (!map.has(entityId)) {
+        const peerId = String(row.sender_id) === uid ? String(row.recipient_id) : String(row.sender_id);
+        map.set(entityId, {
+          related_entity: relatedEntity,
+          related_entity_id: entityId,
+          last_message: row.message || '',
+          last_at: row.created_at || null,
+          unread_count: 0,
+          peer_id: peerId,
+        });
+      }
+
+      if (String(row.recipient_id) === uid && String(row.status || '') === 'unread') {
+        map.get(entityId).unread_count += 1;
+      }
+    }
+
+    const result = Array.from(map.values()).sort((a, b) => {
+      const atA = a.last_at ? new Date(a.last_at).getTime() : 0;
+      const atB = b.last_at ? new Date(b.last_at).getTime() : 0;
+      return atB - atA;
+    });
+
+    return res.json(result);
+  } catch (err) {
+    logger.error('Interactions conversations error:', err);
+    return res.status(500).json({ msg: 'Server error', details: err.message });
+  }
+});
 
 router.get('/', auth, async (req, res) => {
   try {
@@ -24,7 +81,9 @@ router.get('/', auth, async (req, res) => {
     const recipientId = req.query.recipient_id ? String(req.query.recipient_id) : null;
     const status = req.query.status ? String(req.query.status) : null;
     const relatedEntity = req.query.related_entity ? String(req.query.related_entity) : null;
-    const relatedEntityId = req.query.related_entity_id ? String(req.query.related_entity_id) : null;
+    const relatedEntityId = req.query.related_entity_id
+      ? String(req.query.related_entity_id)
+      : null;
 
     const privileged = isPrivileged(req.user);
 
@@ -96,8 +155,12 @@ router.post('/', auth, async (req, res) => {
     const now = new Date().toISOString();
 
     const payload = {
-      sender_role: req.body.sender_role ? String(req.body.sender_role) : String(req.user.role || ''),
-      sender_name: req.body.sender_name ? String(req.body.sender_name) : String(req.user.name || ''),
+      sender_role: req.body.sender_role
+        ? String(req.body.sender_role)
+        : String(req.user.role || ''),
+      sender_name: req.body.sender_name
+        ? String(req.body.sender_name)
+        : String(req.user.name || ''),
       recipient_role: req.body.recipient_role ? String(req.body.recipient_role) : null,
       recipient_name: req.body.recipient_name ? String(req.body.recipient_name) : null,
       type: req.body.type ? String(req.body.type) : 'message',
@@ -169,4 +232,3 @@ router.put('/:id', auth, async (req, res) => {
 });
 
 module.exports = router;
-

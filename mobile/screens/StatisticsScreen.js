@@ -56,7 +56,12 @@ export default function StatisticsScreen() {
       });
       const totalSpent = filtered.reduce((s, r) => s + (Number(r.cost) || 0), 0);
       const servicesCount = filtered.length;
-      const totalMileage = 0; // якщо є джерело пробігу, додамо пізніше
+      
+      const mileages = filtered.map(r => Number(r.mileage) || 0).filter(m => m > 0);
+      let totalMileage = 0;
+      if (mileages.length > 1) {
+        totalMileage = Math.max(...mileages) - Math.min(...mileages);
+      }
 
       const expensesOverTime = {};
       const servicesByType = {};

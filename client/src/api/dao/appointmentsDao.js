@@ -66,6 +66,15 @@ function mapAppointment(row) {
   const serviceDuration =
     service && service.duration != null ? Number(service.duration) : null;
 
+  const appointmentPrice =
+    row.appointment_price != null && row.appointment_price !== ''
+      ? Number(row.appointment_price)
+      : null;
+  const appointmentDuration =
+    row.appointment_duration != null && row.appointment_duration !== ''
+      ? Number(row.appointment_duration)
+      : null;
+
   return {
     id: row.id,
     UserId: row.user_id,
@@ -78,6 +87,8 @@ function mapAppointment(row) {
     serviceName,
     servicePrice,
     serviceDuration,
+    appointmentPrice,
+    appointmentDuration,
     scheduledDate: row.scheduled_time,
     estimatedCompletionDate: row.estimated_completion_date || row.appointment_date || null,
     actualCompletionDate: row.actual_completion_date || null,
@@ -106,10 +117,26 @@ export async function update(id, payload) {
     scheduled_time: payload.scheduled_time || payload.scheduledTime,
     status: payload.status || null,
     notes: payload.notes,
-    appointment_date: payload.estimated_completion_date || null
+    completion_notes: payload.completion_notes,
+    completion_mileage: payload.completion_mileage,
+    parts: payload.parts,
+    appointment_date: payload.estimated_completion_date || null,
+    appointment_price: payload.appointment_price ?? payload.appointmentPrice ?? null,
+    appointment_duration: payload.appointment_duration ?? payload.appointmentDuration ?? null
   };
 
   await requestJson(`/api/appointments/${id}`, {
+    method: 'PUT',
+    body
+  });
+}
+
+export async function updateStatus(id, status, completionData = {}) {
+  const body = {
+    status,
+    ...completionData
+  };
+  await requestJson(`/api/appointments/${id}/status`, {
     method: 'PUT',
     body
   });
@@ -141,7 +168,9 @@ export async function create(payload) {
     scheduled_time: payload.scheduled_time,
     status: payload.status || 'pending',
     notes: payload.notes || null,
-    appointment_date: payload.estimated_completion_date || null
+    appointment_date: payload.estimated_completion_date || null,
+    appointment_price: payload.appointment_price ?? payload.appointmentPrice ?? null,
+    appointment_duration: payload.appointment_duration ?? payload.appointmentDuration ?? null
   };
 
   const created = await requestJson('/api/appointments', {

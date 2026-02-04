@@ -20,6 +20,7 @@ const drawerWidth = 240;
 import PeopleIcon from '@mui/icons-material/People';
 import EngineeringIcon from '@mui/icons-material/Engineering';
 import ChatIcon from '@mui/icons-material/Chat';
+import BuildIcon from '@mui/icons-material/Build';
 
 const MainLayout = () => {
   const { t } = useTranslation();
@@ -72,10 +73,7 @@ const MainLayout = () => {
       ? [{ text: t('nav.myServices', 'Мої послуги'), icon: <EditIcon />, path: '/my-services' }]
       : []),
     { text: t('nav.myChats', 'Мої чати'), icon: <ChatIcon />, path: '/my-chats' },
-    ...(isMasterUser
-      ? [{ text: t('nav.masterDashboard'), icon: <AdminPanelSettingsIcon />, path: '/master-dashboard' }]
-      : []),
-    ...(isMasterUser ? [{ text: t('nav.admin'), icon: <AdminPanelSettingsIcon />, path: '/admin' }] : []),
+    { text: t('nav.myParts', 'Мої запчастини'), icon: <BuildIcon />, path: '/my-parts' },
     { text: t('nav.profile'), icon: <AccountCircleIcon />, path: '/profile' },
   ];
 

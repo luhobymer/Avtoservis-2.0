@@ -406,6 +406,15 @@ export class OCRManager {
       }
 
       if (registryData) {
+        // Маппінг типу палива
+        let engineType = 'petrol'; // default
+        const fuelRaw = String(registryData.fuel_type || '').toUpperCase();
+        if (fuelRaw.includes('BENZINE') || fuelRaw.includes('PETROL')) engineType = 'petrol';
+        else if (fuelRaw.includes('DIESEL')) engineType = 'diesel';
+        else if (fuelRaw.includes('GAS')) engineType = 'gas';
+        else if (fuelRaw.includes('ELECTRO') || fuelRaw.includes('ELECTRIC')) engineType = 'electric';
+        else if (fuelRaw.includes('HYBRID')) engineType = 'hybrid';
+
         return {
           licensePlate: licensePlate,
           make: registryData.brand || null,
@@ -413,6 +422,8 @@ export class OCRManager {
           year: registryData.make_year || null,
           color: registryData.color || null,
           vin: registryData.vin || null,
+          engineType: engineType,
+          engineVolume: registryData.engine_volume || null,
           isPartialData: false
         };
       }

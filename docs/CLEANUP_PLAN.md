@@ -19,12 +19,12 @@
 - `docs/` = єдина підтримувана документація.
 - `.trae/documents/` = генерації/чернетки, не вважаються джерелом істини.
 
-### 1.2 Архівувати застарілі “топ-рівневі” документи
+### 1.2 Архівувати застарілі “топ-рівневі” документи (✅ Done)
 
 Кандидати в архів (позначити як legacy/застарілі або перенести в `docs/_archive/`):
 
-- `AUDIT_REPORT.md`
-- `DEBUGGING_PLAN.md`
+- `AUDIT_REPORT.md` (moved)
+- `DEBUGGING_PLAN.md` (moved)
 
 Причина: ці файли були автогенеровані й користувач їх позначив як застарілі.
 
@@ -35,36 +35,21 @@
 - `README.md` у корінь (коротко: що в репо, де документація).
 - `docs/README.md` як індекс.
 
-## 2) Прибирання “мертвих” файлів і дублікатів (високий пріоритет)
+## 2) Прибирання “мертвих” файлів і дублікатів (✅ Done)
 
-### 2.1 Web: зайві/непідключені сторінки
+### 2.1 Web: зайві/непідключені сторінки (✅ Done)
 
-- `client/src/pages/LoginPage.jsx` виглядає непідключеним (не імпортується). Рішення:
-  - або видалити,
-  - або зробити єдиною сторінкою логіну і прибрати дубль.
+- `client/src/pages/LoginPage.jsx` (removed/verified missing)
 
-### 2.2 Mobile: дублікати адмін-екранів
+### 2.2 Mobile: дублікати адмін-екранів (✅ Done)
 
-Навігація використовує `mobile/screens/admin/*`, але в `mobile/screens/` лежать дублікати. Кандидати на видалення після перевірки імпортів:
+Навігація використовує `mobile/screens/admin/*`. Дублікати в `mobile/screens/` видалені/перевірені.
 
-- `mobile/screens/AdminStatisticsScreen.js`
-- `mobile/screens/AppointmentsManagementScreen.js`
-- `mobile/screens/PartsManagementScreen.js`
-- `mobile/screens/ServicesManagementScreen.js`
-- `mobile/screens/UsersManagementScreen.js`
-- `mobile/screens/VehiclesManagementScreen.js`
+### 2.3 Тимчасові файли (✅ Done)
 
-Ціль: щоб у кожного екрану була **одна** “канонічна” реалізація.
-
-### 2.3 Тимчасові файли
-
-Кандидати на видалення/перенос в `docs/_archive/`:
-
-- `mobile/context/AuthContext.js.temp`
-- `mobile/tests/setup.js.temp`
-- `setup.js.temp`
-
-Правило: `.temp` не має лежати в репо без явної причини.
+- `mobile/context/AuthContext.js.temp` (removed/moved)
+- `mobile/tests/setup.js.temp` (removed/moved)
+- `setup.js.temp` (removed/moved)
 
 ## 3) Прибирання заглушок у runtime (середній пріоритет)
 
@@ -78,15 +63,13 @@
 - **Hard fail**: прибрати mock повністю.
 - **Stabilize native**: довести `@react-native-ml-kit/text-recognition` до стабільного використання і покрити smoke-тестом.
 
-### 3.2 Заглушка іконок MaterialCommunityIcons
+### 3.2 Заглушка іконок MaterialCommunityIcons (✅ Done)
 
-`mobile/MaterialCommunityIcons.js` підміняє методи й повертає порожні ресурси. Це маскує проблему.
+`mobile/MaterialCommunityIcons.js` архівовано. Додаток використовує `@expo/vector-icons` (Ionicons).
 
-Рішення: знайти першопричину (шрифти/автолінкінг/Expo config) і прибрати заглушку.
+### 3.3 Статистика: пробіг (✅ Done)
 
-### 3.3 Статистика: пробіг
-
-`totalMileage` зараз 0. Потрібно визначити джерело істини (поле в `vehicles` чи в `service_records`) і порахувати.
+`totalMileage` розраховується як різниця (max - min) пробігу в сервісних записах за обраний період. `mobile/api/servicesApi.js` оновлено, щоб повертати `mileage`.
 
 ## 4) Скрипти/сміття (низький–середній пріоритет)
 
@@ -108,4 +91,3 @@
 - API піднімається й відповідає на базові `/api/*`.
 - Mobile збирається в Expo без заглушок, або з явним dev-flag.
 - Telegram bot стартує і проходить базовий флоу логіну.
-

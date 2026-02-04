@@ -86,7 +86,9 @@ export async function create(payload) {
     name: payload.name,
     description: payload.description || null,
     price: payload.price != null ? Number(payload.price) : null,
+    price_text: payload.price_text != null ? String(payload.price_text) : null,
     duration: payload.duration != null ? Number(payload.duration) : null,
+    duration_text: payload.duration_text != null ? String(payload.duration_text) : null,
     is_active: payload.is_active === undefined ? true : Boolean(payload.is_active),
     service_station_id: payload.service_station_id || payload.station_id || null,
     category_id: payload.category_id || null
@@ -105,7 +107,9 @@ export async function update(id, payload) {
     name: payload.name,
     description: payload.description,
     price: payload.price != null ? Number(payload.price) : null,
+    price_text: payload.price_text !== undefined ? (payload.price_text == null ? null : String(payload.price_text)) : undefined,
     duration: payload.duration != null ? Number(payload.duration) : null,
+    duration_text: payload.duration_text !== undefined ? (payload.duration_text == null ? null : String(payload.duration_text)) : undefined,
     is_active: payload.is_active === undefined ? undefined : Boolean(payload.is_active),
     service_station_id: payload.service_station_id || payload.station_id || undefined,
     category_id: payload.category_id || undefined

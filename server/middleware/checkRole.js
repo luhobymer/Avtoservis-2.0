@@ -19,7 +19,7 @@ const checkRole = (roles) => {
 
 // Middleware для перевірки прав майстра-механіка (єдиний привілейований тип користувача)
 const checkAdmin = (req, res, next) => {
-  if (!req.user || req.user.role !== 'master') {
+  if (!req.user || !['master', 'mechanic'].includes(String(req.user.role || '').toLowerCase())) {
     return res.status(403).json({
       message: 'Ця дія доступна тільки для майстрів-механіків',
     });
@@ -29,7 +29,7 @@ const checkAdmin = (req, res, next) => {
 
 // Middleware для перевірки прав механіка (майстра)
 const checkMechanic = (req, res, next) => {
-  if (!req.user || req.user.role !== 'master') {
+  if (!req.user || !['master', 'mechanic'].includes(String(req.user.role || '').toLowerCase())) {
     return res.status(403).json({
       message: 'Ця дія доступна тільки для майстрів-механіків',
     });

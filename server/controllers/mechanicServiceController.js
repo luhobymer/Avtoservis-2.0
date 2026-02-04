@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const { getDb, getExistingColumn } = require('../db/d1');
+const { resolveCurrentMechanic } = require('../utils/resolveCurrentMechanic');
 
 const normalizeBoolInt = (value, defaultValue = 0) => {
   if (value === true) return 1;
@@ -15,13 +16,22 @@ const normalizeBoolInt = (value, defaultValue = 0) => {
 
 exports.getMechanicServices = async (req, res) => {
   try {
-    const mechanicId = String(req.params.id || '').trim();
+    const role = String(req.user?.role || '').toLowerCase();
+    let mechanicId = String(req.params.id || '').trim();
+    if (['mechanic', 'master'].includes(role)) {
+      const currentMechanic = await resolveCurrentMechanic(req.user, {
+        createIfMissing: true,
+        enableAllServices: true,
+      });
+      mechanicId = currentMechanic?.id ? String(currentMechanic.id) : '';
+    }
     if (!mechanicId) {
       return res.status(400).json({ message: 'Не вказано mechanic id' });
     }
 
     const enabledOnly = normalizeBoolInt(req.query.enabled, 0) === 1;
     const db = await getDb();
+    const serviceColumns = await getServiceColumnConfig(db);
     const overrideConfig = await getMechanicServiceOverrideConfig(db);
 
     const categoriesTable = await db
@@ -75,15 +85,20 @@ exports.getMechanicServices = async (req, res) => {
     const list = Array.isArray(rows) ? rows : [];
     const mapped = list.map((row) => {
       const { category_id_ref, category_name, ...service } = row;
-      const effectivePrice = row.price_override != null ? Number(row.price_override) : row.price;
-      const effectiveDuration =
-        row.duration_override != null ? Number(row.duration_override) : row.duration;
+
+      const basePriceRaw = row?.[serviceColumns.price];
+      const baseDurationRaw = row?.[serviceColumns.duration];
+      const basePrice = basePriceRaw != null ? Number(basePriceRaw) : null;
+      const baseDuration = baseDurationRaw != null ? Number(baseDurationRaw) : null;
+
+      const effectivePrice = row.price_override != null ? Number(row.price_override) : basePrice;
+      const effectiveDuration = row.duration_override != null ? Number(row.duration_override) : baseDuration;
       return {
         ...service,
-        base_price: row.price,
-        base_duration: row.duration,
-        price: Number.isFinite(effectivePrice) ? effectivePrice : service.price,
-        duration: Number.isFinite(effectiveDuration) ? effectiveDuration : service.duration,
+        base_price: Number.isFinite(basePrice) ? basePrice : null,
+        base_duration: Number.isFinite(baseDuration) ? baseDuration : null,
+        price: Number.isFinite(effectivePrice) ? effectivePrice : null,
+        duration: Number.isFinite(effectiveDuration) ? effectiveDuration : null,
         is_enabled: Number(row.is_enabled || 0) === 1,
         category: category_id_ref
           ? {
@@ -105,7 +120,15 @@ exports.getMechanicServices = async (req, res) => {
 
 exports.setMechanicServiceEnabled = async (req, res) => {
   try {
-    const mechanicId = String(req.params.id || '').trim();
+    const role = String(req.user?.role || '').toLowerCase();
+    let mechanicId = String(req.params.id || '').trim();
+    if (['mechanic', 'master'].includes(role)) {
+      const currentMechanic = await resolveCurrentMechanic(req.user, {
+        createIfMissing: true,
+        enableAllServices: true,
+      });
+      mechanicId = currentMechanic?.id ? String(currentMechanic.id) : '';
+    }
     const serviceId = String(req.params.serviceId || '').trim();
     if (!mechanicId || !serviceId) {
       return res.status(400).json({ message: 'Не вказано mechanicId або serviceId' });
@@ -175,7 +198,15 @@ const getMechanicServiceOverrideConfig = async (db) => {
 
 exports.createMechanicService = async (req, res) => {
   try {
-    const mechanicId = String(req.params.id || '').trim();
+    const role = String(req.user?.role || '').toLowerCase();
+    let mechanicId = String(req.params.id || '').trim();
+    if (['mechanic', 'master'].includes(role)) {
+      const currentMechanic = await resolveCurrentMechanic(req.user, {
+        createIfMissing: true,
+        enableAllServices: true,
+      });
+      mechanicId = currentMechanic?.id ? String(currentMechanic.id) : '';
+    }
     if (!mechanicId) {
       return res.status(400).json({ message: 'Не вказано mechanic id' });
     }
@@ -273,7 +304,15 @@ exports.createMechanicService = async (req, res) => {
 
 exports.updateMechanicServiceDetails = async (req, res) => {
   try {
-    const mechanicId = String(req.params.id || '').trim();
+    const role = String(req.user?.role || '').toLowerCase();
+    let mechanicId = String(req.params.id || '').trim();
+    if (['mechanic', 'master'].includes(role)) {
+      const currentMechanic = await resolveCurrentMechanic(req.user, {
+        createIfMissing: true,
+        enableAllServices: true,
+      });
+      mechanicId = currentMechanic?.id ? String(currentMechanic.id) : '';
+    }
     const serviceId = String(req.params.serviceId || '').trim();
     if (!mechanicId || !serviceId) {
       return res.status(400).json({ message: 'Не вказано mechanicId або serviceId' });

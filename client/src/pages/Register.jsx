@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/useAuth';
+import { toast } from 'react-toastify';
+import { UA_REGION_NAMES, getCitiesByRegion } from '../data/uaRegionsCities';
 import {
   Container,
   Box,
@@ -11,7 +13,8 @@ import {
   Paper,
   Grid,
   Alert,
-  CircularProgress
+  CircularProgress,
+  MenuItem
 } from '@mui/material';
 
 const Register = () => {
@@ -47,11 +50,22 @@ const Register = () => {
       }
     }
 
+    if (name === 'region') {
+      setFormData({
+        ...formData,
+        region: value,
+        city: ''
+      });
+      return;
+    }
+
     setFormData({
       ...formData,
       [name]: value
     });
   };
+
+  const cityOptions = formData.region ? getCitiesByRegion(formData.region) : [];
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -109,18 +123,48 @@ const Register = () => {
       
       if (response.success) {
         setError(null);
-        if (response.requiresEmailConfirmation) {
-          // Показуємо повідомлення про необхідність підтвердження email
-          setError(response.message);
-          // Перенаправляємо на сторінку входу через 3 секунди
-          setTimeout(() => {
-            navigate('/auth/login');
-          }, 3000);
-        } else {
-          // Якщо підтвердження email не потрібне, перенаправляємо на головну сторінку
-          console.log('Реєстрація успішна, перенаправлення на головну сторінку');
-          navigate('/');
-        }
+        const message =
+          response.message ||
+          (response.requiresEmailConfirmation
+            ? t('auth.registrationRequiresEmailConfirmation')
+            : t('auth.registrationSuccess'));
+        const verificationLink = response.verificationLink;
+
+        toast.success(
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+            <Typography variant="body2">{message}</Typography>
+            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+              {verificationLink && (
+                <Button
+                  size="small"
+                  variant="outlined"
+                  color="inherit"
+                  component="a"
+                  href={verificationLink}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {t('auth.openEmailVerificationLink')}
+                </Button>
+              )}
+              <Button
+                size="small"
+                variant="contained"
+                onClick={() => {
+                  toast.dismiss('register-success');
+                  navigate('/auth/login');
+                }}
+              >
+                {t('auth.goToLogin')}
+              </Button>
+            </Box>
+          </Box>,
+          {
+            toastId: 'register-success',
+            autoClose: false,
+            closeOnClick: false,
+          }
+        );
       }
     } catch (err) {
       console.error('Помилка реєстрації:', err);
@@ -202,9 +246,16 @@ const Register = () => {
               id="region"
               label={t('auth.region')}
               name="region"
+              select
               value={formData.region}
               onChange={handleChange}
-            />
+            >
+              {UA_REGION_NAMES.map((region) => (
+                <MenuItem key={region} value={region}>
+                  {region}
+                </MenuItem>
+              ))}
+            </TextField>
             <TextField
               margin="normal"
               required
@@ -212,9 +263,17 @@ const Register = () => {
               id="city"
               label={t('auth.city')}
               name="city"
+              select
+              disabled={!formData.region}
               value={formData.city}
               onChange={handleChange}
-            />
+            >
+              {cityOptions.map((city) => (
+                <MenuItem key={city} value={city}>
+                  {city}
+                </MenuItem>
+              ))}
+            </TextField>
             <TextField
               margin="normal"
               required

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/useAuth';
+import { UA_REGION_NAMES, getCitiesByRegion } from '../data/uaRegionsCities';
 import {
   Container,
   Typography,
@@ -11,7 +12,8 @@ import {
   CircularProgress,
   Alert,
   Box,
-  Divider
+  Divider,
+  MenuItem
 } from '@mui/material';
 
 const Profile = () => {
@@ -76,13 +78,30 @@ const Profile = () => {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData({
-      ...formData,
-      [name]: value
-    });
+    if (name === 'region') {
+      setFormData({
+        ...formData,
+        region: value,
+        city: ''
+      });
+    } else {
+      setFormData({
+        ...formData,
+        [name]: value
+      });
+    }
     // Clear success message when form is changed
     if (success) setSuccess(false);
   };
+
+  const regionOptions = formData.region
+    ? Array.from(new Set([...UA_REGION_NAMES, formData.region]))
+    : UA_REGION_NAMES;
+
+  const derivedCities = formData.region ? getCitiesByRegion(formData.region) : [];
+  const cityOptions = formData.city
+    ? Array.from(new Set([...derivedCities, formData.city]))
+    : derivedCities;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -215,9 +234,16 @@ const Profile = () => {
                 fullWidth
                 label={t('auth.region')}
                 name="region"
+                select
                 value={formData.region}
                 onChange={handleChange}
-              />
+              >
+                {regionOptions.map((region) => (
+                  <MenuItem key={region} value={region}>
+                    {region}
+                  </MenuItem>
+                ))}
+              </TextField>
             </Grid>
 
             <Grid item xs={12} sm={6}>
@@ -226,9 +252,17 @@ const Profile = () => {
                 fullWidth
                 label={t('auth.city')}
                 name="city"
+                select
+                disabled={!formData.region}
                 value={formData.city}
                 onChange={handleChange}
-              />
+              >
+                {cityOptions.map((city) => (
+                  <MenuItem key={city} value={city}>
+                    {city}
+                  </MenuItem>
+                ))}
+              </TextField>
             </Grid>
 
             <Grid item xs={12} sm={6}>

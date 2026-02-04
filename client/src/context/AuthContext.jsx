@@ -79,11 +79,12 @@ export const AuthProvider = ({ children }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [error, setError] = useState(null);
 
-  const hasRole = (role) => (user?.role || '').toLowerCase() === role;
-  // Єдиний привілейований тип користувача — майстер-механік (role = 'master')
-  const isAdmin = () => hasRole('master');
-  const isMaster = () => hasRole('master');
-  const isClient = () => hasRole('client');
+  const normalizeRole = (value) => (value == null ? '' : String(value)).toLowerCase();
+  const userRole = normalizeRole(user?.role);
+  const hasRole = (role) => userRole === normalizeRole(role);
+  const isMaster = () => userRole === 'master' || userRole === 'mechanic';
+  const isAdmin = () => isMaster();
+  const isClient = () => userRole === 'client';
 
   useEffect(() => {
     const checkLoggedIn = async () => {
@@ -143,10 +144,26 @@ export const AuthProvider = ({ children }) => {
       setIsAuthenticated(true);
       return apiUser;
     } catch (err) {
-      const msg =
-        err?.response?.data?.message ||
+      const status = err?.response?.status || null;
+      const responseData = err?.response?.data;
+
+      let msg =
+        (responseData && typeof responseData === 'object' ? responseData.message : null) ||
         err?.message ||
         'Помилка автентифікації';
+
+      if (status === 500 && typeof responseData === 'string') {
+        const text = responseData.toLowerCase();
+        const looksLikeProxy =
+          text.includes('econnrefused') ||
+          text.includes('connect') ||
+          text.includes('proxy') ||
+          text.includes('localhost:5001') ||
+          text.includes('socket');
+        if (looksLikeProxy) {
+          msg = 'API сервер не запущено. Запусти бекенд на порту 5001 (наприклад: npm run dev:full у корені проєкту).';
+        }
+      }
       setError(msg);
       throw new Error(msg);
     }
@@ -174,12 +191,15 @@ export const AuthProvider = ({ children }) => {
         },
         { withCredentials: true }
       );
+      const requiresEmailConfirmation =
+        Boolean(response?.data?.requiresEmailConfirmation) || Boolean(userData?.email);
       return {
         success: true,
         message:
           response?.data?.message ||
           'Реєстрація успішна! Будь ласка, перевірте вашу електронну пошту для підтвердження.',
-        requiresEmailConfirmation: !!response?.data?.requiresEmailConfirmation
+        requiresEmailConfirmation,
+        verificationLink: response?.data?.verificationLink || null,
       };
     } catch (err) {
       const msg =

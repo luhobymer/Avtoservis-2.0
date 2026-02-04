@@ -83,6 +83,9 @@ describe('API Tests', () => {
       db.prepare(
         'INSERT INTO mechanics (id, first_name, last_name, created_at, updated_at) VALUES (?, ?, ?, ?, ?)'
       ).run(mechanicId, 'Test', 'Mechanic', now, now);
+      db.prepare(
+        'INSERT INTO mechanic_services (id, mechanic_id, service_id, is_enabled, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
+      ).run(crypto.randomUUID(), mechanicId, serviceId, 1, now, now);
 
       const res = await request(app)
         .post('/api/appointments')
@@ -123,6 +126,9 @@ describe('API Tests', () => {
       db.prepare(
         'INSERT INTO mechanics (id, first_name, last_name, created_at, updated_at) VALUES (?, ?, ?, ?, ?)'
       ).run(mechanicId, 'Test', 'Mechanic', now, now);
+      db.prepare(
+        'INSERT INTO mechanic_services (id, mechanic_id, service_id, is_enabled, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
+      ).run(crypto.randomUUID(), mechanicId, serviceId, 1, now, now);
 
       const createRes = await request(app)
         .post('/api/appointments')

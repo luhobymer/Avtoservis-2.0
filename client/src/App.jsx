@@ -14,8 +14,8 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
+import VerifyEmail from './pages/VerifyEmail';
 import Dashboard from './pages/Dashboard';
-import MasterDashboard from './pages/MasterDashboard';
 import Vehicles from './pages/Vehicles';
 import VehicleDetails from './pages/VehicleDetails';
 import Appointments from './pages/Appointments';
@@ -25,6 +25,11 @@ import ServiceRecordDetails from './pages/ServiceRecordDetails';
 import Profile from './pages/Profile';
 import AdminPanel from './pages/AdminPanel';
 import Notifications from './pages/Notifications';
+import MyMechanics from './pages/MyMechanics';
+import MyClients from './pages/MyClients';
+import MyServices from './pages/MyServices';
+import MyChats from './pages/MyChats';
+import MyParts from './pages/MyParts';
 
 // Context
 import useAuth from './context/useAuth';
@@ -108,6 +113,7 @@ const App = () => {
             <Route index element={<Navigate to="login" replace />} />
             <Route path="login" element={<Login />} />
             <Route path="register" element={<Register />} />
+            <Route path="verify-email" element={<VerifyEmail />} />
             <Route path="forgot-password" element={<ForgotPassword />} />
             <Route path="reset-password" element={<ResetPassword />} />
           </Route>
@@ -125,9 +131,14 @@ const App = () => {
             <Route path="/service-records/new" element={<ServiceRecordDetails isNew={true} />} />
             <Route path="/service-records/:id" element={<ServiceRecordDetails />} />
             <Route path="/profile" element={<Profile />} />
-            <Route path="/master-dashboard" element={<MasterDashboard />} />
+            <Route path="/master-dashboard" element={<Navigate to="/" replace />} />
             <Route path="/admin" element={<AdminPanel />} />
             <Route path="/notifications" element={<Notifications />} />
+            <Route path="/my-mechanics" element={<MyMechanics />} />
+            <Route path="/my-clients" element={<MyClients />} />
+            <Route path="/my-services" element={<MyServices />} />
+            <Route path="/my-chats" element={<MyChats />} />
+            <Route path="/my-parts" element={<MyParts />} />
           </Route>
           
           {/* Redirect to login if no route matches */}

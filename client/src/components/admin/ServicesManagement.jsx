@@ -32,6 +32,17 @@ const emptyForm = {
   is_active: true,
 };
 
+const parseNumericOrText = (value) => {
+  const raw = value == null ? '' : String(value).trim();
+  if (!raw) return { number: null, text: null };
+  const isPureNumber = /^-?\d+(?:[.,]\d+)?$/.test(raw);
+  if (isPureNumber) {
+    const n = Number(raw.replace(',', '.'));
+    if (Number.isFinite(n)) return { number: n, text: null };
+  }
+  return { number: null, text: raw };
+};
+
 const ServicesManagement = () => {
   const { t } = useTranslation();
   const [loading, setLoading] = useState(true);
@@ -72,8 +83,8 @@ const ServicesManagement = () => {
     setForm({
       name: row.name || '',
       description: row.description || '',
-      price: row.price ?? '',
-      duration: row.duration ?? '',
+      price: row.price_text ?? (row.price ?? ''),
+      duration: row.duration_text ?? (row.duration ?? ''),
       is_active: row.is_active !== false,
     });
     setOpen(true);
@@ -93,11 +104,15 @@ const ServicesManagement = () => {
   const submit = async () => {
     try {
       setError(null);
+      const priceParsed = parseNumericOrText(form.price);
+      const durationParsed = parseNumericOrText(form.duration);
       const payload = {
         name: String(form.name || '').trim(),
         description: form.description || null,
-        price: form.price === '' ? null : Number(form.price),
-        duration: form.duration === '' ? null : Number(form.duration),
+        price: priceParsed.number,
+        price_text: priceParsed.text,
+        duration: durationParsed.number,
+        duration_text: durationParsed.text,
         is_active: Boolean(form.is_active),
       };
       if (!payload.name) {
@@ -171,8 +186,8 @@ const ServicesManagement = () => {
               {items.map((row) => (
                 <TableRow key={row.id} hover>
                   <TableCell>{row.name}</TableCell>
-                  <TableCell>{row.price ?? ''}</TableCell>
-                  <TableCell>{row.duration ?? ''}</TableCell>
+                  <TableCell>{row.price_text || row.price || ''}</TableCell>
+                  <TableCell>{row.duration_text || row.duration || ''}</TableCell>
                   <TableCell>{row.is_active ? '✓' : ''}</TableCell>
                   <TableCell align="right">
                     <Button size="small" onClick={() => openEdit(row)} sx={{ mr: 1 }}>
@@ -249,4 +264,3 @@ const ServicesManagement = () => {
 };
 
 export default ServicesManagement;
-

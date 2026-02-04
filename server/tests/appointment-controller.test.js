@@ -51,6 +51,10 @@ describe('AppointmentController', () => {
       'INSERT INTO mechanics (id, first_name, last_name, specialization_id, service_station_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
     ).run(mechanicId, 'Іван', 'Петренко', specializationId, stationId, now, now);
 
+    db.prepare(
+      'INSERT INTO mechanic_services (id, mechanic_id, service_id, is_enabled, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
+    ).run(crypto.randomUUID(), mechanicId, serviceId, 1, now, now);
+
     req.user.id = userId;
 
     return { db, now, userId, stationId, serviceId, mechanicId };

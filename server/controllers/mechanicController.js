@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const { getDb, getExistingColumn } = require('../db/d1');
+const { resolveCurrentMechanic } = require('../utils/resolveCurrentMechanic');
 
 exports.getCurrentMechanic = async (req, res) => {
   try {
@@ -8,23 +9,10 @@ exports.getCurrentMechanic = async (req, res) => {
       return res.status(403).json({ message: 'Ця дія доступна тільки для майстрів-механіків' });
     }
 
-    const email = req.user?.email ? String(req.user.email).trim() : '';
-    const phone = req.user?.phone ? String(req.user.phone).trim() : '';
-    if (!email && !phone) {
-      return res.status(400).json({ message: 'Немає email або телефону в токені' });
-    }
-
-    const db = await getDb();
-    let mechanic = null;
-    if (email) {
-      mechanic = await db
-        .prepare('SELECT * FROM mechanics WHERE lower(email) = lower(?) LIMIT 1')
-        .get(email);
-    }
-    if (!mechanic && phone) {
-      mechanic = await db.prepare('SELECT * FROM mechanics WHERE phone = ? LIMIT 1').get(phone);
-    }
-
+    const mechanic = await resolveCurrentMechanic(req.user, {
+      createIfMissing: true,
+      enableAllServices: true,
+    });
     if (!mechanic) {
       return res.status(404).json({ message: 'Механіка для цього користувача не знайдено' });
     }

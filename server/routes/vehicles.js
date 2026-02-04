@@ -3,6 +3,7 @@ const router = express.Router();
 const auth = require('../middleware/auth');
 const { check, validationResult } = require('express-validator');
 const vehicleController = require('../controllers/vehicleController');
+const servicedVehiclesController = require('../controllers/servicedVehiclesController');
 
 // Отримати всі автомобілі користувача
 router.get('/', auth, vehicleController.getUserVehicles);
@@ -45,6 +46,8 @@ router.post(
     await vehicleController.addVehicle(req, res);
   }
 );
+
+router.post('/serviced', auth, servicedVehiclesController.attachServicedVehicles);
 
 // Оновити інформацію про автомобіль
 router.put(

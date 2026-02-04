@@ -82,13 +82,28 @@ const listUsers = async (req, res) => {
   try {
     const limitParam = Number.parseInt(req.query.limit, 10);
     const limit = Number.isFinite(limitParam) ? Math.min(Math.max(limitParam, 1), 1000) : 500;
+
+    const offsetParam = Number.parseInt(req.query.offset, 10);
+    const offset = Number.isFinite(offsetParam) ? Math.max(offsetParam, 0) : 0;
+    const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+
     const db = await getDb();
-    const users = await db
+    const params = [];
+    let whereClause = '';
+
+    if (q) {
+      whereClause = 'WHERE email LIKE ? OR name LIKE ? OR phone LIKE ?';
+      const like = `%${q}%`;
+      params.push(like, like, like);
+    }
+
+    const rows = await db
       .prepare(
-        'SELECT id, email, name, phone, role, created_at, updated_at FROM users ORDER BY created_at DESC LIMIT ?'
+        `SELECT id, email, name, phone, role, email_verified, created_at, updated_at FROM users ${whereClause} ORDER BY created_at DESC LIMIT ? OFFSET ?`
       )
-      .all(limit);
-    res.json(users);
+      .all(...params, limit, offset);
+
+    res.json(rows || []);
   } catch (error) {
     logger.error('Помилка при отриманні користувачів:', error);
     res.status(500).json({
@@ -111,7 +126,7 @@ const getUserById = async (req, res) => {
     const db = await getDb();
     const user = await db
       .prepare(
-        'SELECT id, email, name, phone, role, created_at, updated_at FROM users WHERE id = ?'
+        'SELECT id, email, name, phone, role, email_verified, created_at, updated_at FROM users WHERE id = ?'
       )
       .get(requestedId);
     if (!user) {
@@ -155,7 +170,7 @@ const updateUserById = async (req, res) => {
 
     const updatedUser = await db
       .prepare(
-        'SELECT id, email, name, phone, role, created_at, updated_at FROM users WHERE id = ?'
+        'SELECT id, email, name, phone, role, email_verified, created_at, updated_at FROM users WHERE id = ?'
       )
       .get(req.params.id);
 

@@ -7,7 +7,7 @@ const userSchema = Joi.object({
   email: Joi.string().email().required(),
   password: Joi.string().min(8).required(),
   role: Joi.string()
-    .valid('client', 'mechanic', 'admin', 'master', 'master_admin')
+    .valid('client', 'master', 'mechanic')
     .default('client'),
   name: Joi.string().max(100),
   phone: Joi.string()

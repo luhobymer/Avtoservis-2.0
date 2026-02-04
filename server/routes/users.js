@@ -11,7 +11,8 @@ const adminAuth = async (req, res, next) => {
     const db = await getDb();
     const user = await db.prepare('SELECT id, role FROM users WHERE id = ?').get(req.user.id);
 
-    if (!user || user.role !== 'master') {
+    const role = String(user?.role || '').toLowerCase();
+    if (!user || !['master', 'mechanic'].includes(role)) {
       return res.status(403).json({ msg: 'Access denied. Master privileges required.' });
     }
     next();
@@ -60,7 +61,7 @@ router.put(
   check('phone', 'Phone number is required').optional(),
   check('role', 'Некоректна роль')
     .optional()
-    .isIn(['client', 'mechanic', 'admin', 'master', 'master_admin']),
+    .isIn(['client', 'master', 'mechanic']),
   controllers.updateUserById
 );
 

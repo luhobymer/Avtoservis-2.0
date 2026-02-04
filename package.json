@@ -9,9 +9,8 @@
     "dev:full": "concurrently \"npm run dev\" \"npm run client\"",
     "install:all": "npm install && cd client && npm install",
     "build": "cd client && npm run build",
-    "web": "expo start --web",
-    "clear-cache": "cd expo-app && npm run clear-cache",
-    "import:ua_registry": "node import_ua_vehicle_registry.js"
+    "web": "cd mobile && npm run start -- --web",
+    "clear-cache": "cd mobile && npm run clear-cache"
   },
   "keywords": [
     "avtoservis",
@@ -53,6 +52,7 @@
     "metro": "^0.76.7",
     "metro-resolver": "^0.76.7",
     "morgan": "^1.10.0",
+    "multer": "^2.0.2",
     "process": "^0.11.10",
     "react": "^18.2.0",
     "react-dom": "19.0.0",

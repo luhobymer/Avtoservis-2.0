@@ -193,7 +193,9 @@
       "manual": "Manual",
       "automatic": "Automatic",
       "cvt": "CVT",
-      "semi_auto": "Semi-automatic"
+      "semi_auto": "Semi-automatic",
+      "variator": "CVT",
+      "robot": "Robot"
     },
     "no_cached_data": "No cached data",
     "network_error": "Network error",

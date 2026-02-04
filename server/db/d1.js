@@ -330,8 +330,34 @@ const ensureSchemaSqliteSync = (sqliteDb) => {
     }
   };
 
-  ensureColumnsSync('appointments', [{ name: 'service_ids', def: 'TEXT' }]);
+  ensureColumnsSync('appointments', [
+    { name: 'service_ids', def: 'TEXT' },
+    { name: 'appointment_price', def: 'REAL' },
+    { name: 'appointment_duration', def: 'INTEGER' },
+    { name: 'completion_mileage', def: 'INTEGER' },
+  ]);
   ensureColumnsSync('service_records', [{ name: 'appointment_id', def: 'TEXT' }]);
+
+  sqliteDb.exec(`
+    CREATE TABLE IF NOT EXISTS vehicle_parts (
+      id TEXT PRIMARY KEY,
+      vehicle_vin TEXT NOT NULL,
+      appointment_id TEXT,
+      name TEXT NOT NULL,
+      part_number TEXT,
+      price REAL,
+      quantity INTEGER DEFAULT 1,
+      purchased_by TEXT DEFAULT 'owner',
+      installed_at_mileage INTEGER,
+      installed_date TEXT,
+      notes TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  sqliteDb.exec('CREATE INDEX IF NOT EXISTS idx_vehicle_parts_vin ON vehicle_parts(vehicle_vin)');
+  sqliteDb.exec('CREATE INDEX IF NOT EXISTS idx_vehicle_parts_appointment ON vehicle_parts(appointment_id)');
+
   ensureColumnsSync('services', [
     { name: 'is_active', def: 'INTEGER DEFAULT 1' },
     { name: 'price_text', def: 'TEXT' },
@@ -483,8 +509,34 @@ const ensureSchema = async (client) => {
     }
   }
   await ensureUserColumns(client);
-  await ensureTableColumns(client, 'appointments', [{ name: 'service_ids', def: 'TEXT' }]);
+  await ensureTableColumns(client, 'appointments', [
+    { name: 'service_ids', def: 'TEXT' },
+    { name: 'appointment_price', def: 'REAL' },
+    { name: 'appointment_duration', def: 'INTEGER' },
+    { name: 'completion_mileage', def: 'INTEGER' },
+  ]);
   await ensureTableColumns(client, 'service_records', [{ name: 'appointment_id', def: 'TEXT' }]);
+  
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS vehicle_parts (
+      id TEXT PRIMARY KEY,
+      vehicle_vin TEXT NOT NULL,
+      appointment_id TEXT,
+      name TEXT NOT NULL,
+      part_number TEXT,
+      price REAL,
+      quantity INTEGER DEFAULT 1,
+      purchased_by TEXT DEFAULT 'owner',
+      installed_at_mileage INTEGER,
+      installed_date TEXT,
+      notes TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  await client.query('CREATE INDEX IF NOT EXISTS idx_vehicle_parts_vin ON vehicle_parts(vehicle_vin)');
+  await client.query('CREATE INDEX IF NOT EXISTS idx_vehicle_parts_appointment ON vehicle_parts(appointment_id)');
+
   await ensureTableColumns(client, 'services', [
     { name: 'is_active', def: 'INTEGER DEFAULT 1' },
     { name: 'price_text', def: 'TEXT' },

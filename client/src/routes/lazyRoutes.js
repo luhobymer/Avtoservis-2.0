@@ -16,3 +16,4 @@ export const DashboardStats = lazy(() => import('../components/admin/DashboardSt
 export const VehicleDetails = lazy(() => import('../pages/VehicleDetails'));
 export const ServiceRecordDetails = lazy(() => import('../pages/ServiceRecordDetails'));
 export const AppointmentDetails = lazy(() => import('../pages/AppointmentDetails'));
+export const MyParts = lazy(() => import('../pages/MyParts'));

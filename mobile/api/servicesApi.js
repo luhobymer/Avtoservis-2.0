@@ -36,6 +36,7 @@ export const getUserServiceRecords = async (token) => {
       vehicle_vin: r.vehicle_id || null,
       service_details: r.description || '',
       cost: null,
+      mileage: r.mileage || 0,
       performed_at: r.service_date || null,
       mechanic_notes: r.recommendations || null,
       service_date: r.service_date || null

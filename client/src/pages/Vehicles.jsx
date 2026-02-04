@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { list as listVehicles } from '../api/dao/vehiclesDao';
+import useAuth from '../context/useAuth';
 import {
   Container,
   Typography,
@@ -20,6 +21,14 @@ import { format } from 'date-fns';
 
 const Vehicles = () => {
   const { t } = useTranslation();
+  const { isAdmin, isMaster } = useAuth();
+
+  const isMasterUser =
+    typeof isMaster === 'function'
+      ? isMaster()
+      : typeof isAdmin === 'function'
+        ? isAdmin()
+        : false;
   const [vehicles, setVehicles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -29,7 +38,7 @@ const Vehicles = () => {
       setLoading(true);
       setError(null);
       try {
-        const rows = await listVehicles();
+        const rows = await listVehicles(isMasterUser ? { serviced: true } : undefined);
         setVehicles(rows);
         console.log('[Vehicles] Дані про автомобілі (Supabase):', rows);
       } catch (error) {
@@ -46,7 +55,7 @@ const Vehicles = () => {
     };
 
     fetchVehicles();
-  }, [t]);
+  }, [t, isMasterUser]);
 
   if (loading) {
     return (
@@ -93,8 +102,10 @@ const Vehicles = () => {
                     sx={{
                       pt: '56.25%',
                       bgcolor: 'rgba(0, 0, 0, 0.1)',
+                      backgroundSize: 'cover',
+                      backgroundPosition: 'center'
                     }}
-                    image="/placeholder-car.svg"
+                    image={vehicle.photoUrl || "/placeholder-car.svg"}
                   />
                   <CardContent sx={{ flexGrow: 1 }}>
                     <Typography gutterBottom variant="h5" component="h2">
@@ -112,12 +123,22 @@ const Vehicles = () => {
                     <Typography variant="body2" color="text.secondary">
                       {t('vehicle.licensePlate')}: {vehicle.licensePlate || t('common.notAvailable')}
                     </Typography>
+                    {vehicle.engineType && (
+                      <Typography variant="body2" color="text.secondary">
+                        {t('vehicle.engineType')}: {t(`vehicle.engineTypes.${vehicle.engineType}`) || vehicle.engineType} {vehicle.engineVolume ? `(${vehicle.engineVolume}L)` : ''}
+                      </Typography>
+                    )}
+                    {vehicle.transmission && (
+                      <Typography variant="body2" color="text.secondary">
+                        {t('vehicle.transmission')}: {t(`vehicle.transmissionTypes.${vehicle.transmission}`) || vehicle.transmission}
+                      </Typography>
+                    )}
                     <Typography variant="body2" color="text.secondary">
                       {t('vehicle.mileage')}: {vehicle.mileage ? `${vehicle.mileage} ${t('common.km')}` : t('common.notAvailable')}
                     </Typography>
                     {vehicle.color && (
                       <Typography variant="body2" color="text.secondary">
-                        {t('vehicle.color')}: {vehicle.color}
+                        {t('vehicle.color')}: {t(`vehicle.colors.${vehicle.color}`) || vehicle.color}
                       </Typography>
                     )}
                     {vehicle.lastService && (

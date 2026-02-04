@@ -20,6 +20,7 @@ const userRoutes = require('./routes/users');
 const adminRoutes = require('./routes/admin');
 const serviceStationRoutes = require('./routes/serviceStations');
 const serviceRoutes = require('./routes/services');
+const serviceCategoryRoutes = require('./routes/serviceCategories');
 const appointmentRoutes = require('./routes/appointments');
 const mechanicRoutes = require('./routes/mechanics');
 const vehicleRoutes = require('./routes/vehicles');
@@ -29,6 +30,11 @@ const notificationRoutes = require('./routes/notifications');
 const interactionRoutes = require('./routes/interactions');
 const deviceRoutes = require('./routes/deviceTokens');
 const registryRoutes = require('./routes/registry');
+const uploadRoutes = require('./routes/upload');
+const relationshipRoutes = require('./routes/relationships');
+const partsRoutes = require('./routes/parts');
+const vehiclePartsRoutes = require('./routes/vehicleParts');
+const paymentsRoutes = require('./routes/payments');
 const { getDb } = require('./db/d1');
 
 const app = express();
@@ -40,6 +46,7 @@ const { startReminderScheduler } = require('./services/reminderScheduler');
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(compression()); // Додаємо стиснення відповідей
+app.use('/api/uploads', express.static(path.join(__dirname, 'public/uploads')));
 
 // Безпека
 app.use(helmet());
@@ -67,6 +74,7 @@ app.use('/api/users', userRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/stations', serviceStationRoutes);
 app.use('/api/services', serviceRoutes);
+app.use('/api/service-categories', serviceCategoryRoutes);
 app.use('/api/appointments', appointmentRoutes);
 app.use('/api/mechanics', mechanicRoutes);
 app.use('/api/vehicles', vehicleRoutes);
@@ -76,6 +84,11 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/interactions', interactionRoutes);
 app.use('/api/devices', deviceRoutes);
 app.use('/api/vehicle-registry', registryRoutes);
+app.use('/api/upload', uploadRoutes);
+app.use('/api/relationships', relationshipRoutes);
+app.use('/api/parts', partsRoutes);
+app.use('/api/vehicle-parts', vehiclePartsRoutes);
+app.use('/api/payments', paymentsRoutes);
 
 // Роут для Telegram-бота
 const telegramRoutes = require('./routes/telegram');

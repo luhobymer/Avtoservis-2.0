@@ -44,6 +44,7 @@ function mapUser(row) {
     email: row.email || '',
     phone: row.phone || '',
     role: row.role || 'client',
+    email_verified: row.email_verified ?? 0,
     created_at: row.created_at || null,
     updated_at: row.updated_at || null
   };

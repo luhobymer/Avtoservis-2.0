@@ -102,10 +102,10 @@ router.post(
       const hashedPassword = await bcrypt.hash(password, 10);
       await db
         .prepare(
-          `INSERT INTO users (id, name, email, password, phone, role, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+          `INSERT INTO users (id, name, email, password, phone, role, email_verified, email_verified_at, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         )
-        .run(userId, name, email, hashedPassword, phone, role, now, now);
+        .run(userId, name, email, hashedPassword, phone, role, 1, now, now, now);
 
       const user = await db
         .prepare(

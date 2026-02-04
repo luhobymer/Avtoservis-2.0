@@ -22,7 +22,18 @@ router.post(
         return true;
       })
       .optional({ nullable: true }),
-    body('mechanic_id').notEmpty().withMessage("ID механіка обов'язковий"),
+    body('mechanic_id')
+      .custom((value, { req }) => {
+        const role = String(req.user?.role || '').toLowerCase();
+        if (['mechanic', 'master', 'admin'].includes(role)) {
+          return true;
+        }
+        if (value == null || String(value).trim() === '') {
+          throw new Error("ID механіка обов'язковий");
+        }
+        return true;
+      })
+      .optional({ nullable: true }),
     body('scheduled_time').isISO8601().withMessage('Невірний формат дати'),
   ],
   appointmentController.createAppointment
@@ -47,8 +58,6 @@ router.get('/', auth, async (req, res) => {
     return res.status(500).json({ message: 'Помилка сервера' });
   }
 });
-
-router.get('/:id', auth, appointmentController.getAppointmentById);
 
 router.put('/:id', auth, async (req, res) => {
   try {
@@ -82,6 +91,8 @@ router.put('/:id', auth, async (req, res) => {
     const serviceId = req.body.service_id ?? req.body.serviceId ?? null;
     const serviceIds = req.body.service_ids ?? req.body.serviceIds ?? null;
     const mechanicId = req.body.mechanic_id ?? req.body.mechanicId ?? null;
+    const appointmentPrice = req.body.appointment_price ?? req.body.appointmentPrice ?? null;
+    const appointmentDuration = req.body.appointment_duration ?? req.body.appointmentDuration ?? null;
     const vehicleVin = req.body.vehicle_vin ?? null;
     const notes = req.body.notes ?? null;
     const appointmentDate = req.body.appointment_date ?? null;
@@ -92,14 +103,12 @@ router.put('/:id', auth, async (req, res) => {
     const updateStatus = status !== null ? status : existingAppointment.status;
     const updateServiceId = serviceId !== null ? serviceId : existingAppointment.service_id;
     const normalizedServiceIds = Array.isArray(serviceIds)
-      ? serviceIds
-          .map((id) => (id == null ? '' : String(id).trim()))
-          .filter(Boolean)
+      ? serviceIds.map((id) => (id == null ? '' : String(id).trim())).filter(Boolean)
       : [];
     const updateServiceIds =
       normalizedServiceIds.length > 0
         ? JSON.stringify(Array.from(new Set(normalizedServiceIds)))
-        : existingAppointment.service_ids ?? null;
+        : (existingAppointment.service_ids ?? null);
     const updateMechanicId = mechanicId !== null ? mechanicId : existingAppointment.mechanic_id;
     const updateVehicleVin = vehicleVin !== null ? vehicleVin : existingAppointment.vehicle_vin;
     const updateNotes = notes !== null ? notes : existingAppointment.notes;
@@ -107,23 +116,87 @@ router.put('/:id', auth, async (req, res) => {
       appointmentDate !== null ? appointmentDate : existingAppointment.appointment_date;
     const updateServiceType = serviceType !== null ? serviceType : existingAppointment.service_type;
 
-    await db
-      .prepare(
-        'UPDATE appointments SET scheduled_time = ?, status = ?, service_id = ?, service_ids = ?, mechanic_id = ?, vehicle_vin = ?, notes = ?, appointment_date = ?, service_type = ?, updated_at = ? WHERE id = ?'
-      )
-      .run(
-        updateScheduledTime,
-        updateStatus,
-        updateServiceId,
-        updateServiceIds,
-        updateMechanicId,
-        updateVehicleVin,
-        updateNotes,
-        updateAppointmentDate,
-        updateServiceType,
-        new Date().toISOString(),
-        req.params.id
-      );
+    const appointmentColumns = await db.prepare('PRAGMA table_info(appointments)').all();
+    const appointmentColumnNames = new Set((appointmentColumns || []).map((col) => col.name));
+    const hasAppointmentPrice = appointmentColumnNames.has('appointment_price');
+    const hasAppointmentDuration = appointmentColumnNames.has('appointment_duration');
+
+    const updateAppointmentPrice =
+      appointmentPrice !== null
+        ? appointmentPrice === ''
+          ? null
+          : Number(appointmentPrice)
+        : (existingAppointment.appointment_price ?? null);
+    const updateAppointmentDuration =
+      appointmentDuration !== null
+        ? appointmentDuration === ''
+          ? null
+          : Number(appointmentDuration)
+        : (existingAppointment.appointment_duration ?? null);
+
+    const mechanicServicesTable = await db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='mechanic_services'")
+      .get();
+    if (mechanicServicesTable && updateMechanicId) {
+      const idsToCheck = [];
+      if (updateServiceId) {
+        idsToCheck.push(String(updateServiceId));
+      }
+      if (normalizedServiceIds.length > 0) {
+        idsToCheck.push(...normalizedServiceIds);
+      }
+      const unique = Array.from(new Set(idsToCheck.filter(Boolean)));
+      for (const sid of unique) {
+        const row = await db
+          .prepare(
+            'SELECT ms.is_enabled, s.is_active FROM mechanic_services ms LEFT JOIN services s ON s.id = ms.service_id WHERE ms.mechanic_id = ? AND ms.service_id = ?'
+          )
+          .get(updateMechanicId, sid);
+        const isEnabled = row && Number(row.is_enabled || 0) === 1;
+        const isActive = row ? Number(row.is_active ?? 1) === 1 : false;
+        if (!isEnabled || !isActive) {
+          return res
+            .status(400)
+            .json({ message: 'Послуга недоступна для вибраного механіка' });
+        }
+      }
+    }
+
+    const updates = [
+      'scheduled_time = ?',
+      'status = ?',
+      'service_id = ?',
+      'service_ids = ?',
+      'mechanic_id = ?',
+      'vehicle_vin = ?',
+      'notes = ?',
+      'appointment_date = ?',
+      'service_type = ?',
+    ];
+    const params = [
+      updateScheduledTime,
+      updateStatus,
+      updateServiceId,
+      updateServiceIds,
+      updateMechanicId,
+      updateVehicleVin,
+      updateNotes,
+      updateAppointmentDate,
+      updateServiceType,
+    ];
+    if (hasAppointmentPrice) {
+      updates.push('appointment_price = ?');
+      params.push(Number.isFinite(updateAppointmentPrice) ? updateAppointmentPrice : null);
+    }
+    if (hasAppointmentDuration) {
+      updates.push('appointment_duration = ?');
+      params.push(Number.isFinite(updateAppointmentDuration) ? updateAppointmentDuration : null);
+    }
+    updates.push('updated_at = ?');
+    params.push(new Date().toISOString());
+    params.push(req.params.id);
+
+    await db.prepare(`UPDATE appointments SET ${updates.join(', ')} WHERE id = ?`).run(...params);
 
     const updated = await db.prepare('SELECT * FROM appointments WHERE id = ?').get(req.params.id);
     res.json(updated);

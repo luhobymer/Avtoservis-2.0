@@ -63,7 +63,7 @@ describe('Auth Middleware - Детальне тестування', () => {
       const decodedPayload = {
         id: 2,
         email: 'admin@example.com',
-        role: 'admin',
+        role: 'master',
         iat: Math.floor(Date.now() / 1000),
         exp: Math.floor(Date.now() / 1000) + 3600,
       };
@@ -446,7 +446,7 @@ describe('Auth Middleware - Детальне тестування', () => {
       const extendedPayload = {
         id: 1,
         email: 'test@example.com',
-        role: 'admin',
+        role: 'master',
         name: 'Test User',
         permissions: ['read', 'write'],
         iat: Math.floor(Date.now() / 1000),
