@@ -22,3 +22,4 @@
 | 2026-02-05 | Додано статус "pending" до перекладів та виправлено відображення авто при редагуванні запису | [translation.json](../client/public/locales/uk/translation.json), [AppointmentDetails.jsx](../client/src/pages/AppointmentDetails.jsx) |
 | 2026-02-05 | Збільшено ліміти rate-limiter для розробки | [index.js](./index.js), [auth.js](./routes/auth.js) |
 | 2026-02-05 | Додано можливість переходу до деталей запису по кліку на рядок таблиці та додано переклад для помилки профілю механіка | [Appointments.jsx](../client/src/pages/Appointments.jsx), locales |
+| 2026-02-05 | Виправлено доступ майстра до перегляду автомобілів за VIN-кодом | [vehicleController.js](./controllers/vehicleController.js) |

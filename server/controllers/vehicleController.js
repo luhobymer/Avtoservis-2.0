@@ -263,15 +263,25 @@ exports.getVehicleByVin = async (req, res) => {
       return res.status(401).json({ msg: 'Unauthorized' });
     }
 
+    const role = String(req.user?.role || '').toLowerCase();
+    const isMaster = ['master', 'mechanic', 'admin'].includes(role);
+
     const db = await getDb();
     const { makeColumn, licenseColumn } = await getVehicleColumnInfo(db);
     const ownerColumn = await resolveOwnerColumn(db);
     const appointmentColumns = await getAppointmentColumnConfig(db);
     const historyInfo = await getServiceHistoryInfo(db);
 
-    const vehicle = await db
-      .prepare(`SELECT * FROM vehicles WHERE vin = ? AND ${ownerColumn} = ?`)
-      .get(vin, userId);
+    let vehicle;
+    if (isMaster) {
+       vehicle = await db
+        .prepare(`SELECT * FROM vehicles WHERE vin = ?`)
+        .get(vin);
+    } else {
+       vehicle = await db
+        .prepare(`SELECT * FROM vehicles WHERE vin = ? AND ${ownerColumn} = ?`)
+        .get(vin, userId);
+    }
 
     if (!vehicle) {
       return res.status(404).json({ message: 'Автомобіль не знайдено' });
