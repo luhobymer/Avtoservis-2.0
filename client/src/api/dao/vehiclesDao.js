@@ -16,6 +16,9 @@ async function requestJson(url, options = {}) {
       const errorBody = await response.json();
       if (errorBody && typeof errorBody.message === 'string') {
         message = errorBody.message;
+        if (typeof errorBody.details === 'string' && errorBody.details.trim()) {
+          message = `${message}: ${errorBody.details}`;
+        }
       }
     } catch (error) {
       void error;
@@ -44,6 +47,10 @@ const mapVehicle = (v) => ({
     '',
   mileage: v.mileage != null ? v.mileage : 0,
   color: v.color || '',
+  engineType: v.engine_type || '',
+  transmission: v.transmission || '',
+  engineVolume: v.engine_capacity || '',
+  photoUrl: v.photo_url || '',
   UserId: v.user_id || v.UserId || null
 });
 
@@ -54,8 +61,13 @@ function normalizeListPayload(payload) {
   return [];
 }
 
-export async function list() {
-  const payload = await requestJson('/api/vehicles?admin=1');
+export async function list(options = {}) {
+  const params = new URLSearchParams();
+  if (options && options.serviced) {
+    params.set('serviced', '1');
+  }
+  const url = params.toString() ? `/api/vehicles?${params.toString()}` : '/api/vehicles';
+  const payload = await requestJson(url);
   const data = normalizeListPayload(payload);
   return data.map(mapVehicle);
 }
@@ -83,7 +95,11 @@ export async function update(id, payload) {
         ? Number(payload.mileage)
         : null,
     color: payload.color,
-    user_id: payload.user_id || payload.UserId || null
+    user_id: payload.user_id || payload.UserId || null,
+    engineType: payload.engineType,
+    transmission: payload.transmission,
+    engineVolume: payload.engineVolume,
+    photoUrl: payload.photoUrl
   };
 
   await requestJson(`/api/vehicles/${encodeURIComponent(vin)}`, {
@@ -119,7 +135,11 @@ export async function create(payload, userId) {
       payload.mileage !== undefined && payload.mileage !== null && payload.mileage !== ''
         ? Number(payload.mileage)
         : null,
-    color: payload.color || null
+    color: payload.color || null,
+    engineType: payload.engineType,
+    transmission: payload.transmission,
+    engineVolume: payload.engineVolume || payload.engineCapacity,
+    photoUrl: payload.photoUrl
   };
 
   const created = await requestJson('/api/vehicles', {
@@ -132,6 +152,18 @@ export async function create(payload, userId) {
   }
 
   return null;
+}
+
+export async function attachServicedVehicles(vehicleIds) {
+  const ids = Array.isArray(vehicleIds) ? vehicleIds : [];
+  const normalized = ids.map((v) => (v == null ? '' : String(v).trim())).filter(Boolean);
+  if (normalized.length === 0) {
+    throw new Error('vehicleIds is required');
+  }
+  return requestJson('/api/vehicles/serviced', {
+    method: 'POST',
+    body: { vehicle_ids: normalized }
+  });
 }
 
 export async function remove(id) {
@@ -148,4 +180,24 @@ export async function lookupRegistryByLicensePlate(licensePlate) {
     `/api/vehicle-registry?license_plate=${encodeURIComponent(licensePlate)}`
   );
   return payload;
+}
+
+export async function uploadPhoto(file) {
+  const token = localStorage.getItem('auth_token');
+  const formData = new FormData();
+  formData.append('photo', file);
+
+  const response = await fetch('/api/upload', {
+    method: 'POST',
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    },
+    body: formData
+  });
+
+  if (!response.ok) {
+    throw new Error('Photo upload failed');
+  }
+
+  return response.json();
 }

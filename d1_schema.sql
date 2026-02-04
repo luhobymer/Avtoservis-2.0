@@ -8,6 +8,10 @@ CREATE TABLE IF NOT EXISTS users (
   two_factor_enabled INTEGER DEFAULT 0,
   two_factor_pending INTEGER DEFAULT 0,
   recovery_codes TEXT,
+  email_verified INTEGER DEFAULT 0,
+  email_verification_token_hash TEXT,
+  email_verification_expires_at TEXT,
+  email_verified_at TEXT,
   created_at TEXT,
   updated_at TEXT,
   name TEXT,
@@ -58,6 +62,7 @@ CREATE TABLE IF NOT EXISTS services (
   is_active INTEGER DEFAULT 1,
   service_station_id TEXT,
   category_id TEXT,
+  created_by_mechanic_id TEXT,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
@@ -82,6 +87,34 @@ CREATE TABLE IF NOT EXISTS mechanics (
   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS mechanic_services (
+  id TEXT PRIMARY KEY,
+  mechanic_id TEXT NOT NULL,
+  service_id TEXT NOT NULL,
+  is_enabled INTEGER DEFAULT 1,
+  price_override REAL,
+  duration_override INTEGER,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_mechanic_services_unique ON mechanic_services(mechanic_id, service_id);
+CREATE INDEX IF NOT EXISTS idx_mechanic_services_mechanic_id ON mechanic_services(mechanic_id);
+CREATE INDEX IF NOT EXISTS idx_mechanic_services_service_id ON mechanic_services(service_id);
+
+CREATE TABLE IF NOT EXISTS mechanic_serviced_vehicles (
+  id TEXT PRIMARY KEY,
+  mechanic_id TEXT NOT NULL,
+  vehicle_id TEXT NOT NULL,
+  client_id TEXT NOT NULL,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_mechanic_serviced_vehicles_unique ON mechanic_serviced_vehicles(mechanic_id, vehicle_id);
+CREATE INDEX IF NOT EXISTS idx_mechanic_serviced_vehicles_mechanic_id ON mechanic_serviced_vehicles(mechanic_id);
+CREATE INDEX IF NOT EXISTS idx_mechanic_serviced_vehicles_client_id ON mechanic_serviced_vehicles(client_id);
 
 CREATE TABLE IF NOT EXISTS reviews (
   id TEXT PRIMARY KEY,

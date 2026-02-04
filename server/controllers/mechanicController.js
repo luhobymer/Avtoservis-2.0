@@ -1,6 +1,40 @@
 const crypto = require('crypto');
 const { getDb, getExistingColumn } = require('../db/d1');
 
+exports.getCurrentMechanic = async (req, res) => {
+  try {
+    const role = String(req.user?.role || '').toLowerCase();
+    if (!['master', 'mechanic', 'admin'].includes(role)) {
+      return res.status(403).json({ message: 'Ця дія доступна тільки для майстрів-механіків' });
+    }
+
+    const email = req.user?.email ? String(req.user.email).trim() : '';
+    const phone = req.user?.phone ? String(req.user.phone).trim() : '';
+    if (!email && !phone) {
+      return res.status(400).json({ message: 'Немає email або телефону в токені' });
+    }
+
+    const db = await getDb();
+    let mechanic = null;
+    if (email) {
+      mechanic = await db
+        .prepare('SELECT * FROM mechanics WHERE lower(email) = lower(?) LIMIT 1')
+        .get(email);
+    }
+    if (!mechanic && phone) {
+      mechanic = await db.prepare('SELECT * FROM mechanics WHERE phone = ? LIMIT 1').get(phone);
+    }
+
+    if (!mechanic) {
+      return res.status(404).json({ message: 'Механіка для цього користувача не знайдено' });
+    }
+
+    return res.json(mechanic);
+  } catch (err) {
+    return res.status(500).json({ message: 'Помилка сервера', details: err?.message });
+  }
+};
+
 // Отримати всіх механіків
 exports.getAllMechanics = async (req, res) => {
   try {
@@ -64,7 +98,10 @@ exports.getAllMechanics = async (req, res) => {
     res.json(mechanics);
   } catch (err) {
     console.error('Get mechanics error:', err);
-    res.status(500).json({ message: 'Помилка сервера' });
+    res.status(500).json({
+      message: 'Помилка сервера',
+      ...(process.env.NODE_ENV === 'development' ? { details: err?.message } : {}),
+    });
   }
 };
 

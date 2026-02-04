@@ -81,3 +81,11 @@ export async function getById(id) {
   }
   return mapMechanic(row);
 }
+
+export async function getCurrent() {
+  const row = await requestJson('/api/mechanics/me');
+  if (!row) {
+    throw new Error('Mechanic not found');
+  }
+  return mapMechanic(row);
+}

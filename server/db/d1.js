@@ -77,6 +77,10 @@ const createMemoryDb = () => {
         'two_factor_enabled',
         'two_factor_pending',
         'recovery_codes',
+        'email_verified',
+        'email_verification_token_hash',
+        'email_verification_expires_at',
+        'email_verified_at',
         'created_at',
         'updated_at',
         'name',
@@ -299,7 +303,17 @@ const ensureSchemaSqliteSync = (sqliteDb) => {
 
   const columns = sqliteDb.prepare('PRAGMA table_info(users)').all();
   const columnNames = new Set(columns.map((column) => column.name));
-  const userColumns = ['first_name', 'last_name', 'patronymic', 'region', 'city'];
+  const userColumns = [
+    'first_name',
+    'last_name',
+    'patronymic',
+    'region',
+    'city',
+    'email_verified',
+    'email_verification_token_hash',
+    'email_verification_expires_at',
+    'email_verified_at',
+  ];
   for (const column of userColumns) {
     if (!columnNames.has(column)) {
       sqliteDb.exec(`ALTER TABLE users ADD COLUMN ${column} TEXT`);
@@ -318,10 +332,21 @@ const ensureSchemaSqliteSync = (sqliteDb) => {
 
   ensureColumnsSync('appointments', [{ name: 'service_ids', def: 'TEXT' }]);
   ensureColumnsSync('service_records', [{ name: 'appointment_id', def: 'TEXT' }]);
-  ensureColumnsSync('services', [{ name: 'is_active', def: 'INTEGER DEFAULT 1' }]);
+  ensureColumnsSync('services', [
+    { name: 'is_active', def: 'INTEGER DEFAULT 1' },
+    { name: 'created_by_mechanic_id', def: 'TEXT' },
+  ]);
+  ensureColumnsSync('mechanics', [
+    { name: 'specialization_id', def: 'TEXT' },
+    { name: 'service_station_id', def: 'TEXT' },
+  ]);
   ensureColumnsSync('service_stations', [
     { name: 'city', def: 'TEXT' },
     { name: 'region', def: 'TEXT' },
+  ]);
+  ensureColumnsSync('mechanic_services', [
+    { name: 'price_override', def: 'REAL' },
+    { name: 'duration_override', def: 'INTEGER' },
   ]);
 
   sqliteDb.exec(`
@@ -384,6 +409,10 @@ const ensureUserColumns = async (client) => {
     { name: 'patronymic', def: 'TEXT' },
     { name: 'region', def: 'TEXT' },
     { name: 'city', def: 'TEXT' },
+    { name: 'email_verified', def: 'INTEGER DEFAULT 0' },
+    { name: 'email_verification_token_hash', def: 'TEXT' },
+    { name: 'email_verification_expires_at', def: 'TEXT' },
+    { name: 'email_verified_at', def: 'TEXT' },
   ];
   for (const column of columns) {
     if (!columnNames.has(column.name)) {
@@ -454,10 +483,21 @@ const ensureSchema = async (client) => {
   await ensureUserColumns(client);
   await ensureTableColumns(client, 'appointments', [{ name: 'service_ids', def: 'TEXT' }]);
   await ensureTableColumns(client, 'service_records', [{ name: 'appointment_id', def: 'TEXT' }]);
-  await ensureTableColumns(client, 'services', [{ name: 'is_active', def: 'INTEGER DEFAULT 1' }]);
+  await ensureTableColumns(client, 'services', [
+    { name: 'is_active', def: 'INTEGER DEFAULT 1' },
+    { name: 'created_by_mechanic_id', def: 'TEXT' },
+  ]);
+  await ensureTableColumns(client, 'mechanics', [
+    { name: 'specialization_id', def: 'TEXT' },
+    { name: 'service_station_id', def: 'TEXT' },
+  ]);
   await ensureTableColumns(client, 'service_stations', [
     { name: 'city', def: 'TEXT' },
     { name: 'region', def: 'TEXT' },
+  ]);
+  await ensureTableColumns(client, 'mechanic_services', [
+    { name: 'price_override', def: 'REAL' },
+    { name: 'duration_override', def: 'INTEGER' },
   ]);
   await ensureRefreshTokensTable(client);
   await ensurePasswordResetTokensTable(client);

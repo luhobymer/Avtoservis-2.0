@@ -49,14 +49,19 @@ LOG_FILE_ERROR=logs/error.log
 LOG_FILE_COMBINED=logs/combined.log
 ```
 
-4. Запустіть міграції:
-```bash
-npm run migrate
-```
+4. Схема БД:
+
+- При старті сервера схема з `d1_schema.sql` застосовується автоматично (для D1 та fallback SQLite).
+- Окремої команди міграцій наразі немає.
 
 5. Заповніть базу тестовими даними:
 ```bash
 npm run seed
+```
+
+6. Імпорт прайсу (ціна/час) у `services`:
+```bash
+node scripts/seed_price_list.js
 ```
 
 ## Запуск
@@ -101,6 +106,7 @@ npm start
 
 ### Механіки
 - GET /api/mechanics - Отримання списку механіків
+- GET /api/mechanics/me - Отримання «поточного» механіка для master/mechanic користувача
 - GET /api/mechanics/:id - Отримання інформації про механіка
 - POST /api/mechanics - Додавання нового механіка (адмін)
 - PUT /api/mechanics/:id - Оновлення інформації про механіка (адмін)

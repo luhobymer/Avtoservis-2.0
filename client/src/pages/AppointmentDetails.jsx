@@ -1,12 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Alert } from '@mui/material';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/useAuth';
 import { getById as getAppointmentById, create as createAppointment, update as updateAppointment } from '../api/dao/appointmentsDao';
-import { list as listVehicles } from '../api/dao/vehiclesDao';
-import { list as listServices } from '../api/dao/servicesDao';
-import { list as listMechanics } from '../api/dao/mechanicsDao';
+import { list as listVehicles, listForUser as listVehiclesForUser } from '../api/dao/vehiclesDao';
+import { getCurrent as getCurrentMechanic, list as listMechanics } from '../api/dao/mechanicsDao';
+import { listMechanicServices } from '../api/dao/mechanicServicesDao';
 import {
   Container,
   Typography,
@@ -25,13 +25,17 @@ import {
   DialogActions,
   DialogContent,
   DialogContentText,
-  DialogTitle
+  DialogTitle,
+  Stepper,
+  Step,
+  StepLabel
 } from '@mui/material';
 import { DateTimePicker, DatePicker } from '@mui/x-date-pickers';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 
 import Snackbar from '@mui/material/Snackbar';
+import AppointmentChat from '../components/chat/AppointmentChat';
 
 const AppointmentDetails = ({ isNew }) => {
   
@@ -40,6 +44,9 @@ const AppointmentDetails = ({ isNew }) => {
   const navigate = useNavigate();
   const isNewAppointment = isNew || id === 'new';
   const { user } = useAuth();
+  const hideMechanicSelection = ['master', 'mechanic', 'admin'].includes(
+    String(user?.role || '').toLowerCase()
+  );
   
   const [loading, setLoading] = useState(!isNewAppointment);
   const [saving, setSaving] = useState(false);
@@ -49,8 +56,11 @@ const AppointmentDetails = ({ isNew }) => {
   const [services, setServices] = useState([]);
   const [mechanics, setMechanics] = useState([]);
   const [success, setSuccess] = useState(false);
+  const [appointmentUserId, setAppointmentUserId] = useState('');
 
   const [mechanicCity, setMechanicCity] = useState('');
+  const [clientId, setClientId] = useState('');
+  const [clients, setClients] = useState([]);
   
   const [formData, setFormData] = useState({
     vehicle_vin: '',
@@ -68,7 +78,13 @@ const AppointmentDetails = ({ isNew }) => {
   useEffect(() => {
     const fetchVehicles = async () => {
       try {
-        const rows = await listVehicles();
+        const isClientUser = String(user?.role || '').toLowerCase() === 'client';
+        const rows =
+          isNewAppointment && !isClientUser
+            ? clientId
+              ? await listVehiclesForUser(clientId)
+              : []
+            : await listVehicles();
         setVehicles(rows);
         if (isNewAppointment) {
           const urlParams = new URLSearchParams(window.location.search);
@@ -80,10 +96,17 @@ const AppointmentDetails = ({ isNew }) => {
                 v.licensePlate === vehicleVin ||
                 v.license_plate === vehicleVin
             );
-            setFormData((prev) => ({
-              ...prev,
-              vehicle_vin: found ? found.vin : ''
-            }));
+            if (found) {
+                setFormData((prev) => ({
+                  ...prev,
+                  vehicle_vin: found.vin
+                }));
+            }
+          } else if (rows.length > 0) {
+             setFormData((prev) => ({
+                  ...prev,
+                  vehicle_vin: rows[0].vin
+             }));
           }
         }
       } catch (err) {
@@ -91,22 +114,77 @@ const AppointmentDetails = ({ isNew }) => {
       }
     };
 
-    const fetchServices = async () => {
+    const fetchClients = async () => {
       try {
-        const rows = await listServices();
-        setServices(rows);
+        const isClientUser = String(user?.role || '').toLowerCase() === 'client';
+        if (!isNewAppointment || isClientUser) return;
+        const token = localStorage.getItem('auth_token');
+        if (!token) return;
+        const res = await fetch('/api/relationships/clients', {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const data = await res.json();
+        const mapped = (data || [])
+          .filter((c) => String(c?.status || '') !== 'rejected')
+          .map((c) => ({
+            id: c.client_id,
+            name: c.name,
+            email: c.email,
+            phone: c.phone,
+            status: c.status
+          }))
+          .filter((c) => c.id);
+        setClients(mapped);
+        if (!clientId && mapped.length > 0) {
+          setClientId(String(mapped[0].id));
+        }
       } catch (err) {
-        setError(err.message || t('errors.failedToLoadServices', 'Не вдалося завантажити послуги'));
+        void err;
+        setClients([]);
       }
     };
 
     const fetchMechanics = async () => {
       try {
-        const city = mechanicCity || (isNewAppointment ? user?.city : '') || '';
-        const rows = await listMechanics(city ? { city } : undefined);
-        setMechanics(rows);
+        // If client, fetch "My Mechanics" instead of all mechanics
+        // But if user wants to search by city, we might want to support that?
+        // The requirement says: "dropdown menu showing confirmed mechanics"
+        const role = String(user?.role || '').toLowerCase();
+        if (role === 'client') {
+             const token = localStorage.getItem('auth_token');
+             const res = await fetch('/api/relationships/mechanics', {
+               headers: { Authorization: `Bearer ${token}` }
+             });
+             const data = await res.json();
+             // Filter only accepted mechanics
+             const accepted = data.filter(m => m.status === 'accepted').map(m => ({
+                 id: m.mechanic_id, // Map from relationship structure
+                 fullName: m.name,
+                 ...m
+             }));
+             setMechanics(accepted);
+        } else if (role === 'master' || role === 'mechanic' || role === 'admin') {
+          try {
+            const current = await getCurrentMechanic();
+            if (current?.id) {
+              setMechanics([current]);
+              return;
+            }
+          } catch (_) {
+            void _;
+          }
+          const rows = await listMechanics();
+          setMechanics(rows);
+        } else {
+          const city = mechanicCity || (isNewAppointment ? user?.city : '') || '';
+          const rows = await listMechanics(city ? { city } : undefined);
+          setMechanics(rows);
+        }
       } catch (err) {
-        setError(err.message || t('errors.failedToLoadMechanics', 'Не вдалося завантажити механіків'));
+        console.error(err);
+        // Fallback to empty or listMechanics if relationship api fails?
+        // For now just empty
+        setMechanics([]);
       }
     };
 
@@ -117,6 +195,7 @@ const AppointmentDetails = ({ isNew }) => {
   }
   try {
     const appointment = await getAppointmentById(id);
+    setAppointmentUserId(appointment?.UserId || appointment?.user_id || '');
     setFormData({
       vehicle_vin: appointment.vehicle_vin || '',
       service_id: appointment.service_id || appointment.serviceId || null,
@@ -136,11 +215,45 @@ const AppointmentDetails = ({ isNew }) => {
   }
 };
 
+    fetchClients();
     fetchVehicles();
-    fetchServices();
     fetchMechanics();
     fetchAppointment();
-  }, [id, isNewAppointment, t, mechanicCity, user?.city]);
+  }, [id, isNewAppointment, t, mechanicCity, user?.city, user?.role, clientId]);
+
+  useEffect(() => {
+    const run = async () => {
+      const mechanicId = formData.mechanic_id;
+      if (!mechanicId) {
+        setServices([]);
+        return;
+      }
+
+      try {
+        const rows = await listMechanicServices(mechanicId, { enabled: true });
+        setServices(rows);
+      } catch (err) {
+        setServices([]);
+        setError(err?.message || t('errors.failedToLoadServices', 'Не вдалося завантажити послуги'));
+      }
+    };
+    run();
+  }, [formData.mechanic_id, t]);
+
+  useEffect(() => {
+    if (!mechanics || mechanics.length === 0) return;
+    const list = mechanics || [];
+    const current = String(formData.mechanic_id || '');
+    const hasCurrent = current && list.some((m) => String(m?.id || '') === current);
+    if (hasCurrent) return;
+    const firstId = list[0]?.id ? String(list[0].id) : '';
+    if (!firstId) return;
+    setFormData((prev) => ({
+      ...prev,
+      mechanic_id: firstId,
+      service_id: null
+    }));
+  }, [mechanics, formData.mechanic_id]);
 
   useEffect(() => {
     if (!isNewAppointment) return;
@@ -180,7 +293,8 @@ const AppointmentDetails = ({ isNew }) => {
     const { value } = e.target;
     setFormData((prev) => ({
       ...prev,
-      mechanic_id: value || null
+      mechanic_id: value || null,
+      service_id: null
     }));
   };
 
@@ -189,6 +303,15 @@ const AppointmentDetails = ({ isNew }) => {
     setFormData((prev) => ({
       ...prev,
       mechanic_id: null
+    }));
+  };
+
+  const handleClientChange = (e) => {
+    const next = e.target.value;
+    setClientId(next);
+    setFormData((prev) => ({
+      ...prev,
+      vehicle_vin: ''
     }));
   };
 
@@ -223,8 +346,9 @@ const AppointmentDetails = ({ isNew }) => {
       }
       const selectedService = services.find((s) => s.id === formData.service_id);
       const serviceTypeText = formData.serviceType || (selectedService ? selectedService.name || '' : '');
+      const isClientUser = String(user?.role || '').toLowerCase() === 'client';
       const payload = {
-        user_id: user?.id || null,
+        user_id: isClientUser ? (user?.id || null) : (clientId || null),
         service_id: formData.service_id || null,
         mechanic_id: formData.mechanic_id || null,
         service_type: serviceTypeText,
@@ -237,7 +361,13 @@ const AppointmentDetails = ({ isNew }) => {
         actual_completion_date: formData.actualCompletionDate ? new Date(formData.actualCompletionDate).toISOString() : null
       };
       if (isNewAppointment) {
-        if (!payload.user_id) throw new Error('User not authenticated');
+        if (!payload.user_id) {
+          throw new Error(
+            isClientUser
+              ? t('errors.unauthorized', 'Будь ласка, увійдіть в систему для перегляду даних')
+              : t('errors.clientRequired', 'Оберіть клієнта')
+          );
+        }
         await createAppointment(payload);
       } else {
         await updateAppointment(id, payload);
@@ -262,6 +392,24 @@ const AppointmentDetails = ({ isNew }) => {
   };
 
 
+  const getStatusStep = (status) => {
+    switch (status) {
+      case 'scheduled': return 0;
+      case 'in-progress': return 1;
+      case 'completed': return 2;
+      case 'cancelled': return 3;
+      default: return 0;
+    }
+  };
+
+  const steps = [
+    t('appointment.statuses.scheduled'),
+    t('appointment.statuses.in-progress'),
+    t('appointment.statuses.completed')
+  ];
+
+  const filteredServices = useMemo(() => services || [], [services]);
+
   if (loading) {
     return (
       <Container sx={{ mt: 4, display: 'flex', justifyContent: 'center' }}>
@@ -283,6 +431,19 @@ const AppointmentDetails = ({ isNew }) => {
           <Typography variant="h4" gutterBottom>
             {isNewAppointment ? t('appointment.schedule') : t('common.edit')}
           </Typography>
+          
+          {!isNewAppointment && formData.status !== 'cancelled' && (
+            <Box sx={{ width: '100%', mb: 4 }}>
+              <Stepper activeStep={getStatusStep(formData.status)} alternativeLabel>
+                {steps.map((label) => (
+                  <Step key={label}>
+                    <StepLabel>{label}</StepLabel>
+                  </Step>
+                ))}
+              </Stepper>
+            </Box>
+          )}
+
           <Divider sx={{ mb: 3 }} />
           {error && (
             <Alert severity="error" sx={{ mb: 3 }}>
@@ -291,6 +452,32 @@ const AppointmentDetails = ({ isNew }) => {
           )}
           <Box component="form" onSubmit={handleSubmit}>
             <Grid container spacing={3}>
+              {isNewAppointment && String(user?.role || '').toLowerCase() !== 'client' ? (
+                <Grid item xs={12}>
+                  <FormControl fullWidth required>
+                    <InputLabel id="client-label">{t('clients.title', 'Клієнт')}</InputLabel>
+                    {clients.length === 0 ? (
+                      <Alert severity="warning" sx={{ mb: 2 }}>
+                        {t('errors.noClients', 'Клієнти не знайдені')}
+                      </Alert>
+                    ) : (
+                      <Select
+                        labelId="client-label"
+                        value={clientId}
+                        onChange={handleClientChange}
+                        label={t('clients.title', 'Клієнт')}
+                        required
+                      >
+                        {clients.map((c) => (
+                          <MenuItem key={c.id} value={c.id}>
+                            {c.name || c.email || c.id}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    )}
+                  </FormControl>
+                </Grid>
+              ) : null}
               <Grid item xs={12}>
                 <FormControl fullWidth required>
                   <InputLabel id="vehicle-label">{t('vehicle.title')}</InputLabel>
@@ -315,47 +502,30 @@ const AppointmentDetails = ({ isNew }) => {
                   )}
                 </FormControl>
               </Grid>
-              <Grid item xs={12} sm={6}>
-                <FormControl fullWidth required>
-                  <InputLabel id="service-type-label">{t('appointment.serviceType')}</InputLabel>
-                  {services.length === 0 ? (
-                    <Alert severity="warning" sx={{ mb: 2 }}>
-                      {t('errors.noServices', 'Послуги не знайдено')}
-                    </Alert>
-                  ) : (
-                    <Select
-                      labelId="service-type-label"
-                      name="service_id"
-                      value={formData.service_id || ''}
-                      onChange={handleServiceChange}
-                      label={t('appointment.serviceType')}
-                    >
-                      {services.map((service) => (
-                        <MenuItem key={service.id} value={service.id}>
-                          {service.name}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  )}
-                </FormControl>
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  fullWidth
-                  label={t('auth.city', 'Місто')}
-                  value={mechanicCity}
-                  onChange={handleMechanicCityChange}
-                  placeholder={t('auth.city', 'Місто')}
-                />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <FormControl fullWidth required>
-                  <InputLabel id="mechanic-label">{t('appointment.mechanic', 'Механік')}</InputLabel>
-                  {mechanics.length === 0 ? (
+              {!hideMechanicSelection ? (
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label={t('auth.city', 'Місто')}
+                    value={mechanicCity}
+                    onChange={handleMechanicCityChange}
+                    placeholder={t('auth.city', 'Місто')}
+                  />
+                </Grid>
+              ) : null}
+
+              {hideMechanicSelection ? (
+                mechanics.length === 0 ? (
+                  <Grid item xs={12}>
                     <Alert severity="warning" sx={{ mb: 2 }}>
                       {t('errors.noMechanics', 'Механіки не знайдені')}
                     </Alert>
-                  ) : (
+                  </Grid>
+                ) : null
+              ) : (
+                <Grid item xs={12} sm={6}>
+                  <FormControl fullWidth required>
+                    <InputLabel id="mechanic-label">{t('appointment.mechanic', 'Механік')}</InputLabel>
                     <Select
                       labelId="mechanic-label"
                       name="mechanic_id"
@@ -369,6 +539,32 @@ const AppointmentDetails = ({ isNew }) => {
                             [mechanic.first_name, mechanic.last_name].filter(Boolean).join(' ') ||
                             mechanic.email ||
                             mechanic.id}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Grid>
+              )}
+              <Grid item xs={12} sm={6}>
+                <FormControl fullWidth required disabled={!formData.mechanic_id || services.length === 0}>
+                  <InputLabel id="service-type-label">{t('appointment.serviceType')}</InputLabel>
+                  {formData.mechanic_id && services.length === 0 ? (
+                    <Alert severity="warning" sx={{ mb: 2 }}>
+                      {t('errors.noServicesForMechanic', 'Для цього механіка немає увімкнених послуг')}
+                    </Alert>
+                  ) : (
+                    <Select
+                      labelId="service-type-label"
+                      name="service_id"
+                      value={formData.service_id || ''}
+                      onChange={handleServiceChange}
+                      label={t('appointment.serviceType')}
+                    >
+                      {filteredServices.map((service) => (
+                        <MenuItem key={service.id} value={service.id}>
+                          {service.name}
+                          {service.price != null ? ` — ${service.price} грн` : ''}
+                          {service.duration != null ? ` • ${service.duration} хв` : ''}
                         </MenuItem>
                       ))}
                     </Select>
@@ -399,6 +595,12 @@ const AppointmentDetails = ({ isNew }) => {
                     value={formData.scheduledDate}
                     onChange={(date) => handleDateChange('scheduledDate', date)}
                     disablePast
+                    shouldDisableDate={(date) => {
+                         // Simple logic: if mechanic is selected, maybe block weekends or past dates?
+                         // Ideally we need to fetch mechanic's schedule.
+                         // For now, let's keep it simple.
+                         return false; 
+                    }}
                     renderInput={(params) => <TextField {...params} fullWidth required />}
                   />
                 </LocalizationProvider>
@@ -452,9 +654,17 @@ const AppointmentDetails = ({ isNew }) => {
               />
             </Grid>
 
-            {/* ...інші поля Grid... */}
+            {!isNewAppointment && formData.status !== 'cancelled' ? (
+              <Grid item xs={12}>
+                <AppointmentChat
+                  appointmentId={id}
+                  recipientId={
+                    user?.role === 'client' ? formData.mechanic_id : appointmentUserId
+                  }
+                />
+              </Grid>
+            ) : null}
 
-            </Grid>
             <Grid item xs={12}>
               <Box sx={{ display: 'flex', gap: 2 }}>
                 <Button
@@ -477,6 +687,7 @@ const AppointmentDetails = ({ isNew }) => {
                   </Button>
                 )}
               </Box>
+            </Grid>
             </Grid>
           </Box>
         </Paper>
