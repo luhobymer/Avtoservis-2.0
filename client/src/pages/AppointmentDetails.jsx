@@ -291,7 +291,9 @@ const AppointmentDetails = ({ isNew }) => {
         return;
       }
       try {
-        const rows = await listMechanicServices(mechanicId, { enabled: true });
+        // If editing, fetch all services (including disabled) to ensure current service is found.
+        // If creating new, only fetch enabled services.
+        const rows = await listMechanicServices(mechanicId, { enabled: isNewAppointment });
         setServices(rows);
       } catch (err) {
         setServices([]);
