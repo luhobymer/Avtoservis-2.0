@@ -15,3 +15,6 @@
 | 2026-02-04 | Реалізовано завершення запису з фіксацією пробігу та запчастин | [appointmentController.js](./controllers/appointmentController.js) |
 | 2026-02-04 | Додано таблицю vehicle_parts та оновлено схему БД | [d1.js](./db/d1.js) |
 | 2026-02-04 | Створено сторінку "Мої запчастини" для клієнтів | [MyParts.jsx](../client/src/pages/MyParts.jsx) |
+| 2026-02-04 | Інтеграція OCR (Tesseract.js) для зчитування запчастин з фото | [ocrController.js](./controllers/ocrController.js) |
+| 2026-02-04 | Додано можливість завантаження фото в "Мої запчастини" та при завершенні запису | [MyParts.jsx](../client/src/pages/MyParts.jsx), [AppointmentDetails.jsx](../client/src/pages/AppointmentDetails.jsx) |
+| 2026-02-04 | Додано можливість ручного додавання запчастин клієнтом при створенні запису | [AppointmentDetails.jsx](../client/src/pages/AppointmentDetails.jsx) |
