@@ -7,28 +7,28 @@ const usersController = require('../controllers/users');
 
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 20,
+  max: 200,
   standardHeaders: true,
   legacyHeaders: false,
 });
 
 const refreshLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 60,
+  max: 600,
   standardHeaders: true,
   legacyHeaders: false,
 });
 
 const twoFactorLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 20,
+  max: 200,
   standardHeaders: true,
   legacyHeaders: false,
 });
 
 const passwordResetLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 10,
+  max: 100,
   standardHeaders: true,
   legacyHeaders: false,
 });

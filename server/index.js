@@ -59,7 +59,7 @@ app.use(morgan('combined', { stream: { write: (message) => logger.info(message.t
 // Rate limiting
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 хвилин
-  max: 100, // Максимум 100 запитів від одного IP
+  max: 2000, // Максимум 2000 запитів від одного IP
   message: { message: 'Забагато запитів. Спробуйте пізніше.' },
 });
 app.use('/api/', limiter);

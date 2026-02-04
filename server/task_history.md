@@ -20,3 +20,4 @@
 | 2026-02-04 | Додано можливість ручного додавання запчастин клієнтом при створенні запису | [AppointmentDetails.jsx](../client/src/pages/AppointmentDetails.jsx) |
 | 2026-02-04 | Виправлено відображення ключів замість перекладів та даних у формі редагування запису | [AppointmentDetails.jsx](../client/src/pages/AppointmentDetails.jsx), locales |
 | 2026-02-05 | Додано статус "pending" до перекладів та виправлено відображення авто при редагуванні запису | [translation.json](../client/public/locales/uk/translation.json), [AppointmentDetails.jsx](../client/src/pages/AppointmentDetails.jsx) |
+| 2026-02-05 | Збільшено ліміти rate-limiter для розробки | [index.js](./index.js), [auth.js](./routes/auth.js) |
