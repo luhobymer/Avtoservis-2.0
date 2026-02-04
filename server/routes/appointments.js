@@ -59,6 +59,8 @@ router.get('/', auth, async (req, res) => {
   }
 });
 
+router.get('/:id', auth, appointmentController.getAppointmentById);
+
 router.put('/:id', auth, async (req, res) => {
   try {
     if (!req.user || !req.user.id) {
