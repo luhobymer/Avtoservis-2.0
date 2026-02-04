@@ -4,14 +4,7 @@ const auth = require('../middleware/auth');
 const mechanicController = require('../controllers/mechanicController');
 const mechanicServiceController = require('../controllers/mechanicServiceController');
 
-// Публічні роути
-router.get('/', mechanicController.getAllMechanics);
-router.get('/me', auth, ensurePrivileged, mechanicController.getCurrentMechanic);
-router.get('/:id', mechanicController.getMechanicById);
-router.get('/:id/schedule', mechanicController.getMechanicSchedule);
-router.get('/:id/services', auth, mechanicServiceController.getMechanicServices);
-
-const ensurePrivileged = async (req, res, next) => {
+function ensurePrivileged(req, res, next) {
   try {
     if (!req.user) {
       return res.status(401).json({ message: 'Немає токена, доступ заборонено' });
@@ -24,7 +17,14 @@ const ensurePrivileged = async (req, res, next) => {
   } catch (err) {
     return res.status(500).json({ message: 'Помилка сервера' });
   }
-};
+}
+
+// Публічні роути
+router.get('/', mechanicController.getAllMechanics);
+router.get('/me', auth, ensurePrivileged, mechanicController.getCurrentMechanic);
+router.get('/:id', mechanicController.getMechanicById);
+router.get('/:id/schedule', mechanicController.getMechanicSchedule);
+router.get('/:id/services', auth, mechanicServiceController.getMechanicServices);
 
 router.put(
   '/:id/services/:serviceId',

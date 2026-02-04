@@ -44,9 +44,19 @@ const AppointmentDetails = ({ isNew }) => {
   const navigate = useNavigate();
   const isNewAppointment = isNew || id === 'new';
   const { user } = useAuth();
-  const hideMechanicSelection = ['master', 'mechanic', 'admin'].includes(
-    String(user?.role || '').toLowerCase()
-  );
+  const [hideMechanicSelection, setHideMechanicSelection] = useState(false);
+
+  const formatServicePrice = (service) => {
+    if (service?.price_text) return String(service.price_text);
+    if (service?.price != null) return `${service.price} грн`;
+    return '';
+  };
+
+  const formatServiceDuration = (service) => {
+    if (service?.duration_text) return String(service.duration_text);
+    if (service?.duration != null) return `${service.duration} хв`;
+    return '';
+  };
   
   const [loading, setLoading] = useState(!isNewAppointment);
   const [saving, setSaving] = useState(false);
@@ -151,6 +161,7 @@ const AppointmentDetails = ({ isNew }) => {
         // The requirement says: "dropdown menu showing confirmed mechanics"
         const role = String(user?.role || '').toLowerCase();
         if (role === 'client') {
+             setHideMechanicSelection(false);
              const token = localStorage.getItem('auth_token');
              const res = await fetch('/api/relationships/mechanics', {
                headers: { Authorization: `Bearer ${token}` }
@@ -168,6 +179,12 @@ const AppointmentDetails = ({ isNew }) => {
             const current = await getCurrentMechanic();
             if (current?.id) {
               setMechanics([current]);
+              setHideMechanicSelection(true);
+              setFormData((prev) => ({
+                ...prev,
+                mechanic_id: String(current.id),
+                service_id: null
+              }));
               return;
             }
           } catch (_) {
@@ -175,16 +192,19 @@ const AppointmentDetails = ({ isNew }) => {
           }
           const rows = await listMechanics();
           setMechanics(rows);
+          setHideMechanicSelection(false);
         } else {
           const city = mechanicCity || (isNewAppointment ? user?.city : '') || '';
           const rows = await listMechanics(city ? { city } : undefined);
           setMechanics(rows);
+          setHideMechanicSelection(false);
         }
       } catch (err) {
         console.error(err);
         // Fallback to empty or listMechanics if relationship api fails?
         // For now just empty
         setMechanics([]);
+        setHideMechanicSelection(false);
       }
     };
 
@@ -563,8 +583,8 @@ const AppointmentDetails = ({ isNew }) => {
                       {filteredServices.map((service) => (
                         <MenuItem key={service.id} value={service.id}>
                           {service.name}
-                          {service.price != null ? ` — ${service.price} грн` : ''}
-                          {service.duration != null ? ` • ${service.duration} хв` : ''}
+                          {formatServicePrice(service) ? ` — ${formatServicePrice(service)}` : ''}
+                          {formatServiceDuration(service) ? ` • ${formatServiceDuration(service)}` : ''}
                         </MenuItem>
                       ))}
                     </Select>
@@ -595,12 +615,7 @@ const AppointmentDetails = ({ isNew }) => {
                     value={formData.scheduledDate}
                     onChange={(date) => handleDateChange('scheduledDate', date)}
                     disablePast
-                    shouldDisableDate={(date) => {
-                         // Simple logic: if mechanic is selected, maybe block weekends or past dates?
-                         // Ideally we need to fetch mechanic's schedule.
-                         // For now, let's keep it simple.
-                         return false; 
-                    }}
+                    shouldDisableDate={() => false}
                     renderInput={(params) => <TextField {...params} fullWidth required />}
                   />
                 </LocalizationProvider>

@@ -334,6 +334,8 @@ const ensureSchemaSqliteSync = (sqliteDb) => {
   ensureColumnsSync('service_records', [{ name: 'appointment_id', def: 'TEXT' }]);
   ensureColumnsSync('services', [
     { name: 'is_active', def: 'INTEGER DEFAULT 1' },
+    { name: 'price_text', def: 'TEXT' },
+    { name: 'duration_text', def: 'TEXT' },
     { name: 'created_by_mechanic_id', def: 'TEXT' },
   ]);
   ensureColumnsSync('mechanics', [
@@ -485,6 +487,8 @@ const ensureSchema = async (client) => {
   await ensureTableColumns(client, 'service_records', [{ name: 'appointment_id', def: 'TEXT' }]);
   await ensureTableColumns(client, 'services', [
     { name: 'is_active', def: 'INTEGER DEFAULT 1' },
+    { name: 'price_text', def: 'TEXT' },
+    { name: 'duration_text', def: 'TEXT' },
     { name: 'created_by_mechanic_id', def: 'TEXT' },
   ]);
   await ensureTableColumns(client, 'mechanics', [

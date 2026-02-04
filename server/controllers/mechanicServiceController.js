@@ -159,6 +159,8 @@ const getServiceColumnConfig = async (db) => {
     price: columnNames.has('base_price') ? 'base_price' : 'price',
     duration: columnNames.has('duration_minutes') ? 'duration_minutes' : 'duration',
     hasCreatedBy: columnNames.has('created_by_mechanic_id'),
+    hasPriceText: columnNames.has('price_text'),
+    hasDurationText: columnNames.has('duration_text'),
   };
 };
 
@@ -183,6 +185,8 @@ exports.createMechanicService = async (req, res) => {
     const categoryId = req.body?.category_id ? String(req.body.category_id).trim() : null;
     const priceValue = req.body?.price;
     const durationValue = req.body?.duration;
+    const priceText = req.body?.price_text != null ? String(req.body.price_text) : null;
+    const durationText = req.body?.duration_text != null ? String(req.body.duration_text) : null;
 
     if (!name) {
       return res.status(400).json({ message: "Поле 'name' обов'язкове" });
@@ -208,7 +212,9 @@ exports.createMechanicService = async (req, res) => {
       'name',
       'description',
       serviceColumns.price,
+      ...(serviceColumns.hasPriceText ? ['price_text'] : []),
       serviceColumns.duration,
+      ...(serviceColumns.hasDurationText ? ['duration_text'] : []),
       'is_active',
       'service_station_id',
       'category_id',
@@ -220,7 +226,9 @@ exports.createMechanicService = async (req, res) => {
       name,
       description,
       Number.isFinite(price) ? price : null,
+      ...(serviceColumns.hasPriceText ? [priceText] : []),
       Number.isFinite(duration) ? duration : null,
+      ...(serviceColumns.hasDurationText ? [durationText] : []),
       1,
       mechanic.station_id || null,
       categoryId,
@@ -287,6 +295,8 @@ exports.updateMechanicServiceDetails = async (req, res) => {
     const categoryId = req.body?.category_id != null ? String(req.body.category_id).trim() : null;
     const priceValue = req.body?.price;
     const durationValue = req.body?.duration;
+    const priceText = req.body?.price_text != null ? String(req.body.price_text) : null;
+    const durationText = req.body?.duration_text != null ? String(req.body.duration_text) : null;
 
     const nextPrice = priceValue != null ? Number(priceValue) : null;
     const nextDuration = durationValue != null ? Number(durationValue) : null;
@@ -313,9 +323,17 @@ exports.updateMechanicServiceDetails = async (req, res) => {
         updates.push(`${serviceColumns.price} = ?`);
         params.push(Number.isFinite(nextPrice) ? nextPrice : null);
       }
+      if (serviceColumns.hasPriceText && priceText !== null) {
+        updates.push('price_text = ?');
+        params.push(priceText || null);
+      }
       if (durationValue != null) {
         updates.push(`${serviceColumns.duration} = ?`);
         params.push(Number.isFinite(nextDuration) ? nextDuration : null);
+      }
+      if (serviceColumns.hasDurationText && durationText !== null) {
+        updates.push('duration_text = ?');
+        params.push(durationText || null);
       }
 
       updates.push('updated_at = ?');

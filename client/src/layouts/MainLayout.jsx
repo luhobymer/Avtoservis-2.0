@@ -6,7 +6,6 @@ import MenuIcon from '@mui/icons-material/Menu';
 import DashboardIcon from '@mui/icons-material/Dashboard';
 import DirectionsCarIcon from '@mui/icons-material/DirectionsCar';
 import EventIcon from '@mui/icons-material/Event';
-import HistoryIcon from '@mui/icons-material/History';
 import EditIcon from '@mui/icons-material/Edit';
 import AccountCircleIcon from '@mui/icons-material/AccountCircle';
 import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
@@ -17,6 +16,10 @@ import FloatingActionButton from '../components/FloatingActionButton';
 import useAuth from '../context/useAuth';
 
 const drawerWidth = 240;
+
+import PeopleIcon from '@mui/icons-material/People';
+import EngineeringIcon from '@mui/icons-material/Engineering';
+import ChatIcon from '@mui/icons-material/Chat';
 
 const MainLayout = () => {
   const { t } = useTranslation();
@@ -54,13 +57,26 @@ const MainLayout = () => {
   const menuItems = [
     { text: t('nav.dashboard'), icon: <DashboardIcon />, path: '/' },
     { text: t('nav.vehicles'), icon: <DirectionsCarIcon />, path: '/vehicles' },
-    { text: t('nav.appointments'), icon: <EventIcon />, path: '/appointments' },
-    { text: t('nav.serviceRecords'), icon: <HistoryIcon />, path: '/service-records' },
-    { text: t('nav.profile'), icon: <AccountCircleIcon />, path: '/profile' },
+    {
+      text: isMasterUser ? t('nav.myAppointments', 'Мої записи') : t('nav.appointments'),
+      icon: <EventIcon />,
+      path: '/appointments'
+    },
+    ...(!isMasterUser
+      ? [{ text: t('nav.myMechanics', 'Мої Механіки'), icon: <EngineeringIcon />, path: '/my-mechanics' }]
+      : []),
+    ...(isMasterUser
+      ? [{ text: t('nav.myClients', 'Мої Клієнти'), icon: <PeopleIcon />, path: '/my-clients' }]
+      : []),
+    ...(isMasterUser
+      ? [{ text: t('nav.myServices', 'Мої послуги'), icon: <EditIcon />, path: '/my-services' }]
+      : []),
+    { text: t('nav.myChats', 'Мої чати'), icon: <ChatIcon />, path: '/my-chats' },
     ...(isMasterUser
       ? [{ text: t('nav.masterDashboard'), icon: <AdminPanelSettingsIcon />, path: '/master-dashboard' }]
       : []),
     ...(isMasterUser ? [{ text: t('nav.admin'), icon: <AdminPanelSettingsIcon />, path: '/admin' }] : []),
+    { text: t('nav.profile'), icon: <AccountCircleIcon />, path: '/profile' },
   ];
 
   const drawer = (
@@ -185,30 +201,34 @@ const MainLayout = () => {
           position="bottom-right"
           color="primary"
           actions={[
-            { 
-              icon: <DirectionsCarIcon />, 
-              name: t('fab.addVehicle'), 
+            {
+              icon: <DirectionsCarIcon />,
+              name: t('fab.addVehicle', 'Додати авто'),
               key: 'add-vehicle',
               onClick: () => navigate('/vehicles/add')
             },
-            { 
-              icon: <EventIcon />, 
-              name: t('fab.newAppointment'), 
+            {
+              icon: <EventIcon />,
+              name: t('fab.newAppointment', 'Новий запис'),
               key: 'new-appointment',
               onClick: () => navigate('/appointments/schedule')
             },
-            { 
-              icon: <HistoryIcon />, 
-              name: t('fab.serviceHistory'), 
-              key: 'service-history',
-              onClick: () => navigate('/service-records')
-            },
-            { 
-              icon: <EditIcon />, 
-              name: t('fab.editProfile'), 
-              key: 'edit-profile',
-              onClick: () => navigate('/profile')
-            },
+            ...(isMasterUser
+              ? [
+                  {
+                    icon: <EditIcon />,
+                    name: t('fab.myServices', 'Мої послуги'),
+                    key: 'my-services',
+                    onClick: () => navigate('/my-services')
+                  }
+                ]
+              : []),
+            {
+              icon: <ChatIcon />,
+              name: t('fab.myChats', 'Мої чати'),
+              key: 'my-chats',
+              onClick: () => navigate('/my-chats')
+            }
           ]}
         />
       </Box>

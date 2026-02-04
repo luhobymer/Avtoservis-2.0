@@ -3,10 +3,11 @@ const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const { getDb } = require('../db/d1');
 const logger = require('../middleware/logger');
+const { seedPriceList } = require('./seed_price_list');
 
 async function seed() {
   try {
-    const db = getDb();
+    const db = await getDb();
     const now = new Date().toISOString();
     const nowDate = new Date();
 
@@ -50,7 +51,7 @@ async function seed() {
         id: adminId,
         email: adminEmail,
         password: adminPassword,
-        role: 'admin',
+        role: 'master',
         created_at: now,
         updated_at: now,
       });
@@ -58,7 +59,7 @@ async function seed() {
     } else {
       db.prepare('UPDATE users SET password = ?, role = ?, updated_at = ? WHERE id = ?').run(
         adminPassword,
-        'admin',
+        'master',
         now,
         admin.id
       );
@@ -90,44 +91,7 @@ async function seed() {
     const station = db.prepare('SELECT * FROM service_stations WHERE id = ?').get(stationId);
     logger.info('СТО створена:', station);
 
-    const serviceStationColumn = getStationColumn('services');
-    const services = [
-      {
-        name: 'Заміна масла',
-        description: 'Заміна моторного масла та масляного фільтра',
-        price: 800,
-        duration: 30,
-      },
-      {
-        name: 'Діагностика',
-        description: "Комп'ютерна діагностика автомобіля",
-        price: 500,
-        duration: 60,
-      },
-      {
-        name: 'Заміна гальмівних колодок',
-        description: 'Заміна передніх або задніх гальмівних колодок',
-        price: 1000,
-        duration: 90,
-      },
-    ];
-
-    const createdServices = services.map((service) => {
-      const serviceId = crypto.randomUUID();
-      const row = {
-        id: serviceId,
-        ...service,
-        created_at: now,
-        updated_at: now,
-      };
-      if (serviceStationColumn) {
-        row[serviceStationColumn] = stationId;
-      }
-      insertRow('services', row);
-      return db.prepare('SELECT * FROM services WHERE id = ?').get(serviceId);
-    });
-
-    logger.info('Послуги створені:', createdServices);
+    await seedPriceList({ service_station_id: stationId });
 
     const mechanicStationColumn = getStationColumn('mechanics');
     const mechanics = [
@@ -165,6 +129,24 @@ async function seed() {
     });
 
     logger.info('Механіки створені:', createdMechanics);
+
+    const allServiceIds = db.prepare('SELECT id FROM services WHERE COALESCE(is_active, 1) = 1').all();
+    const serviceIds = (allServiceIds || []).map((row) => row.id).filter(Boolean);
+    for (const mechanic of createdMechanics) {
+      for (const serviceId of serviceIds) {
+        try {
+          db.prepare(
+            `INSERT INTO mechanic_services (id, mechanic_id, service_id, is_enabled, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?)
+             ON CONFLICT(mechanic_id, service_id) DO UPDATE SET
+               is_enabled = excluded.is_enabled,
+               updated_at = excluded.updated_at`
+          ).run(crypto.randomUUID(), mechanic.id, serviceId, 1, now, now);
+        } catch (_) {
+          void _;
+        }
+      }
+    }
     const demoEmail = 'luhobymer@gmail.com';
     const demoPassword = await bcrypt.hash('123456', 10);
     let demoUser = db.prepare('SELECT * FROM users WHERE email = ?').get(demoEmail);
@@ -280,7 +262,8 @@ async function seed() {
       .get(demoUser.id);
     if (!existingAppointments || Number(existingAppointments.count) === 0) {
       const upcomingDate = new Date(nowDate.getTime() + 1000 * 60 * 60 * 24 * 3).toISOString();
-      const serviceId = createdServices?.[0]?.id || null;
+      const serviceRow = db.prepare('SELECT id FROM services ORDER BY name LIMIT 1').get();
+      const serviceId = serviceRow?.id || null;
       const mechanicId = createdMechanics?.[0]?.id || null;
       const demoVehicle = demoVehicles[0];
       insertRow('appointments', {

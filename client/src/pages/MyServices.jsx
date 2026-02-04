@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Alert,
@@ -45,6 +45,18 @@ const getCategoryLabel = (service, t) => {
   return name || t('services.noCategory', 'Без категорії');
 };
 
+const formatServicePrice = (service) => {
+  if (service?.price_text) return String(service.price_text);
+  if (service?.price != null) return `${service.price} грн`;
+  return '';
+};
+
+const formatServiceDuration = (service) => {
+  if (service?.duration_text) return String(service.duration_text);
+  if (service?.duration != null) return `${service.duration} хв`;
+  return '';
+};
+
 const MyServices = () => {
   const { t } = useTranslation();
   const { isAdmin, isMaster } = useAuth();
@@ -64,6 +76,8 @@ const MyServices = () => {
   const [error, setError] = useState('');
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
 
+  const [canSelectMechanic, setCanSelectMechanic] = useState(false);
+
   const [addOpen, setAddOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [draft, setDraft] = useState({
@@ -75,38 +89,43 @@ const MyServices = () => {
     isOwned: true
   });
 
-  const reloadServices = async (targetMechanicId) => {
-    const mid = targetMechanicId || mechanicId;
-    if (!mid) {
-      setServices([]);
-      return;
-    }
-    const list = await listMechanicServices(mid);
-    setServices(list);
-  };
+  const reloadServices = useCallback(
+    async (targetMechanicId) => {
+      const mid = targetMechanicId || mechanicId;
+      if (!mid) {
+        setServices([]);
+        return;
+      }
+      const list = await listMechanicServices(mid);
+      setServices(list);
+    },
+    [mechanicId]
+  );
 
   useEffect(() => {
     const run = async () => {
       try {
         setLoading(true);
         setError('');
-        if (isMasterUser) {
-          try {
-            const current = await getCurrentMechanic();
-            if (current?.id) {
-              setMechanics([current]);
-              setMechanicId(String(current.id));
-              return;
-            }
-          } catch (_) {
-            void _;
+        setCanSelectMechanic(false);
+        try {
+          const current = await getCurrentMechanic();
+          if (current?.id) {
+            setMechanics([current]);
+            setMechanicId(String(current.id));
+            setCanSelectMechanic(false);
+            return;
           }
+        } catch (_) {
+          void _;
         }
+
         const list = await listMechanics();
         setMechanics(list);
         if (!mechanicId && list.length > 0) {
-          setMechanicId(list[0].id);
+          setMechanicId(String(list[0].id));
         }
+        setCanSelectMechanic((list || []).length > 1);
       } catch (err) {
         setError(err?.message || t('common.error', 'Помилка'));
       } finally {
@@ -114,7 +133,7 @@ const MyServices = () => {
       }
     };
     run();
-  }, [isMasterUser]);
+  }, [isMasterUser, mechanicId, t]);
 
   useEffect(() => {
     const run = async () => {
@@ -133,7 +152,7 @@ const MyServices = () => {
       }
     };
     run();
-  }, [mechanicId]);
+  }, [mechanicId, reloadServices, t]);
 
   const openAdd = () => {
     setDraft({ id: '', name: '', description: '', price: '', duration: '', isOwned: true });
@@ -230,7 +249,7 @@ const MyServices = () => {
     const serviceId = service?.id;
     if (!serviceId || !mechanicId) return;
 
-    const nextEnabled = !Boolean(service?.is_enabled);
+    const nextEnabled = !service?.is_enabled;
 
     setSaving(true);
     try {
@@ -291,7 +310,7 @@ const MyServices = () => {
           </Alert>
         )}
 
-        {!isMasterUser && (mechanics || []).length > 1 ? (
+        {canSelectMechanic ? (
           <FormControl fullWidth sx={{ mb: 3 }} disabled={saving}>
             <InputLabel>{t('appointment.mechanic', 'Механік')}</InputLabel>
             <Select
@@ -346,9 +365,9 @@ const MyServices = () => {
                             <Box sx={{ display: 'flex', flexDirection: 'column' }}>
                               <Typography>{service.name}</Typography>
                               <Typography variant="caption" color="text.secondary">
-                                {service.price != null ? `${service.price} грн` : ''}
-                                {service.price != null && service.duration != null ? ' • ' : ''}
-                                {service.duration != null ? `${service.duration} хв` : ''}
+                                {formatServicePrice(service)}
+                                {formatServicePrice(service) && formatServiceDuration(service) ? ' • ' : ''}
+                                {formatServiceDuration(service)}
                               </Typography>
                               {service.description ? (
                                 <Typography variant="caption" color="text.secondary">

@@ -49,7 +49,9 @@ function mapService(row) {
     name: row.name,
     description: row.description || '',
     price: row.price != null ? Number(row.price) : null,
+    price_text: row.price_text != null ? String(row.price_text) : null,
     duration: row.duration != null ? Number(row.duration) : null,
+    duration_text: row.duration_text != null ? String(row.duration_text) : null,
     is_active:
       row.is_active === undefined || row.is_active === null
         ? true
