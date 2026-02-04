@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/useAuth';
 import { listForUser as listAppointmentsForUser, listAdmin as listAdminAppointments } from '../api/dao/appointmentsDao';
@@ -34,6 +34,7 @@ const Appointments = () => {
   const [tabValue, setTabValue] = useState(0);
 
   const location = useLocation();
+  const navigate = useNavigate();
   const { user, isMaster } = useAuth();
   const isMasterUser = typeof isMaster === 'function' ? isMaster() : false;
 
@@ -168,13 +169,24 @@ const Appointments = () => {
               </TableHead>
             <TableBody>
               {currentList.map((appointment) => (
-                <TableRow key={appointment.id}>
-                  <TableCell component="th" scope="row">
+                <TableRow 
+                  key={appointment.id} 
+                  hover 
+                  onClick={() => {
+                     // We can navigate, but we need to ensure we don't interfere with button clicks
+                     // However, MUI TableRow onClick is fine if buttons stopPropagation.
+                     // Or just navigate.
+                     // But wait, the edit button is also a Link.
+                     // Let's use useNavigate.
+                  }}
+                  sx={{ cursor: 'pointer' }}
+                >
+                  <TableCell component="th" scope="row" onClick={() => navigate(`/appointments/${appointment.id}`)}>
                     {(appointment.scheduledDate || appointment.scheduled_time) ? 
                       format(new Date(appointment.scheduledDate || appointment.scheduled_time), 'dd.MM.yyyy HH:mm') : 
                       t('common.notAvailable')}
                   </TableCell>
-                  <TableCell>
+                  <TableCell onClick={() => navigate(`/appointments/${appointment.id}`)}>
                     {(() => {
                       // Try to find vehicle in loaded list (for personal appointments)
                       // For admin appointments, we might need vehicle info from the appointment object itself if not in 'vehicles' list
@@ -185,29 +197,25 @@ const Appointments = () => {
                         ? `${vehicle.brand || vehicle.make} ${vehicle.model} (${vehicle.year})`
                         : (appointment.vehicle_vin || t('common.notAvailable'));
 
-                      return vehicle ? (
-                        <Link to={`/vehicles/${vehicle.vin}`}>
-                          {vehicleInfo}
-                        </Link>
-                      ) : (
+                      return (
                         <span>{vehicleInfo}</span>
                       );
                     })()}
                   </TableCell>
-                  <TableCell>{appointment.serviceType || appointment.service_type || t('common.notAvailable')}</TableCell>
-                  <TableCell>
+                  <TableCell onClick={() => navigate(`/appointments/${appointment.id}`)}>{appointment.serviceType || appointment.service_type || t('common.notAvailable')}</TableCell>
+                  <TableCell onClick={() => navigate(`/appointments/${appointment.id}`)}>
                     <Chip 
                       label={t(`appointment.statuses.${appointment.status || 'pending'}`)}
                       color={getStatusChipColor(appointment.status || 'pending')}
                       size="small"
                     />
                   </TableCell>
-                  <TableCell>
+                  <TableCell onClick={() => navigate(`/appointments/${appointment.id}`)}>
                     {(appointment.estimatedCompletionDate || appointment.estimated_completion_date) ? 
                       format(new Date(appointment.estimatedCompletionDate || appointment.estimated_completion_date), 'dd.MM.yyyy') : 
                       t('common.notAvailable')}
                   </TableCell>
-                  <TableCell>
+                  <TableCell onClick={() => navigate(`/appointments/${appointment.id}`)}>
                     {(appointment.actualCompletionDate || appointment.actual_completion_date) ? 
                       format(new Date(appointment.actualCompletionDate || appointment.actual_completion_date), 'dd.MM.yyyy HH:mm') : 
                       t('common.notAvailable')}
@@ -217,6 +225,7 @@ const Appointments = () => {
                       size="small" 
                       component={Link} 
                       to={`/appointments/${appointment.id}`}
+                      onClick={(e) => e.stopPropagation()}
                     >
                       {t('common.edit')}
                     </Button>

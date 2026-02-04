@@ -125,10 +125,11 @@
     "failedToSaveServiceRecord": "Failed to save service record",
     "loadFailed": "Failed to load data",
     "saveFailed": "Failed to save data",
-    "deleteFailed": "Failed to delete",
+    "deleteFailed": "Deletion failed",
     "openEmailVerificationLink": "Open verification link (dev)",
     "verifyEmailTitle": "Email verification",
-    "goToLogin": "Go to login"
+    "goToLogin": "Go to login",
+    "mechanicProfileNotFound": "Mechanic profile not found"
   },
   "vehicle": {
     "title": "My Vehicles",

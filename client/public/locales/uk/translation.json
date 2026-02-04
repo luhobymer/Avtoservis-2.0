@@ -108,7 +108,8 @@
     "deleteFailed": "Помилка видалення",
     "openEmailVerificationLink": "Відкрити посилання для підтвердження (dev)",
     "verifyEmailTitle": "Підтвердження email",
-    "goToLogin": "Перейти до входу"
+    "goToLogin": "Перейти до входу",
+    "mechanicProfileNotFound": "Профіль механіка не знайдено"
   },
   "vehicle": {
     "title": "Мої автомобілі",

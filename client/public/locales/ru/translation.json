@@ -108,7 +108,8 @@
     "failedToSaveServiceRecord": "Не удалось сохранить сервисную запись",
     "loadFailed": "Ошибка загрузки данных",
     "saveFailed": "Ошибка сохранения данных",
-    "deleteFailed": "Ошибка удаления"
+    "deleteFailed": "Ошибка удаления",
+    "mechanicProfileNotFound": "Профиль механика не найден"
   },
   "vehicle": {
     "title": "Мои автомобили",
