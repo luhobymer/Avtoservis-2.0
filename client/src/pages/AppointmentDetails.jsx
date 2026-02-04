@@ -331,10 +331,19 @@ const AppointmentDetails = ({ isNew }) => {
       setServiceCategoryId(String(selectedCategory));
       return;
     }
-    if (!serviceCategoryId && serviceCategories.length > 0) {
+    // If no service selected, or service has no category, don't auto-select first category if we are editing
+    if (!isNewAppointment && !serviceCategoryId) {
+        // try to find category if service_id is present but not in services list yet? 
+        // Or if just loaded. 
+        // If we have services, but no category is selected, maybe we shouldn't force one.
+        // But for UX, showing first is okay if new.
+        // For editing, we want to show the category of the current service.
+    }
+    
+    if (!serviceCategoryId && serviceCategories.length > 0 && isNewAppointment) {
       setServiceCategoryId(String(serviceCategories[0].id));
     }
-  }, [services, formData.service_id, serviceCategories, serviceCategoryId]);
+  }, [services, formData.service_id, serviceCategories, serviceCategoryId, isNewAppointment]);
 
   useEffect(() => {
     if (!mechanics || mechanics.length === 0) return;
@@ -342,14 +351,23 @@ const AppointmentDetails = ({ isNew }) => {
     const current = String(formData.mechanic_id || '');
     const hasCurrent = current && list.some((m) => String(m?.id || '') === current);
     if (hasCurrent) return;
+    
+    // Don't auto-select mechanic if we are editing an existing appointment (unless it's invalid)
+    // But if mechanic_id is null (e.g. not loaded yet or cleared), maybe we should wait.
+    // If isNewAppointment, we can auto-select first.
+    if (!isNewAppointment && current) return; 
+
     const firstId = list[0]?.id ? String(list[0].id) : '';
     if (!firstId) return;
-    setFormData((prev) => ({
-      ...prev,
-      mechanic_id: firstId,
-      service_id: null
-    }));
-  }, [mechanics, formData.mechanic_id]);
+    
+    if (isNewAppointment) {
+        setFormData((prev) => ({
+          ...prev,
+          mechanic_id: firstId,
+          service_id: null
+        }));
+    }
+  }, [mechanics, formData.mechanic_id, isNewAppointment]);
 
   useEffect(() => {
     if (!isNewAppointment) return;
@@ -659,15 +677,26 @@ const AppointmentDetails = ({ isNew }) => {
                   />
                 )}
               </Grid>
-              {!hideMechanicSelection && <Grid item xs={12} sm={6}><TextField fullWidth label={t('auth.city')} value={mechanicCity} onChange={handleMechanicCityChange} /></Grid>}
-              <Grid item xs={12} sm={6}>
+              {!hideMechanicSelection && (
+                <Grid item xs={12} sm={6}>
+                  <TextField fullWidth label={t('auth.city')} value={mechanicCity} onChange={handleMechanicCityChange} />
+                </Grid>
+              )}
+              {(!hideMechanicSelection || (hideMechanicSelection && mechanics.length > 1)) && (
+                <Grid item xs={12} sm={6}>
                   <FormControl fullWidth required>
                     <InputLabel>{t('appointment.mechanic')}</InputLabel>
-                    <Select name="mechanic_id" value={formData.mechanic_id || ''} onChange={handleMechanicChange} label={t('appointment.mechanic')} disabled={hideMechanicSelection && mechanics.length === 1}>
+                    <Select name="mechanic_id" value={formData.mechanic_id || ''} onChange={handleMechanicChange} label={t('appointment.mechanic')}>
                       {mechanics.map((mechanic) => <MenuItem key={mechanic.id} value={mechanic.id}>{mechanic.fullName || mechanic.email}</MenuItem>)}
                     </Select>
                   </FormControl>
                 </Grid>
+              )}
+              {hideMechanicSelection && mechanics.length === 1 && (
+                 /* Hidden input for single mechanic (current user) to ensure form submission works if needed, 
+                    but we already set it in state. We can just hide the UI. */
+                 null
+              )}
                 <Grid item xs={12} sm={6}>
                   <FormControl fullWidth required disabled={!formData.mechanic_id || services.length === 0}>
                     <InputLabel>{t('services.category')}</InputLabel>
