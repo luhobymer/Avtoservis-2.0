@@ -4,7 +4,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/useAuth';
 import { getById as getAppointmentById, create as createAppointment, update as updateAppointment, updateStatus } from '../api/dao/appointmentsDao';
-import { list as listVehicles, listForUser as listVehiclesForUser } from '../api/dao/vehiclesDao';
+import { list as listVehicles, listForUser as listVehiclesForUser, getById as getVehicleById } from '../api/dao/vehiclesDao';
 import { getCurrent as getCurrentMechanic, list as listMechanics } from '../api/dao/mechanicsDao';
 import { listMechanicServices } from '../api/dao/mechanicServicesDao';
 import {
@@ -87,6 +87,7 @@ const AppointmentDetails = ({ isNew }) => {
   const [clientNewPart, setClientNewPart] = useState({ name: '', quantity: 1, notes: '' });
 
   const [vehicles, setVehicles] = useState([]);
+  const [fetchedVehicle, setFetchedVehicle] = useState(null);
   const [services, setServices] = useState([]);
   const [mechanics, setMechanics] = useState([]);
   const [success, setSuccess] = useState(false);
@@ -263,6 +264,24 @@ const AppointmentDetails = ({ isNew }) => {
     fetchMechanics();
     fetchAppointment();
   }, [id, isNewAppointment, t, mechanicCity, user?.city, user?.role, clientId]);
+
+  useEffect(() => {
+    const fetchVehicleDetails = async () => {
+        if (!formData.vehicle_vin || isNewAppointment) return;
+        const found = vehicles.find(v => v.vin === formData.vehicle_vin);
+        if (found) {
+            setFetchedVehicle(found);
+            return;
+        }
+        try {
+            const v = await getVehicleById(formData.vehicle_vin);
+            setFetchedVehicle(v);
+        } catch (err) {
+            console.error('Failed to fetch vehicle details', err);
+        }
+    };
+    fetchVehicleDetails();
+  }, [formData.vehicle_vin, vehicles, isNewAppointment]);
 
   useEffect(() => {
     const run = async () => {
@@ -624,12 +643,21 @@ const AppointmentDetails = ({ isNew }) => {
                 </Grid>
               )}
               <Grid item xs={12}>
-                <FormControl fullWidth required>
-                  <InputLabel>{t('vehicle.title')}</InputLabel>
-                  <Select name="vehicle_vin" value={formData.vehicle_vin} onChange={handleChange} label={t('vehicle.title')} disabled={!isNewAppointment}>
-                    {vehicles.map((vehicle) => <MenuItem key={vehicle.vin} value={vehicle.vin}>{vehicle.brand} {vehicle.model} ({vehicle.licensePlate || vehicle.license_plate || vehicle.vin})</MenuItem>)}
-                  </Select>
-                </FormControl>
+                {isNewAppointment ? (
+                  <FormControl fullWidth required>
+                    <InputLabel>{t('vehicle.title')}</InputLabel>
+                    <Select name="vehicle_vin" value={formData.vehicle_vin} onChange={handleChange} label={t('vehicle.title')}>
+                      {vehicles.map((vehicle) => <MenuItem key={vehicle.vin} value={vehicle.vin}>{vehicle.brand} {vehicle.model} ({vehicle.licensePlate || vehicle.license_plate || vehicle.vin})</MenuItem>)}
+                    </Select>
+                  </FormControl>
+                ) : (
+                  <TextField
+                    fullWidth
+                    label={t('vehicle.title')}
+                    value={fetchedVehicle ? `${fetchedVehicle.make || fetchedVehicle.brand} ${fetchedVehicle.model} (${fetchedVehicle.licensePlate || fetchedVehicle.vin})` : formData.vehicle_vin}
+                    disabled
+                  />
+                )}
               </Grid>
               {!hideMechanicSelection && <Grid item xs={12} sm={6}><TextField fullWidth label={t('auth.city')} value={mechanicCity} onChange={handleMechanicCityChange} /></Grid>}
               <Grid item xs={12} sm={6}>

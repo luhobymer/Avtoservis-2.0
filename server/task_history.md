@@ -19,3 +19,4 @@
 | 2026-02-04 | Додано можливість завантаження фото в "Мої запчастини" та при завершенні запису | [MyParts.jsx](../client/src/pages/MyParts.jsx), [AppointmentDetails.jsx](../client/src/pages/AppointmentDetails.jsx) |
 | 2026-02-04 | Додано можливість ручного додавання запчастин клієнтом при створенні запису | [AppointmentDetails.jsx](../client/src/pages/AppointmentDetails.jsx) |
 | 2026-02-04 | Виправлено відображення ключів замість перекладів та даних у формі редагування запису | [AppointmentDetails.jsx](../client/src/pages/AppointmentDetails.jsx), locales |
+| 2026-02-05 | Додано статус "pending" до перекладів та виправлено відображення авто при редагуванні запису | [translation.json](../client/public/locales/uk/translation.json), [AppointmentDetails.jsx](../client/src/pages/AppointmentDetails.jsx) |

@@ -202,6 +202,7 @@
     "confirmDelete": "Are you sure you want to delete this appointment?",
     "noAppointments": "You don't have any appointments yet",
     "statuses": {
+      "pending": "Pending Confirmation",
       "scheduled": "Scheduled",
       "in-progress": "In Progress",
       "completed": "Completed",
