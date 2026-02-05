@@ -324,13 +324,18 @@ const AppointmentDetails = ({ isNew }) => {
     const selectedService = formData.service_id
       ? (services || []).find((s) => String(s.id) === String(formData.service_id))
       : null;
+
     if (selectedService) {
       const selectedCategory =
         (selectedService?.category && selectedService.category.id) ||
         selectedService?.category_id ||
         selectedService?.categoryId ||
         '__none__';
-      setServiceCategoryId(String(selectedCategory));
+      
+      // Force update category ID if it doesn't match
+      if (serviceCategoryId !== String(selectedCategory)) {
+          setServiceCategoryId(String(selectedCategory));
+      }
       return;
     }
     // If no service selected, or service has no category, don't auto-select first category if we are editing
