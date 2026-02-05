@@ -7,6 +7,7 @@ import { getById as getAppointmentById, create as createAppointment, update as u
 import { list as listVehicles, listForUser as listVehiclesForUser, getById as getVehicleById } from '../api/dao/vehiclesDao';
 import { getCurrent as getCurrentMechanic, list as listMechanics } from '../api/dao/mechanicsDao';
 import { listMechanicServices } from '../api/dao/mechanicServicesDao';
+import { listForAppointment as listVehiclePartsForAppointment } from '../api/dao/vehiclePartsDao';
 import {
   Container,
   Typography,
@@ -85,6 +86,8 @@ const AppointmentDetails = ({ isNew }) => {
   // Client Manual Parts State (Create Appointment)
   const [clientParts, setClientParts] = useState([]);
   const [clientNewPart, setClientNewPart] = useState({ name: '', quantity: 1, notes: '' });
+
+  const [appointmentParts, setAppointmentParts] = useState([]);
 
   const [vehicles, setVehicles] = useState([]);
   const [fetchedVehicle, setFetchedVehicle] = useState(null);
@@ -202,14 +205,13 @@ const AppointmentDetails = ({ isNew }) => {
         } else if (role === 'master' || role === 'mechanic' || role === 'admin') {
           setHideMechanicSelection(true);
           try {
-            setError('');
             const current = await getCurrentMechanic();
             if (current?.id) {
               setMechanics([current]);
               setFormData((prev) => ({
                 ...prev,
-                mechanic_id: String(current.id),
-                service_id: null
+                mechanic_id: prev.mechanic_id ? String(prev.mechanic_id) : String(current.id),
+                ...(isNewAppointment ? { service_id: null } : {})
               }));
               return;
             }
@@ -238,20 +240,41 @@ const AppointmentDetails = ({ isNew }) => {
       try {
         const appointment = await getAppointmentById(id);
         setAppointmentUserId(appointment?.UserId || appointment?.user_id || '');
-        setFormData({
-          vehicle_vin: appointment.vehicle_vin || '',
-          service_id: appointment.service_id || appointment.serviceId || null,
-          mechanic_id: appointment.mechanic_id || null,
-          serviceType: appointment.serviceType || appointment.service_type || '',
+        const fallbackServiceId =
+          (Array.isArray(appointment?.service_ids) && appointment.service_ids[0]) ||
+          (Array.isArray(appointment?.service_ids_list) && appointment.service_ids_list[0]) ||
+          null;
+        setFormData((prev) => ({
+          ...prev,
+          vehicle_vin: appointment.vehicle_vin || prev.vehicle_vin || '',
+          service_id: appointment.service_id || appointment.serviceId || fallbackServiceId || prev.service_id || null,
+          mechanic_id: appointment.mechanic_id || prev.mechanic_id || null,
+          serviceType: appointment.serviceType || appointment.service_type || prev.serviceType || '',
           description: appointment.description || '',
           status: appointment.status || 'scheduled',
-          scheduledDate: appointment.scheduled_time ? new Date(appointment.scheduled_time) : (appointment.scheduledDate ? new Date(appointment.scheduledDate) : new Date()),
-          estimatedCompletionDate: appointment.appointment_date ? new Date(appointment.appointment_date) : (appointment.estimated_completion_date ? new Date(appointment.estimated_completion_date) : (appointment.estimatedCompletionDate ? new Date(appointment.estimatedCompletionDate) : new Date(new Date().setDate(new Date().getDate() + 1)))),
-          actualCompletionDate: appointment.actual_completion_date ? new Date(appointment.actual_completion_date) : (appointment.actualCompletionDate ? new Date(appointment.actualCompletionDate) : null),
+          scheduledDate: appointment.scheduled_time
+            ? new Date(appointment.scheduled_time)
+            : (appointment.scheduledDate ? new Date(appointment.scheduledDate) : prev.scheduledDate || new Date()),
+          estimatedCompletionDate: appointment.appointment_date
+            ? new Date(appointment.appointment_date)
+            : (appointment.estimated_completion_date
+                ? new Date(appointment.estimated_completion_date)
+                : (appointment.estimatedCompletionDate
+                    ? new Date(appointment.estimatedCompletionDate)
+                    : prev.estimatedCompletionDate || new Date(new Date().setDate(new Date().getDate() + 1)))),
+          actualCompletionDate: appointment.actual_completion_date
+            ? new Date(appointment.actual_completion_date)
+            : (appointment.actualCompletionDate ? new Date(appointment.actualCompletionDate) : prev.actualCompletionDate || null),
           notes: appointment.notes || '',
-          appointment_price: appointment.appointment_price != null ? String(appointment.appointment_price) : (appointment.appointmentPrice != null ? String(appointment.appointmentPrice) : ''),
-          appointment_duration: appointment.appointment_duration != null ? String(appointment.appointment_duration) : (appointment.appointmentDuration != null ? String(appointment.appointmentDuration) : ''),
-        });
+          appointment_price:
+            appointment.appointment_price != null
+              ? String(appointment.appointment_price)
+              : (appointment.appointmentPrice != null ? String(appointment.appointmentPrice) : ''),
+          appointment_duration:
+            appointment.appointment_duration != null
+              ? String(appointment.appointment_duration)
+              : (appointment.appointmentDuration != null ? String(appointment.appointmentDuration) : ''),
+        }));
       } catch (err) {
         setError(err.message || t('errors.failedToLoadAppointment'));
       } finally {
@@ -264,6 +287,22 @@ const AppointmentDetails = ({ isNew }) => {
     fetchMechanics();
     fetchAppointment();
   }, [id, isNewAppointment, t, mechanicCity, user?.city, user?.role, clientId]);
+
+  useEffect(() => {
+    const run = async () => {
+      if (isNewAppointment || !id) {
+        setAppointmentParts([]);
+        return;
+      }
+      try {
+        const rows = await listVehiclePartsForAppointment(id);
+        setAppointmentParts(Array.isArray(rows) ? rows : []);
+      } catch (_) {
+        setAppointmentParts([]);
+      }
+    };
+    run();
+  }, [id, isNewAppointment]);
 
   useEffect(() => {
     const fetchVehicleDetails = async () => {
@@ -299,6 +338,7 @@ const AppointmentDetails = ({ isNew }) => {
         const safeRows = Array.isArray(rows) ? rows : [];
         setServices(safeRows);
       } catch (err) {
+        console.error('Failed to load mechanic services', err);
         setServices([]);
         setError(err?.message || t('errors.failedToLoadServices'));
       }
@@ -405,7 +445,7 @@ const AppointmentDetails = ({ isNew }) => {
 
   const handleServiceChange = (e) => {
     const { value } = e.target;
-    const selected = services.find((s) => s.id === value);
+    const selected = (services || []).find((s) => String(s.id) === String(value));
     setFormData((prev) => ({
       ...prev,
       service_id: value || null,
@@ -581,14 +621,13 @@ const AppointmentDetails = ({ isNew }) => {
       if (formData.appointment_price) payload.appointment_price = Number(formData.appointment_price);
       if (formData.appointment_duration) payload.appointment_duration = Number(formData.appointment_duration);
 
-      // If client added parts manually, append them to notes or description for now, 
-      // as appointment creation doesn't support 'parts' array directly in this schema usually, 
-      // or we can add it if backend supports.
-      // The user asked "client could add parts... via simple inputs".
-      // Let's add them to notes: "Клієнт надав запчастини: ..."
-      if (clientParts.length > 0) {
-         const partsText = clientParts.map(p => `${p.name} (${p.quantity} шт.) - ${p.notes}`).join('; ');
-         payload.notes = (payload.notes ? payload.notes + '\n' : '') + `Запчастини клієнта: ${partsText}`;
+      if (isNewAppointment && clientParts.length > 0) {
+        payload.parts = clientParts.map((p) => ({
+          name: p.name,
+          quantity: p.quantity,
+          notes: p.notes,
+          purchased_by: 'owner'
+        }));
       }
 
       if (isNewAppointment) {
@@ -752,6 +791,19 @@ const AppointmentDetails = ({ isNew }) => {
                           <Chip key={p.id} label={`${p.name} (${p.quantity})`} onDelete={() => handleRemoveClientPart(p.id)} sx={{ mr: 1, mb: 1 }} />
                       ))}
                   </Grid>
+              )}
+
+              {!isNewAppointment && appointmentParts.length > 0 && (
+                <Grid item xs={12}>
+                  <Typography variant="h6" gutterBottom>{t('parts.usedParts', 'Запчастини')}</Typography>
+                  {appointmentParts.map((p) => (
+                    <Chip
+                      key={p.id}
+                      label={`${p.name}${p.quantity ? ` (${p.quantity})` : ''}`}
+                      sx={{ mr: 1, mb: 1 }}
+                    />
+                  ))}
+                </Grid>
               )}
 
               {!isNewAppointment && formData.status !== 'cancelled' && (

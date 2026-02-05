@@ -58,7 +58,7 @@ function mapAppointment(row) {
     : Array.isArray(row.service_ids_list)
       ? row.service_ids_list
       : [];
-  const serviceId = row.service_id || (service && service.id) || null;
+  const serviceId = row.service_id || (service && service.id) || (serviceIds[0] || null);
   const serviceName =
     (servicesList[0] && servicesList[0].name) || (service && service.name) || row.service_type || null;
   const servicePrice =
@@ -168,6 +168,7 @@ export async function create(payload) {
     scheduled_time: payload.scheduled_time,
     status: payload.status || 'pending',
     notes: payload.notes || null,
+    parts: payload.parts,
     appointment_date: payload.estimated_completion_date || null,
     appointment_price: payload.appointment_price ?? payload.appointmentPrice ?? null,
     appointment_duration: payload.appointment_duration ?? payload.appointmentDuration ?? null

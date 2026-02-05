@@ -212,7 +212,7 @@ router.put('/:id', auth, async (req, res) => {
   }
 });
 
-router.put('/:id/status', auth, checkAdmin, appointmentController.updateAppointmentStatus);
+router.put('/:id/status', auth, appointmentController.updateAppointmentStatus);
 
 router.delete('/:id', auth, async (req, res) => {
   try {

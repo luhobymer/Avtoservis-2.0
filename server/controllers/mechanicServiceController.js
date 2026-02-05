@@ -34,10 +34,14 @@ exports.getMechanicServices = async (req, res) => {
     const serviceColumns = await getServiceColumnConfig(db);
     const overrideConfig = await getMechanicServiceOverrideConfig(db);
 
-    const categoriesTable = await db
-      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='service_categories'")
-      .get();
-    const hasCategories = Boolean(categoriesTable && categoriesTable.name);
+    // Assume categories exist or check via PRAGMA which is safer
+    let hasCategories = true;
+    try {
+        const check = await db.prepare('PRAGMA table_info(service_categories)').all();
+        hasCategories = check && check.length > 0;
+    } catch (_) {
+      hasCategories = true;
+    }
 
     const priceOverrideSelect = overrideConfig.hasPriceOverride
       ? 'ms.price_override'
@@ -47,7 +51,7 @@ exports.getMechanicServices = async (req, res) => {
       : 'NULL AS duration_override';
 
     const where = enabledOnly
-      ? 'WHERE COALESCE(ms.is_enabled, 0) = 1 AND COALESCE(s.is_active, 1) = 1'
+      ? 'WHERE COALESCE(ms.is_enabled, 1) = 1 AND COALESCE(s.is_active, 1) = 1'
       : '';
 
     const rows = await db
@@ -55,7 +59,7 @@ exports.getMechanicServices = async (req, res) => {
         hasCategories
           ? `SELECT
               s.*,
-              COALESCE(ms.is_enabled, 0) AS is_enabled,
+              COALESCE(ms.is_enabled, 1) AS is_enabled,
               ${priceOverrideSelect},
               ${durationOverrideSelect},
               sc.id AS category_id_ref,
@@ -69,7 +73,7 @@ exports.getMechanicServices = async (req, res) => {
             ORDER BY COALESCE(sc.name, ''), COALESCE(s.name, '')`
           : `SELECT
               s.*,
-              COALESCE(ms.is_enabled, 0) AS is_enabled,
+              COALESCE(ms.is_enabled, 1) AS is_enabled,
               ${priceOverrideSelect},
               ${durationOverrideSelect},
               NULL AS category_id_ref,

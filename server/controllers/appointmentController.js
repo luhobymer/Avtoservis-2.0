@@ -67,10 +67,12 @@ const collectServiceIdsFromRow = (row) => {
 };
 
 const hasMechanicServicesTable = async (db) => {
-  const row = await db
-    .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='mechanic_services'")
-    .get();
-  return Boolean(row && row.name);
+  try {
+    const columns = await db.prepare('PRAGMA table_info(mechanic_services)').all();
+    return Array.isArray(columns) && columns.length > 0;
+  } catch (_) {
+    return false;
+  }
 };
 
 const assertServicesEnabledForMechanic = async (db, mechanicId, serviceIds) => {
@@ -86,10 +88,16 @@ const assertServicesEnabledForMechanic = async (db, mechanicId, serviceIds) => {
   for (const sid of ids) {
     const row = await db
       .prepare(
-        'SELECT ms.is_enabled, s.is_active FROM mechanic_services ms LEFT JOIN services s ON s.id = ms.service_id WHERE ms.mechanic_id = ? AND ms.service_id = ?'
+        `SELECT
+          COALESCE(ms.is_enabled, 1) AS is_enabled,
+          COALESCE(s.is_active, 1) AS is_active
+        FROM services s
+        LEFT JOIN mechanic_services ms
+          ON ms.service_id = s.id AND ms.mechanic_id = ?
+        WHERE s.id = ?`
       )
       .get(mechanicId, sid);
-    const isEnabled = row && Number(row.is_enabled || 0) === 1;
+    const isEnabled = row ? Number(row.is_enabled ?? 1) === 1 : true;
     const isActive = row ? Number(row.is_active ?? 1) === 1 : false;
     if (!isEnabled || !isActive) {
       const error = new Error('Послуга недоступна для вибраного механіка');
@@ -486,6 +494,42 @@ exports.createAppointment = async (req, res) => {
       )
       .run(...insertValues);
 
+    const inputParts = Array.isArray(req.body?.parts) ? req.body.parts : [];
+    if (inputParts.length > 0 && vehicle_vin) {
+      const now = new Date().toISOString();
+      for (const part of inputParts) {
+        const name = part?.name != null ? String(part.name).trim() : '';
+        if (!name) continue;
+        const partNumber = part?.part_number != null ? String(part.part_number).trim() : null;
+        const priceRaw = part?.price;
+        const quantityRaw = part?.quantity;
+        const purchasedBy = part?.purchased_by != null ? String(part.purchased_by).trim() : 'owner';
+        const notesValue = part?.notes != null ? String(part.notes).trim() : null;
+        const price = priceRaw == null || String(priceRaw).trim() === '' ? null : Number(priceRaw);
+        const quantity =
+          quantityRaw == null || String(quantityRaw).trim() === '' ? 1 : Number(String(quantityRaw).trim());
+        await db
+          .prepare(
+            `INSERT INTO vehicle_parts (
+              id, vehicle_vin, appointment_id, name, part_number, price, quantity, purchased_by, notes, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          )
+          .run(
+            crypto.randomUUID(),
+            String(vehicle_vin),
+            appointmentId,
+            name,
+            partNumber || null,
+            Number.isFinite(price) ? price : null,
+            Number.isFinite(quantity) ? quantity : 1,
+            purchasedBy || 'owner',
+            notesValue || null,
+            now,
+            now
+          );
+      }
+    }
+
     const created = await db.prepare('SELECT * FROM appointments WHERE id = ?').get(appointmentId);
     res.status(201).json(created);
   } catch (err) {
@@ -511,6 +555,23 @@ exports.updateAppointmentStatus = async (req, res) => {
     const before = await db.prepare('SELECT * FROM appointments WHERE id = ?').get(id);
     if (!before) {
       return res.status(404).json({ message: 'Запис не знайдено' });
+    }
+
+    const role = String(req.user?.role || '').toLowerCase();
+    const isMasterLike = ['master', 'mechanic', 'admin'].includes(role);
+    const isOwner = String(before.user_id || '') === String(req.user?.id || '');
+    const nextStatusRequested = status != null ? String(status) : '';
+
+    if (!isMasterLike) {
+      if (!isOwner) {
+        return res.status(403).json({ message: 'Доступ заборонено' });
+      }
+      if (nextStatusRequested !== 'cancelled') {
+        return res.status(403).json({ message: 'Клієнт може лише скасувати запис' });
+      }
+      if (String(before.status || '') === 'completed') {
+        return res.status(400).json({ message: 'Неможливо скасувати завершений запис' });
+      }
     }
 
     // Check for completion_mileage column

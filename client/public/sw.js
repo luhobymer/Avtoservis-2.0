@@ -1,5 +1,4 @@
-const CACHE_NAME = 'avtoservis-cache-v1';
-const API_CACHE_NAME = 'api-cache';
+const CACHE_NAME = 'avtoservis-cache-v2';
 const urlsToCache = [
   '/',
   '/index.html',
@@ -25,6 +24,7 @@ self.addEventListener('install', (event) => {
       })
       .catch(err => console.error('Cache installation failed:', err))
   );
+  self.skipWaiting();
 });
 
 // Push notifications handler
@@ -52,21 +52,24 @@ self.addEventListener('activate', (event) => {
       );
     })
   );
+  self.clients.claim();
 });
 
 self.addEventListener('fetch', (event) => {
   const requestUrl = new URL(event.request.url);
   
-  // Cache API requests strategy
   if (requestUrl.pathname.startsWith('/api')) {
     event.respondWith(
-      cacheFirst(event.request, API_CACHE_NAME)
+      fetch(event.request).catch(() =>
+        new Response(JSON.stringify({ error: 'Офлайн режим' }), {
+          headers: { 'Content-Type': 'application/json' },
+        })
+      )
     );
-  } else {
-    event.respondWith(
-      networkFirst(event.request)
-    );
+    return;
   }
+
+  event.respondWith(networkFirst(event.request));
 });
 
 async function networkFirst(request) {
@@ -78,22 +81,6 @@ async function networkFirst(request) {
   } catch (error) {
     const cachedResponse = await caches.match(request);
     return cachedResponse || caches.match('/offline.html');
-  }
-}
-
-async function cacheFirst(request, cacheName) {
-  const cachedResponse = await caches.match(request);
-  if (cachedResponse) return cachedResponse;
-  
-  try {
-    const networkResponse = await fetch(request);
-    const cache = await caches.open(cacheName);
-    cache.put(request, networkResponse.clone());
-    return networkResponse;
-  } catch (error) {
-    return new Response(JSON.stringify({ error: 'Офлайн режим' }), {
-      headers: { 'Content-Type': 'application/json' }
-    });
   }
 }
 

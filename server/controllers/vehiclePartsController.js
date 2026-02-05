@@ -51,3 +51,39 @@ exports.listForVehicle = async (req, res) => {
     res.status(500).json({ message: 'Помилка сервера' });
   }
 };
+
+exports.listForAppointment = async (req, res) => {
+  try {
+    const { appointmentId } = req.params;
+    const userId = req.user.id;
+    const role = String(req.user.role || '').toLowerCase();
+    const db = await getDb();
+
+    const appointment = await db
+      .prepare('SELECT id, user_id, mechanic_id, vehicle_vin FROM appointments WHERE id = ? LIMIT 1')
+      .get(appointmentId);
+    if (!appointment) {
+      return res.status(404).json({ message: 'Запис не знайдено' });
+    }
+
+    const isOwner = String(appointment.user_id || '') === String(userId);
+    const isAssignedMechanic = String(appointment.mechanic_id || '') === String(userId);
+    const isPrivileged = ['master', 'admin'].includes(role);
+    if (!isOwner && !isAssignedMechanic && !isPrivileged) {
+      return res.status(403).json({ message: 'Доступ заборонено' });
+    }
+
+    const parts = await db
+      .prepare(
+        `SELECT * FROM vehicle_parts
+         WHERE appointment_id = ?
+         ORDER BY created_at DESC`
+      )
+      .all(appointmentId);
+
+    return res.json(parts || []);
+  } catch (err) {
+    console.error('List appointment parts error:', err);
+    return res.status(500).json({ message: 'Помилка сервера' });
+  }
+};

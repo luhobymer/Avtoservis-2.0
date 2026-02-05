@@ -27,10 +27,14 @@ async function requestJson(url, options = {}) {
   }
 
   const contentType = response.headers.get('content-type') || '';
-  if (contentType.includes('application/json')) {
-    return response.json();
+  if (!contentType.includes('application/json')) {
+    const text = await response.text().catch(() => '');
+    const snippet = String(text).slice(0, 200).replace(/\s+/g, ' ').trim();
+    throw new Error(
+      `Unexpected response content-type: ${contentType || 'unknown'}${snippet ? ` (${snippet})` : ''}`
+    );
   }
-  return null;
+  return response.json();
 }
 
 function normalizeListPayload(payload) {

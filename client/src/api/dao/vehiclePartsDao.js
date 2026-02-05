@@ -39,3 +39,8 @@ export const listForVehicle = async (vin) => {
   const data = await requestJson(`/api/vehicle-parts/${vin}`);
   return data || [];
 };
+
+export const listForAppointment = async (appointmentId) => {
+  const data = await requestJson(`/api/vehicle-parts/appointment/${appointmentId}`);
+  return data || [];
+};
