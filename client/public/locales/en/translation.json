@@ -204,7 +204,9 @@
     "noAppointments": "You don't have any appointments yet",
     "statuses": {
       "pending": "Pending Confirmation",
-      "scheduled": "Scheduled",
+      "confirmed": "Confirmed",
+      "in_progress": "In Progress",
+      "scheduled": "Confirmed",
       "in-progress": "In Progress",
       "completed": "Completed",
       "cancelled": "Cancelled"

@@ -4,7 +4,6 @@ const { body } = require('express-validator');
 const auth = require('../middleware/auth.js');
 const appointmentController = require('../controllers/appointmentController.js');
 const { getDb } = require('../db/d1');
-const { checkAdmin } = require('../middleware/checkRole');
 
 router.post(
   '/',
@@ -215,21 +214,7 @@ router.put('/:id', auth, async (req, res) => {
 router.put('/:id/status', auth, appointmentController.updateAppointmentStatus);
 
 router.delete('/:id', auth, async (req, res) => {
-  try {
-    const db = await getDb();
-    const isMaster = req.user && req.user.role === 'master';
-
-    if (isMaster) {
-      await db.prepare('DELETE FROM appointments WHERE id = ?').run(req.params.id);
-    } else {
-      await db
-        .prepare('DELETE FROM appointments WHERE id = ? AND user_id = ?')
-        .run(req.params.id, req.user.id);
-    }
-    res.sendStatus(204);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
+  return appointmentController.deleteAppointment(req, res);
 });
 
 module.exports = router;

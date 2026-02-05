@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const { getDb } = require('../db/d1');
+const defaultMaintenanceTasks = require('../utils/defaultMaintenance');
 
 const normalizeLicensePlate = (input) => {
   if (!input) return '';
@@ -403,6 +404,30 @@ exports.addVehicle = async (req, res) => {
     const values = entries.map(([, value]) => value);
 
     await db.prepare(`INSERT INTO vehicles (${columns.join(', ')}) VALUES (${placeholders})`).run(...values);
+
+    // Додаємо базовий регламент обслуговування
+    try {
+      const maintenanceInsert = db.prepare(`
+        INSERT INTO maintenance_schedules (
+          id, vehicle_vin, service_item, interval_km, interval_months, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      for (const task of defaultMaintenanceTasks) {
+        await maintenanceInsert.run(
+          crypto.randomUUID(),
+          vin,
+          task.service_item,
+          task.interval_km,
+          task.interval_months,
+          now,
+          now
+        );
+      }
+    } catch (maintenanceErr) {
+      console.error('Помилка при створенні регламенту обслуговування:', maintenanceErr);
+      // Не перериваємо створення авто, якщо не вдалося створити регламент
+    }
 
     const created = await db
       .prepare('SELECT * FROM vehicles WHERE vin = ? AND user_id = ?')

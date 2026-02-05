@@ -37,8 +37,13 @@ import {
 } from '@mui/material';
 import VehicleForm from '../components/vehicle/VehicleForm';
 import DeleteVehicleDialog from '../components/vehicle/DeleteVehicleDialog';
+import MaintenanceTab from '../components/vehicle/MaintenanceTab';
 import ErrorBoundary from '../components/ErrorBoundary';
 import { list as listUsers, create as createUser } from '../api/dao/usersDao';
+import { Tabs, Tab } from '@mui/material';
+
+import ServiceRecords from './ServiceRecords';
+import MyParts from './MyParts';
 
 const VehicleDetailsContent = () => {
   const { id } = useParams();
@@ -94,6 +99,16 @@ const VehicleDetailsContent = () => {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [lookupLoading, setLookupLoading] = useState(false);
   const [lookupError, setLookupError] = useState(null);
+  const [tabValue, setTabValue] = useState(0);
+
+  // Initialize tab from URL query params
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tabParam = params.get('tab');
+    if (tabParam) {
+      setTabValue(Number(tabParam));
+    }
+  }, []);
 
   const loadVehicleData = useCallback(async () => {
     try {
@@ -448,9 +463,11 @@ const VehicleDetailsContent = () => {
   return (
     <Container maxWidth="md" sx={{ mt: 4 }}>
       <Paper sx={{ p: 3 }}>
-        <Typography variant="h5" gutterBottom>
-          {isNewVehicle ? t('vehicle.new', 'Новий автомобіль') : t('vehicle.edit', 'Редагування автомобіля')}
-        </Typography>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+          <Typography variant="h5">
+            {isNewVehicle ? t('vehicle.new', 'Новий автомобіль') : `${formData.brand} ${formData.model} (${formData.licensePlate})`}
+          </Typography>
+        </Box>
 
         {error && (
           <Alert severity="error" sx={{ mb: 2 }}>
@@ -458,164 +475,191 @@ const VehicleDetailsContent = () => {
           </Alert>
         )}
 
-        {isNewVehicle && isMasterUser && (
-          <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start', mb: 2 }}>
-            <FormControl fullWidth error={Boolean(ownerError)}>
-              <InputLabel>{t('vehicle.owner', 'Власник')}</InputLabel>
-              <Select
-                value={ownerId}
-                label={t('vehicle.owner', 'Власник')}
-                onChange={handleOwnerChange}
-                disabled={ownersLoading || ownerVehiclesLoading || addClientSaving}
-              >
-                <MenuItem value="">
-                  <em>{t('common.select', 'Оберіть')}</em>
-                </MenuItem>
-                {(owners || []).map((o) => (
-                  <MenuItem key={o.id} value={o.id}>
-                    {o.name || o.email || o.phone || o.id}
-                  </MenuItem>
-                ))}
-              </Select>
-              <FormHelperText>
-                {ownerError || t('vehicle.ownerHint', 'Для майстра: виберіть клієнта-власника')}
-              </FormHelperText>
-            </FormControl>
-            <Button
-              variant="outlined"
-              sx={{ mt: '6px', whiteSpace: 'nowrap' }}
-              disabled={ownersLoading || addClientSaving}
-              onClick={() => {
-                setAddClientError('');
-                setAddClientDraft({ name: '', email: '', phone: '', password: '' });
-                setAddClientOpen(true);
-              }}
-            >
-              {t('clients.add', 'Додати клієнта')}
-            </Button>
+        {!isNewVehicle && (
+          <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
+            <Tabs value={tabValue} onChange={(e, v) => setTabValue(v)}>
+              <Tab label={t('vehicle.info', 'Інформація')} />
+              <Tab label={t('vehicle.maintenance', 'Регламент ТО')} />
+              <Tab label={t('serviceRecord.title', 'Сервісна книга')} />
+              <Tab label={t('parts.title', 'Запчастини')} />
+            </Tabs>
           </Box>
         )}
 
-        {isNewVehicle && isMasterUser && ownerId && ownerVehiclesChecked && !ownerVehiclesLoading && !importDialogOpen && ownerVehicles.length === 0 ? (
-          <Alert severity="info" sx={{ mb: 2 }}>
-            {t('vehicle.ownerNoVehicles', 'У цього власника ще немає авто. Заповніть форму нижче.')}
-          </Alert>
-        ) : null}
-
-        <Dialog open={addClientOpen} onClose={() => setAddClientOpen(false)} fullWidth maxWidth="sm">
-          <DialogTitle>{t('clients.add', 'Додати клієнта')}</DialogTitle>
-          <DialogContent sx={{ pt: 1 }}>
-            {addClientError ? (
-              <Alert severity="error" sx={{ mb: 2 }}>
-                {addClientError}
-              </Alert>
-            ) : null}
-            <TextField
-              fullWidth
-              sx={{ mt: 1 }}
-              label={t('auth.name', "Ім'я")}
-              value={addClientDraft.name}
-              onChange={(e) => setAddClientDraft((d) => ({ ...d, name: e.target.value }))}
-            />
-            <TextField
-              fullWidth
-              sx={{ mt: 2 }}
-              label={t('auth.email', 'Електронна пошта')}
-              value={addClientDraft.email}
-              onChange={(e) => setAddClientDraft((d) => ({ ...d, email: e.target.value }))}
-            />
-            <TextField
-              fullWidth
-              sx={{ mt: 2 }}
-              label={t('auth.phone', 'Телефон')}
-              value={addClientDraft.phone}
-              onChange={(e) => setAddClientDraft((d) => ({ ...d, phone: e.target.value }))}
-            />
-            <TextField
-              fullWidth
-              sx={{ mt: 2 }}
-              label={t('auth.password', 'Пароль')}
-              type="password"
-              value={addClientDraft.password}
-              onChange={(e) => setAddClientDraft((d) => ({ ...d, password: e.target.value }))}
-            />
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={() => setAddClientOpen(false)} disabled={addClientSaving}>
-              {t('common.cancel', 'Скасувати')}
-            </Button>
-            <Button onClick={submitCreateClient} variant="contained" disabled={addClientSaving}>
-              {t('common.save', 'Зберегти')}
-            </Button>
-          </DialogActions>
-        </Dialog>
-
-        <Dialog open={importDialogOpen} onClose={() => setImportDialogOpen(false)} fullWidth maxWidth="sm">
-          <DialogTitle>
-            {t('vehicle.ownerVehiclesFound', 'У цього власника вже є авто')}
-          </DialogTitle>
-          <DialogContent>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              {t(
-                'vehicle.importHint',
-                'Оберіть авто, які додати до моїх обслуговуємих, або продовжіть створення нового авто.'
-              )}
-            </Typography>
-
-            {(ownerVehicles || []).length <= 1 ? (
-              <Typography variant="body1">
-                {(() => {
-                  const v = (ownerVehicles || [])[0];
-                  if (!v) return '';
-                  return `${v.make || v.brand || ''} ${v.model || ''} (${v.licensePlate || v.vin || ''})`;
-                })()}
-              </Typography>
-            ) : (
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                {(ownerVehicles || []).map((v) => (
-                  <FormControlLabel
-                    key={v.id}
-                    control={
-                      <Checkbox
-                        checked={selectedOwnerVehicleIds.includes(String(v.id))}
-                        onChange={() => toggleVehicleSelection(v.id)}
-                      />
-                    }
-                    label={`${v.make || v.brand || ''} ${v.model || ''} (${v.licensePlate || v.vin || ''})`}
-                  />
-                ))}
+        {tabValue === 0 && (
+          <>
+            {isNewVehicle && isMasterUser && (
+              <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start', mb: 2 }}>
+                <FormControl fullWidth error={Boolean(ownerError)}>
+                  <InputLabel>{t('vehicle.owner', 'Власник')}</InputLabel>
+                  <Select
+                    value={ownerId}
+                    label={t('vehicle.owner', 'Власник')}
+                    onChange={handleOwnerChange}
+                    disabled={ownersLoading || ownerVehiclesLoading || addClientSaving}
+                  >
+                    <MenuItem value="">
+                      <em>{t('common.select', 'Оберіть')}</em>
+                    </MenuItem>
+                    {(owners || []).map((o) => (
+                      <MenuItem key={o.id} value={o.id}>
+                        {o.name || o.email || o.phone || o.id}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                  <FormHelperText>
+                    {ownerError || t('vehicle.ownerHint', 'Для майстра: виберіть клієнта-власника')}
+                  </FormHelperText>
+                </FormControl>
+                <Button
+                  variant="outlined"
+                  sx={{ mt: '6px', whiteSpace: 'nowrap' }}
+                  disabled={ownersLoading || addClientSaving}
+                  onClick={() => {
+                    setAddClientError('');
+                    setAddClientDraft({ name: '', email: '', phone: '', password: '' });
+                    setAddClientOpen(true);
+                  }}
+                >
+                  {t('clients.add', 'Додати клієнта')}
+                </Button>
               </Box>
             )}
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={() => setImportDialogOpen(false)} disabled={saving}>
-              {t('vehicle.addNewInstead', 'Додати нове авто')}
-            </Button>
-            <Button
-              variant="contained"
-              onClick={handleImportSelectedVehicles}
-              disabled={saving || selectedOwnerVehicleIds.length === 0}
-            >
-              {(ownerVehicles || []).length <= 1
-                ? t('vehicle.addThis', 'Додати це авто')
-                : t('vehicle.addSelected', 'Додати вибрані')}
-            </Button>
-          </DialogActions>
-        </Dialog>
 
-        <VehicleForm
-          formData={formData}
-          handleChange={handleChange}
-          handleSubmit={handleSubmit}
-          saving={saving}
-          isNewVehicle={isNewVehicle}
-          onDeleteClick={() => setDeleteDialogOpen(true)}
-          onLookupByPlate={handleLookupByPlate}
-          lookupLoading={lookupLoading}
-          lookupError={lookupError}
-          handlePhotoChange={handlePhotoChange}
-          photoPreview={photoPreview}
-        />
+            {isNewVehicle && isMasterUser && ownerId && ownerVehiclesChecked && !ownerVehiclesLoading && !importDialogOpen && ownerVehicles.length === 0 ? (
+              <Alert severity="info" sx={{ mb: 2 }}>
+                {t('vehicle.ownerNoVehicles', 'У цього власника ще немає авто. Заповніть форму нижче.')}
+              </Alert>
+            ) : null}
+
+            <Dialog open={addClientOpen} onClose={() => setAddClientOpen(false)} fullWidth maxWidth="sm">
+              <DialogTitle>{t('clients.add', 'Додати клієнта')}</DialogTitle>
+              <DialogContent sx={{ pt: 1 }}>
+                {addClientError ? (
+                  <Alert severity="error" sx={{ mb: 2 }}>
+                    {addClientError}
+                  </Alert>
+                ) : null}
+                <TextField
+                  fullWidth
+                  sx={{ mt: 1 }}
+                  label={t('auth.name', "Ім'я")}
+                  value={addClientDraft.name}
+                  onChange={(e) => setAddClientDraft((d) => ({ ...d, name: e.target.value }))}
+                />
+                <TextField
+                  fullWidth
+                  sx={{ mt: 2 }}
+                  label={t('auth.email', 'Електронна пошта')}
+                  value={addClientDraft.email}
+                  onChange={(e) => setAddClientDraft((d) => ({ ...d, email: e.target.value }))}
+                />
+                <TextField
+                  fullWidth
+                  sx={{ mt: 2 }}
+                  label={t('auth.phone', 'Телефон')}
+                  value={addClientDraft.phone}
+                  onChange={(e) => setAddClientDraft((d) => ({ ...d, phone: e.target.value }))}
+                />
+                <TextField
+                  fullWidth
+                  sx={{ mt: 2 }}
+                  label={t('auth.password', 'Пароль')}
+                  type="password"
+                  value={addClientDraft.password}
+                  onChange={(e) => setAddClientDraft((d) => ({ ...d, password: e.target.value }))}
+                />
+              </DialogContent>
+              <DialogActions>
+                <Button onClick={() => setAddClientOpen(false)} disabled={addClientSaving}>
+                  {t('common.cancel', 'Скасувати')}
+                </Button>
+                <Button onClick={submitCreateClient} variant="contained" disabled={addClientSaving}>
+                  {t('common.save', 'Зберегти')}
+                </Button>
+              </DialogActions>
+            </Dialog>
+
+            <Dialog open={importDialogOpen} onClose={() => setImportDialogOpen(false)} fullWidth maxWidth="sm">
+              <DialogTitle>
+                {t('vehicle.ownerVehiclesFound', 'У цього власника вже є авто')}
+              </DialogTitle>
+              <DialogContent>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  {t(
+                    'vehicle.importHint',
+                    'Оберіть авто, які додати до моїх обслуговуємих, або продовжіть створення нового авто.'
+                  )}
+                </Typography>
+
+                {(ownerVehicles || []).length <= 1 ? (
+                  <Typography variant="body1">
+                    {(() => {
+                      const v = (ownerVehicles || [])[0];
+                      if (!v) return '';
+                      return `${v.make || v.brand || ''} ${v.model || ''} (${v.licensePlate || v.vin || ''})`;
+                    })()}
+                  </Typography>
+                ) : (
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                    {(ownerVehicles || []).map((v) => (
+                      <FormControlLabel
+                        key={v.id}
+                        control={
+                          <Checkbox
+                            checked={selectedOwnerVehicleIds.includes(String(v.id))}
+                            onChange={() => toggleVehicleSelection(v.id)}
+                          />
+                        }
+                        label={`${v.make || v.brand || ''} ${v.model || ''} (${v.licensePlate || v.vin || ''})`}
+                      />
+                    ))}
+                  </Box>
+                )}
+              </DialogContent>
+              <DialogActions>
+                <Button onClick={() => setImportDialogOpen(false)} disabled={saving}>
+                  {t('vehicle.addNewInstead', 'Додати нове авто')}
+                </Button>
+                <Button
+                  variant="contained"
+                  onClick={handleImportSelectedVehicles}
+                  disabled={saving || selectedOwnerVehicleIds.length === 0}
+                >
+                  {(ownerVehicles || []).length <= 1
+                    ? t('vehicle.addThis', 'Додати це авто')
+                    : t('vehicle.addSelected', 'Додати вибрані')}
+                </Button>
+              </DialogActions>
+            </Dialog>
+
+            <VehicleForm
+              formData={formData}
+              handleChange={handleChange}
+              handleSubmit={handleSubmit}
+              saving={saving}
+              isNewVehicle={isNewVehicle}
+              onDeleteClick={() => setDeleteDialogOpen(true)}
+              onLookupByPlate={handleLookupByPlate}
+              lookupLoading={lookupLoading}
+              lookupError={lookupError}
+              handlePhotoChange={handlePhotoChange}
+              photoPreview={photoPreview}
+            />
+          </>
+        )}
+
+        {tabValue === 1 && !isNewVehicle && (
+          <MaintenanceTab vin={formData.vin} />
+        )}
+
+        {tabValue === 2 && !isNewVehicle && (
+          <ServiceRecords />
+        )}
+
+        {tabValue === 3 && !isNewVehicle && (
+          <MyParts />
+        )}
       </Paper>
 
       <DeleteVehicleDialog

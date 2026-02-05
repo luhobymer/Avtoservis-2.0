@@ -3,8 +3,9 @@
 Ця папка містить **актуальні** (підтримувані) документи про репозиторій.
 
 ## Основне
-
-- План прибирання репозиторію: [CLEANUP_PLAN.md](./CLEANUP_PLAN.md)
+ 
+ - План покращення та синхронізації (Web vs Mobile): [IMPROVEMENT_PLAN.md](./IMPROVEMENT_PLAN.md)
+ - План прибирання репозиторію: [CLEANUP_PLAN.md](./CLEANUP_PLAN.md)
 
 ## Про `.trae/documents/`
 

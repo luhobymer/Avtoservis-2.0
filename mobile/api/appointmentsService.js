@@ -258,11 +258,10 @@ export const completeAppointment = async (id, completionData, token) => {
 
     const payload = {
       status: 'completed',
+      completion_notes: completionData?.notes,
+      completion_mileage: completionData?.completion_mileage,
+      parts: completionData?.parts // Assuming backend handles 'parts' in this endpoint or we need separate call
     };
-
-    if (completionData && typeof completionData.notes === 'string') {
-      payload.completion_notes = completionData.notes;
-    }
 
     const response = await axiosAuth.put(`/api/appointments/${id}/status`, payload);
     return response.data;
@@ -298,5 +297,29 @@ export const cancelAppointment = async (id, cancellationData, token) => {
       error
     );
     throw error;
+  }
+};
+
+export const getMyMechanics = async (token) => {
+  try {
+    const response = await axiosAuth.get('/api/relationships/mechanics');
+    return response.data || [];
+  } catch (error) {
+    console.error('[AppointmentsService] Failed to fetch my mechanics:', error);
+    return [];
+  }
+};
+
+export const searchMasters = async (city, name) => {
+  try {
+    const params = {};
+    if (city) params.city = city;
+    if (name) params.name = name;
+    
+    const response = await axiosAuth.get('/api/relationships/search-masters', { params });
+    return response.data || [];
+  } catch (error) {
+    console.error('[AppointmentsService] Failed to search masters:', error);
+    return [];
   }
 };

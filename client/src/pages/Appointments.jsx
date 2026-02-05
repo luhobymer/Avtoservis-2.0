@@ -89,9 +89,7 @@ const Appointments = () => {
         return 'primary';
       case 'confirmed':
         return 'warning';
-      case 'scheduled':
-        return 'primary';
-      case 'in-progress':
+      case 'in_progress':
         return 'warning';
       case 'completed':
         return 'success';
@@ -99,6 +97,10 @@ const Appointments = () => {
         return 'error';
       case 'canceled':
         return 'error';
+      case 'scheduled':
+        return 'warning';
+      case 'in-progress':
+        return 'warning';
       default:
         return 'default';
     }

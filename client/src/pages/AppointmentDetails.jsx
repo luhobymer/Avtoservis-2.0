@@ -3,7 +3,13 @@ import { Alert } from '@mui/material';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/useAuth';
-import { getById as getAppointmentById, create as createAppointment, update as updateAppointment, updateStatus } from '../api/dao/appointmentsDao';
+import {
+  getById as getAppointmentById,
+  create as createAppointment,
+  update as updateAppointment,
+  updateStatus,
+  remove as removeAppointment,
+} from '../api/dao/appointmentsDao';
 import { list as listVehicles, listForUser as listVehiclesForUser, getById as getVehicleById } from '../api/dao/vehiclesDao';
 import { getCurrent as getCurrentMechanic, list as listMechanics } from '../api/dao/mechanicsDao';
 import { listMechanicServices } from '../api/dao/mechanicServicesDao';
@@ -107,7 +113,7 @@ const AppointmentDetails = ({ isNew }) => {
     mechanic_id: null,
     serviceType: '',
     description: '',
-    status: 'scheduled',
+    status: 'pending',
     scheduledDate: new Date(new Date().setHours(new Date().getHours() + 1)),
     estimatedCompletionDate: new Date(new Date().setDate(new Date().getDate() + 1)),
     actualCompletionDate: null,
@@ -251,7 +257,7 @@ const AppointmentDetails = ({ isNew }) => {
           mechanic_id: appointment.mechanic_id || prev.mechanic_id || null,
           serviceType: appointment.serviceType || appointment.service_type || prev.serviceType || '',
           description: appointment.description || '',
-          status: appointment.status || 'scheduled',
+          status: appointment.status || 'pending',
           scheduledDate: appointment.scheduled_time
             ? new Date(appointment.scheduled_time)
             : (appointment.scheduledDate ? new Date(appointment.scheduledDate) : prev.scheduledDate || new Date()),
@@ -446,16 +452,20 @@ const AppointmentDetails = ({ isNew }) => {
   const handleServiceChange = (e) => {
     const { value } = e.target;
     const selected = (services || []).find((s) => String(s.id) === String(value));
+    const selectedPrice =
+      selected && (selected.price ?? selected.base_price ?? selected.basePrice ?? null);
+    const selectedDuration =
+      selected && (selected.duration ?? selected.base_duration ?? selected.baseDuration ?? null);
     setFormData((prev) => ({
       ...prev,
       service_id: value || null,
       serviceType: selected ? selected.name || '' : prev.serviceType,
       appointment_price: isNewAppointment
-          ? (selected && selected.price != null ? String(selected.price) : '')
-          : prev.appointment_price || (selected && selected.price != null ? String(selected.price) : ''),
+          ? (selectedPrice != null ? String(selectedPrice) : '')
+          : prev.appointment_price || (selectedPrice != null ? String(selectedPrice) : ''),
       appointment_duration: isNewAppointment
-          ? (selected && selected.duration != null ? String(selected.duration) : '')
-          : prev.appointment_duration || (selected && selected.duration != null ? String(selected.duration) : ''),
+          ? (selectedDuration != null ? String(selectedDuration) : '')
+          : prev.appointment_duration || (selectedDuration != null ? String(selectedDuration) : ''),
     }));
   };
 
@@ -527,7 +537,14 @@ const AppointmentDetails = ({ isNew }) => {
       return;
     }
     try {
-      await updateStatus(id, newStatus);
+      const pricingPayload = {};
+      if (formData.appointment_price !== '') {
+        pricingPayload.appointment_price = Number(formData.appointment_price);
+      }
+      if (formData.appointment_duration !== '') {
+        pricingPayload.appointment_duration = Number(formData.appointment_duration);
+      }
+      await updateStatus(id, newStatus, pricingPayload);
       setFormData(prev => ({ ...prev, status: newStatus }));
       setSuccess(true);
     } catch (err) {
@@ -542,7 +559,14 @@ const AppointmentDetails = ({ isNew }) => {
     }
     try {
       setSaving(true);
-      await updateStatus(id, 'completed', completionData);
+      const payload = { ...completionData };
+      if (formData.appointment_price !== '') {
+        payload.appointment_price = Number(formData.appointment_price);
+      }
+      if (formData.appointment_duration !== '') {
+        payload.appointment_duration = Number(formData.appointment_duration);
+      }
+      await updateStatus(id, 'completed', payload);
       setFormData(prev => ({ ...prev, status: 'completed' }));
       setSuccess(true);
       setCompletionDialogOpen(false);
@@ -647,24 +671,39 @@ const AppointmentDetails = ({ isNew }) => {
 
   const handleDelete = async () => {
     try {
-      await updateStatus(id, 'cancelled');
+      if (isMasterUser) {
+        await removeAppointment(id);
+      } else {
+        await updateStatus(id, 'cancelled');
+      }
       navigate('/appointments');
     } catch (err) {
-      setError(err.message || 'Не вдалося скасувати');
+      setError(err.message || 'Не вдалося виконати дію');
       setDeleteDialogOpen(false);
     }
   };
 
   const getStatusStep = (status) => {
     switch (status) {
-      case 'scheduled': return 0;
-      case 'in-progress': return 1;
-      case 'completed': return 2;
-      case 'cancelled': return 3;
+      case 'pending':
+        return 0;
+      case 'confirmed':
+        return 1;
+      case 'in_progress':
+        return 2;
+      case 'completed':
+        return 3;
+      case 'cancelled':
+        return 0;
       default: return 0;
     }
   };
-  const steps = [t('appointment.statuses.scheduled'), t('appointment.statuses.in-progress'), t('appointment.statuses.completed')];
+  const steps = [
+    t('appointment.statuses.pending'),
+    t('appointment.statuses.confirmed'),
+    t('appointment.statuses.in_progress'),
+    t('appointment.statuses.completed')
+  ];
 
   const filteredServices = useMemo(() => {
     if (!serviceCategoryId) return [];
@@ -687,8 +726,13 @@ const AppointmentDetails = ({ isNew }) => {
              <Typography variant="h4">{isNewAppointment ? t('appointment.schedule') : t('common.edit')}</Typography>
              {!isNewAppointment && isMasterUser && formData.status !== 'completed' && formData.status !== 'cancelled' && (
                <Box>
-                 {formData.status === 'scheduled' && <Button variant="contained" color="primary" onClick={() => handleStatusAction('in-progress')}>{t('appointment.startWork')}</Button>}
-                 {formData.status === 'in-progress' && <Button variant="contained" color="success" onClick={() => handleStatusAction('completed')}>{t('appointment.completeWork')}</Button>}
+                 {formData.status === 'pending' && (
+                   <Button variant="contained" color="primary" onClick={() => handleStatusAction('confirmed')}>
+                     {t('appointment.confirm', 'Підтвердити')}
+                   </Button>
+                 )}
+                 {formData.status === 'confirmed' && <Button variant="contained" color="primary" onClick={() => handleStatusAction('in_progress')}>{t('appointment.startWork')}</Button>}
+                 {formData.status === 'in_progress' && <Button variant="contained" color="success" onClick={() => handleStatusAction('completed')}>{t('appointment.completeWork')}</Button>}
                </Box>
              )}
           </Box>
@@ -768,6 +812,30 @@ const AppointmentDetails = ({ isNew }) => {
                       </Select>
                    </FormControl>
                 </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  type="number"
+                  inputProps={{ min: 0, step: 1 }}
+                  label={t('services.price', 'Ціна')}
+                  name="appointment_price"
+                  value={formData.appointment_price}
+                  onChange={handleChange}
+                  disabled={!isMasterUser}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  type="number"
+                  inputProps={{ min: 0, step: 1 }}
+                  label={t('services.duration', 'Час (хв)')}
+                  name="appointment_duration"
+                  value={formData.appointment_duration}
+                  onChange={handleChange}
+                  disabled={!isMasterUser}
+                />
+              </Grid>
               <Grid item xs={12} sm={6}>
                 <LocalizationProvider dateAdapter={AdapterDateFns}>
                   <DateTimePicker label={t('appointment.scheduledDate')} value={formData.scheduledDate} onChange={(date) => handleDateChange('scheduledDate', date)} renderInput={(params) => <TextField {...params} fullWidth required />} />

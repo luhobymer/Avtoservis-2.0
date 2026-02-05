@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/useAuth';
 import * as vehiclePartsDao from '../api/dao/vehiclePartsDao';
+import * as vehiclesDao from '../api/dao/vehiclesDao';
 import {
   Container,
   Typography,
@@ -21,7 +22,12 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  LinearProgress
+  LinearProgress,
+  TextField,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem
 } from '@mui/material';
 import { format } from 'date-fns';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
@@ -31,30 +37,36 @@ const MyParts = () => {
   const { t } = useTranslation();
   const { user } = useAuth();
   const [parts, setParts] = useState([]);
+  const [vehicles, setVehicles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   
   const [ocrDialogOpen, setOcrDialogOpen] = useState(false);
   const [ocrLoading, setOcrLoading] = useState(false);
   const [parsedParts, setParsedParts] = useState([]);
+  const [selectedVehicleVin, setSelectedVehicleVin] = useState('');
+  const [savingParts, setSavingParts] = useState(false);
 
-  useEffect(() => {
-    fetchParts();
-  }, [user]);
-
-  const fetchParts = async () => {
+  const fetchParts = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       if (!user || !user.id) return;
       const data = await vehiclePartsDao.listForUser();
       setParts(data || []);
+      
+      const vehiclesData = await vehiclesDao.listForUser(user.id);
+      setVehicles(vehiclesData || []);
     } catch (err) {
       setError(err.message || 'Не вдалося завантажити список запчастин');
     } finally {
       setLoading(false);
     }
-  };
+  }, [user]);
+
+  useEffect(() => {
+    fetchParts();
+  }, [fetchParts]);
 
   const handleImageUpload = async (e) => {
     const file = e.target.files[0];
@@ -88,20 +100,36 @@ const MyParts = () => {
   };
 
   const handleSaveParsedParts = async () => {
-    // Here we would implement saving these parts to the database.
-    // For now, since the API to "just add parts" without an appointment isn't explicitly requested 
-    // or maybe it is implied "add parts to my parts".
-    // Usually parts are linked to an appointment or vehicle.
-    // Let's assume we just show them for now or need a way to link to vehicle.
-    // The prompt says "add parts in My Parts". So maybe we need a "Create Part" endpoint?
-    // I'll leave this as a UI demo that it parses, but maybe disable "Save" until we select a vehicle.
-    setOcrDialogOpen(false);
-    // Refresh list?
-    // Actually we need to save them. But we need a vehicle_id.
-    // I'll skip saving logic for this specific turn unless user asks, or I'll imply it needs a vehicle selection.
-    // But wait, the user said "add parts from such image".
-    // I should probably add a vehicle selector in the dialog.
-    alert(t('common.saved', 'Збережено (Demo)'));
+    if (!selectedVehicleVin) {
+      alert(t('parts.selectVehicleRequired', 'Будь ласка, оберіть автомобіль'));
+      return;
+    }
+
+    setSavingParts(true);
+    try {
+      for (const part of parsedParts) {
+        await vehiclePartsDao.createPart({
+          vehicle_vin: selectedVehicleVin,
+          name: part.name || t('parts.unnamed_part'),
+          part_number: part.partNumber || '',
+          price: parseFloat(part.price) || 0,
+          quantity: parseFloat(part.quantity) || 1,
+          purchased_by: 'owner', // Default to owner since user is adding it
+          notes: 'Added via OCR'
+        });
+      }
+      
+      setOcrDialogOpen(false);
+      setParsedParts([]);
+      setSelectedVehicleVin('');
+      fetchParts(); // Refresh list
+      alert(t('common.saved', 'Збережено успішно'));
+    } catch (err) {
+      console.error('Failed to save parts:', err);
+      alert(t('errors.saveFailed', 'Не вдалося зберегти запчастини: ' + err.message));
+    } finally {
+      setSavingParts(false);
+    }
   };
 
   if (loading) {
@@ -109,6 +137,143 @@ const MyParts = () => {
       <Container sx={{ mt: 4, display: 'flex', justifyContent: 'center' }}>
         <CircularProgress />
       </Container>
+    );
+  }
+
+  // Якщо компонент використовується як вкладка (є vehicleId в пропсах або URL)
+  const queryParams = new URLSearchParams(window.location.search);
+  const vehicleIdParam = queryParams.get('vehicleId');
+  const isTabMode = window.location.pathname.includes('/vehicles/');
+
+  if (isTabMode) {
+    const vehicleParts = parts.filter(p => {
+        // Тут треба знайти VIN за ID, якщо передано ID
+        // Але оскільки parts вже мають make/model, нам треба перевірити відповідність
+        // Простіше фільтрувати за VIN, якщо він є у батьківського компонента
+        // Або якщо vehicleIdParam співпадає з vehicle.id
+        // Поки що просто фільтруємо за VIN, який маємо з vehicle list
+        const v = vehicles.find(v => v.id === vehicleIdParam);
+        if (v) return p.vehicle_vin === v.vin;
+        return true; 
+    });
+
+    return (
+      <Box sx={{ mt: 2 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+            <Button 
+              variant="contained" 
+              startIcon={<AddPhotoAlternateIcon />}
+              onClick={() => setOcrDialogOpen(true)}
+            >
+              {t('parts.addFromImage', 'Додати з фото')}
+            </Button>
+        </Box>
+
+        {vehicleParts.length === 0 ? (
+          <Alert severity="info">
+            {t('parts.noParts', 'У вас ще немає історії заміни запчастин')}
+          </Alert>
+        ) : (
+          <TableContainer component={Paper} variant="outlined">
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>{t('parts.name', 'Назва')}</TableCell>
+                  <TableCell>{t('parts.partNumber', 'Номер')}</TableCell>
+                  <TableCell>{t('parts.installedAt', 'Дата')}</TableCell>
+                  <TableCell>{t('parts.price', 'Ціна')}</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {vehicleParts.map((part) => (
+                  <TableRow key={part.id}>
+                    <TableCell>{part.name}</TableCell>
+                    <TableCell>{part.part_number || '-'}</TableCell>
+                    <TableCell>
+                      {part.installed_date ? format(new Date(part.installed_date), 'dd.MM.yyyy') : '-'}
+                    </TableCell>
+                    <TableCell>{part.price ? `${part.price} грн` : '-'}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        )}
+        
+        {/* OCR Dialog reused */}
+        <Dialog open={ocrDialogOpen} onClose={() => setOcrDialogOpen(false)} maxWidth="md" fullWidth>
+           {/* ... (keep existing OCR dialog content but simplified for single vehicle context if needed) ... */}
+           <DialogTitle>{t('parts.importFromImage', 'Імпорт з зображення')}</DialogTitle>
+            <DialogContent>
+            <Box sx={{ mb: 2, mt: 1 }}>
+                {/* Auto-select current vehicle if in tab mode */}
+                {!isTabMode && (
+                    <FormControl fullWidth sx={{ mb: 2 }}>
+                    <InputLabel id="vehicle-select-label">{t('vehicle.title', 'Автомобіль')}</InputLabel>
+                    <Select
+                        labelId="vehicle-select-label"
+                        value={selectedVehicleVin}
+                        label={t('vehicle.title', 'Автомобіль')}
+                        onChange={(e) => setSelectedVehicleVin(e.target.value)}
+                    >
+                        {vehicles.map((v) => (
+                        <MenuItem key={v.vin} value={v.vin}>
+                            {v.make} {v.model} ({v.year}) - {v.licensePlate}
+                        </MenuItem>
+                        ))}
+                    </Select>
+                    </FormControl>
+                )}
+
+                <Button
+                variant="outlined"
+                component="label"
+                startIcon={<CloudUploadIcon />}
+                fullWidth
+                sx={{ height: 100, borderStyle: 'dashed' }}
+                >
+                {t('common.uploadImage', 'Завантажити зображення')}
+                <input type="file" hidden accept="image/*" onChange={handleImageUpload} />
+                </Button>
+            </Box>
+
+            {ocrLoading && <LinearProgress sx={{ mb: 2 }} />}
+
+            {parsedParts.length > 0 && (
+                <TableContainer component={Paper} variant="outlined">
+                <Table size="small">
+                    <TableHead>
+                    <TableRow>
+                        <TableCell>{t('parts.name')}</TableCell>
+                        <TableCell>{t('parts.price')}</TableCell>
+                        <TableCell>{t('parts.qty')}</TableCell>
+                    </TableRow>
+                    </TableHead>
+                    <TableBody>
+                    {parsedParts.map((p, index) => (
+                        <TableRow key={index}>
+                        <TableCell>{p.name}</TableCell>
+                        <TableCell>{p.price}</TableCell>
+                        <TableCell>{p.quantity}</TableCell>
+                        </TableRow>
+                    ))}
+                    </TableBody>
+                </Table>
+                </TableContainer>
+            )}
+            </DialogContent>
+            <DialogActions>
+            <Button onClick={() => setOcrDialogOpen(false)}>{t('common.cancel')}</Button>
+            <Button 
+                onClick={handleSaveParsedParts} 
+                variant="contained" 
+                disabled={parsedParts.length === 0 || savingParts}
+            >
+                {savingParts ? <CircularProgress size={24} /> : t('common.save')}
+            </Button>
+            </DialogActions>
+        </Dialog>
+      </Box>
     );
   }
 
@@ -184,6 +349,22 @@ const MyParts = () => {
         <DialogTitle>{t('parts.importFromImage', 'Імпорт з зображення')}</DialogTitle>
         <DialogContent>
           <Box sx={{ mb: 2, mt: 1 }}>
+            <FormControl fullWidth sx={{ mb: 2 }}>
+              <InputLabel id="vehicle-select-label">{t('vehicle.title', 'Автомобіль')}</InputLabel>
+              <Select
+                labelId="vehicle-select-label"
+                value={selectedVehicleVin}
+                label={t('vehicle.title', 'Автомобіль')}
+                onChange={(e) => setSelectedVehicleVin(e.target.value)}
+              >
+                {vehicles.map((v) => (
+                  <MenuItem key={v.vin} value={v.vin}>
+                    {v.make} {v.model} ({v.year}) - {v.licensePlate}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
             <Button
               variant="outlined"
               component="label"
@@ -226,9 +407,9 @@ const MyParts = () => {
           <Button 
             onClick={handleSaveParsedParts} 
             variant="contained" 
-            disabled={parsedParts.length === 0}
+            disabled={parsedParts.length === 0 || savingParts}
           >
-            {t('common.save')}
+            {savingParts ? <CircularProgress size={24} /> : t('common.save')}
           </Button>
         </DialogActions>
       </Dialog>

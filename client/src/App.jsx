@@ -30,6 +30,7 @@ import MyClients from './pages/MyClients';
 import MyServices from './pages/MyServices';
 import MyChats from './pages/MyChats';
 import MyParts from './pages/MyParts';
+import Reminders from './pages/Reminders';
 
 // Context
 import useAuth from './context/useAuth';
@@ -139,6 +140,7 @@ const App = () => {
             <Route path="/my-services" element={<MyServices />} />
             <Route path="/my-chats" element={<MyChats />} />
             <Route path="/my-parts" element={<MyParts />} />
+            <Route path="/reminders" element={<Reminders />} />
           </Route>
           
           {/* Redirect to login if no route matches */}

@@ -36,6 +36,7 @@ const partsRoutes = require('./routes/parts');
 const vehiclePartsRoutes = require('./routes/vehicleParts');
 const paymentsRoutes = require('./routes/payments');
 const ocrRoutes = require('./routes/ocr');
+const maintenanceRoutes = require('./routes/maintenance');
 const { getDb } = require('./db/d1');
 
 const app = express();
@@ -91,6 +92,7 @@ app.use('/api/parts', partsRoutes);
 app.use('/api/vehicle-parts', vehiclePartsRoutes);
 app.use('/api/payments', paymentsRoutes);
 app.use('/api/ocr', ocrRoutes);
+app.use('/api/maintenance', maintenanceRoutes);
 
 // Роут для Telegram-бота
 const telegramRoutes = require('./routes/telegram');

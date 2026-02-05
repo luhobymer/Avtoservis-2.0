@@ -98,22 +98,12 @@ export default function AppointmentDetailsScreen() {
     }
   };
 
-  const handleCompleteAppointment = async () => {
-    try {
-      setActionLoading(true);
-      const token = await getToken();
-      await completeAppointment(appointmentId, { notes: appointment.notes }, token);
-      
-      // Оновлюємо локальний стан
-      setAppointment(prev => ({ ...prev, status: 'completed' }));
-      
-      Alert.alert(t('common.success'), t('appointments.complete_success'));
-    } catch (error) {
-      console.error('[AppointmentDetailsScreen] Помилка при завершенні запису:', error);
-      Alert.alert(t('common.error'), t('appointments.complete_error'));
-    } finally {
-      setActionLoading(false);
-    }
+  const handleCompleteAppointment = () => {
+    // Navigate to the CompleteAppointmentScreen instead of direct completion
+    navigation.navigate('CompleteAppointment', {
+      appointmentId,
+      currentNotes: appointment.notes
+    });
   };
 
   const handleCancelAppointment = async () => {

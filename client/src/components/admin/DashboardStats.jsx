@@ -86,14 +86,20 @@ const DashboardStats = () => {
 
   const getStatusChipColor = (status) => {
     switch (status) {
-      case 'scheduled':
+      case 'pending':
         return 'primary';
-      case 'in-progress':
+      case 'confirmed':
+        return 'warning';
+      case 'in_progress':
         return 'warning';
       case 'completed':
         return 'success';
       case 'cancelled':
         return 'error';
+      case 'scheduled':
+        return 'warning';
+      case 'in-progress':
+        return 'warning';
       default:
         return 'default';
     }

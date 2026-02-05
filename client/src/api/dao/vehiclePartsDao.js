@@ -44,3 +44,11 @@ export const listForAppointment = async (appointmentId) => {
   const data = await requestJson(`/api/vehicle-parts/appointment/${appointmentId}`);
   return data || [];
 };
+
+export const createPart = async (partData) => {
+  const data = await requestJson('/api/vehicle-parts', {
+    method: 'POST',
+    body: partData
+  });
+  return data;
+};

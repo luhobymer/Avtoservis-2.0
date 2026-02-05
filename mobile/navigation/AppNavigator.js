@@ -21,6 +21,7 @@ import InteractionsScreen from '../screens/InteractionsScreen';
 import NewInteractionScreen from '../screens/NewInteractionScreen';
 import ChatScreen from '../screens/ChatScreen';
 import CreateAppointmentScreen from '../screens/CreateAppointmentScreen';
+import CompleteAppointmentScreen from '../screens/CompleteAppointmentScreen';
 import MasterWorkingHoursScreen from '../screens/MasterWorkingHoursScreen';
 import MasterDashboardScreen from '../screens/MasterDashboardScreen';
 
@@ -118,6 +119,14 @@ export default function AppNavigator() {
             options={{ 
               headerShown: true, 
               title: t('appointments.add_appointment')
+            }}
+          />
+          <Stack.Screen
+            name="CompleteAppointment"
+            component={CompleteAppointmentScreen}
+            options={{ 
+              headerShown: true, 
+              title: t('appointments.complete_appointment', 'Завершити запис')
             }}
           />
           <Stack.Screen

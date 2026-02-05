@@ -108,6 +108,70 @@ const ServiceRecords = () => {
     );
   }
 
+  if (filteredVehicleId) {
+    // Якщо компонент використовується всередині вкладки, рендеримо тільки контент
+    if (location.pathname.includes('/vehicles/')) {
+      return (
+        <Box sx={{ mt: 2 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+            <Button 
+              component={Link} 
+              to={`/service-records/new?vehicle_vin=${selectedVehicle?.vin || ''}`}
+              variant="contained" 
+              color="primary"
+            >
+              {t('serviceRecord.add')}
+            </Button>
+          </Box>
+          {records.length === 0 ? (
+            <Alert severity="info">{t('serviceRecord.noRecords')}</Alert>
+          ) : (
+            <TableContainer component={Paper} variant="outlined">
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    <TableCell>{t('serviceRecord.serviceDate')}</TableCell>
+                    <TableCell>{t('serviceRecord.serviceType')}</TableCell>
+                    <TableCell>{t('serviceRecord.mileage')}</TableCell>
+                    <TableCell>{t('serviceRecord.cost')}</TableCell>
+                    <TableCell align="right">{t('common.edit')}</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {records.map((record, index) => {
+                    const serviceDate = record.serviceDate || record.service_date;
+                    const formattedServiceDate = serviceDate
+                      ? dayjs(serviceDate).isValid()
+                        ? dayjs(serviceDate).format('DD.MM.YYYY')
+                        : t('common.notAvailable')
+                      : t('common.notAvailable');
+                    return (
+                      <TableRow key={record.id || `record-${index}`}>
+                        <TableCell>{formattedServiceDate}</TableCell>
+                        <TableCell>{record.serviceName || record.serviceType || record.service_type}</TableCell>
+                        <TableCell>{record.mileage ? `${record.mileage} km` : t('common.notAvailable')}</TableCell>
+                        <TableCell>{record.cost || t('common.notAvailable')}</TableCell>
+                        <TableCell align="right">
+                          <Button 
+                            size="small" 
+                            component={Link} 
+                            to={`/service-records/${record.id}`}
+                          >
+                            {t('common.edit')}
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+        </Box>
+      );
+    }
+  }
+
   const headerVehicle =
     records[0]?.Vehicle || records[0]?.vehicles || records[0]?.vehicle || null;
   const selectedVehicle =

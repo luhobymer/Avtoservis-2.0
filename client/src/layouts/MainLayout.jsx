@@ -8,7 +8,6 @@ import DirectionsCarIcon from '@mui/icons-material/DirectionsCar';
 import EventIcon from '@mui/icons-material/Event';
 import EditIcon from '@mui/icons-material/Edit';
 import AccountCircleIcon from '@mui/icons-material/AccountCircle';
-import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
 import ExitToAppIcon from '@mui/icons-material/ExitToApp';
 import LanguageSwitcher from '../components/LanguageSwitcher';
 import NotificationBell from '../components/NotificationBell';
@@ -21,6 +20,7 @@ import PeopleIcon from '@mui/icons-material/People';
 import EngineeringIcon from '@mui/icons-material/Engineering';
 import ChatIcon from '@mui/icons-material/Chat';
 import BuildIcon from '@mui/icons-material/Build';
+import AlarmIcon from '@mui/icons-material/Alarm';
 
 const MainLayout = () => {
   const { t } = useTranslation();
@@ -74,6 +74,7 @@ const MainLayout = () => {
       : []),
     { text: t('nav.myChats', 'Мої чати'), icon: <ChatIcon />, path: '/my-chats' },
     { text: t('nav.myParts', 'Мої запчастини'), icon: <BuildIcon />, path: '/my-parts' },
+    { text: t('nav.reminders', 'Нагадування'), icon: <AlarmIcon />, path: '/reminders' },
     { text: t('nav.profile'), icon: <AccountCircleIcon />, path: '/profile' },
   ];
 

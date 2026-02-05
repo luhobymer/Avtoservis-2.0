@@ -21,6 +21,64 @@ exports.listForUser = async (req, res) => {
   }
 };
 
+exports.createPart = async (req, res) => {
+  try {
+    const { 
+      vehicle_vin, 
+      name, 
+      part_number, 
+      manufacturer, 
+      price, 
+      quantity, 
+      purchased_by, 
+      installed_date, 
+      notes,
+      appointment_id 
+    } = req.body;
+    
+    const userId = req.user.id;
+    const db = await getDb();
+
+    // Check vehicle ownership/permission
+    const vehicle = await db.prepare('SELECT user_id FROM vehicles WHERE vin = ?').get(vehicle_vin);
+    if (!vehicle) {
+      return res.status(404).json({ message: 'Авто не знайдено' });
+    }
+
+    // Allow owner or master/admin
+    if (vehicle.user_id !== userId && !['master', 'admin'].includes(req.user.role)) {
+        return res.status(403).json({ message: 'Доступ заборонено' });
+    }
+
+    const result = await db.prepare(`
+      INSERT INTO vehicle_parts (
+        vehicle_vin, name, part_number, manufacturer, price, quantity, 
+        purchased_by, installed_date, notes, appointment_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      vehicle_vin, 
+      name, 
+      part_number || null, 
+      manufacturer || null, 
+      price || 0, 
+      quantity || 1, 
+      purchased_by || 'owner', 
+      installed_date || new Date().toISOString(), 
+      notes || '', 
+      appointment_id || null
+    );
+
+    res.status(201).json({ 
+      id: result.lastInsertRowid, 
+      success: true, 
+      message: 'Запчастину додано' 
+    });
+  } catch (err) {
+    console.error('Create vehicle part error:', err);
+    res.status(500).json({ message: 'Помилка сервера' });
+  }
+};
+
 exports.listForVehicle = async (req, res) => {
   try {
     const { vin } = req.params;

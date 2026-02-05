@@ -193,6 +193,32 @@ router.post('/', auth, async (req, res) => {
       );
 
     const created = await db.prepare('SELECT * FROM interactions WHERE id = ?').get(id);
+
+    // --- Create Notification for Recipient ---
+    if (recipientId && recipientId !== senderId) {
+      try {
+        const notifId = crypto.randomUUID();
+        const senderName = payload.sender_name || 'Користувач';
+        const notifMessage = `Нове повідомлення від ${senderName}: ${message.substring(0, 50)}${message.length > 50 ? '...' : ''}`;
+        
+        await db.prepare(`
+          INSERT INTO notifications (id, user_id, type, message, is_read, created_at)
+          VALUES (?, ?, ?, ?, ?, ?)
+        `).run(
+          notifId,
+          recipientId,
+          'chat_message',
+          notifMessage,
+          0,
+          now
+        );
+      } catch (notifErr) {
+        logger.error('Failed to create chat notification:', notifErr);
+        // Don't fail the request if notification fails
+      }
+    }
+    // -----------------------------------------
+
     return res.status(201).json(created);
   } catch (err) {
     logger.error('Interaction create error:', err);

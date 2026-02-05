@@ -334,6 +334,7 @@ const ensureSchemaSqliteSync = (sqliteDb) => {
     { name: 'service_ids', def: 'TEXT' },
     { name: 'appointment_price', def: 'REAL' },
     { name: 'appointment_duration', def: 'INTEGER' },
+    { name: 'completion_notes', def: 'TEXT' },
     { name: 'completion_mileage', def: 'INTEGER' },
   ]);
   ensureColumnsSync('service_records', [{ name: 'appointment_id', def: 'TEXT' }]);
@@ -357,6 +358,21 @@ const ensureSchemaSqliteSync = (sqliteDb) => {
   `);
   sqliteDb.exec('CREATE INDEX IF NOT EXISTS idx_vehicle_parts_vin ON vehicle_parts(vehicle_vin)');
   sqliteDb.exec('CREATE INDEX IF NOT EXISTS idx_vehicle_parts_appointment ON vehicle_parts(appointment_id)');
+
+  sqliteDb.exec(`
+    CREATE TABLE IF NOT EXISTS maintenance_schedules (
+      id TEXT PRIMARY KEY,
+      vehicle_vin TEXT NOT NULL,
+      service_item TEXT NOT NULL,
+      interval_km INTEGER,
+      interval_months INTEGER,
+      last_service_date TEXT,
+      last_service_mileage INTEGER,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  sqliteDb.exec('CREATE INDEX IF NOT EXISTS idx_maintenance_schedules_vin ON maintenance_schedules(vehicle_vin)');
 
   ensureColumnsSync('services', [
     { name: 'is_active', def: 'INTEGER DEFAULT 1' },
@@ -513,6 +529,7 @@ const ensureSchema = async (client) => {
     { name: 'service_ids', def: 'TEXT' },
     { name: 'appointment_price', def: 'REAL' },
     { name: 'appointment_duration', def: 'INTEGER' },
+    { name: 'completion_notes', def: 'TEXT' },
     { name: 'completion_mileage', def: 'INTEGER' },
   ]);
   await ensureTableColumns(client, 'service_records', [{ name: 'appointment_id', def: 'TEXT' }]);
@@ -536,6 +553,21 @@ const ensureSchema = async (client) => {
   `);
   await client.query('CREATE INDEX IF NOT EXISTS idx_vehicle_parts_vin ON vehicle_parts(vehicle_vin)');
   await client.query('CREATE INDEX IF NOT EXISTS idx_vehicle_parts_appointment ON vehicle_parts(appointment_id)');
+
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS maintenance_schedules (
+      id TEXT PRIMARY KEY,
+      vehicle_vin TEXT NOT NULL,
+      service_item TEXT NOT NULL,
+      interval_km INTEGER,
+      interval_months INTEGER,
+      last_service_date TEXT,
+      last_service_mileage INTEGER,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  await client.query('CREATE INDEX IF NOT EXISTS idx_maintenance_schedules_vin ON maintenance_schedules(vehicle_vin)');
 
   await ensureTableColumns(client, 'services', [
     { name: 'is_active', def: 'INTEGER DEFAULT 1' },

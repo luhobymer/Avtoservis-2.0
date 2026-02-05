@@ -184,7 +184,9 @@
     "noAppointments": "У вас еще нет записей на обслуживание",
     "statuses": {
       "pending": "Ожидает подтверждения",
-      "scheduled": "Запланировано",
+      "confirmed": "Подтверждено",
+      "in_progress": "В процессе",
+      "scheduled": "Подтверждено",
       "in-progress": "В процессе",
       "completed": "Завершено",
       "cancelled": "Отменено"

@@ -13,16 +13,12 @@ import {
   Box,
   Button,
   Divider,
-  List,
-  ListItem,
-  ListItemText,
   CircularProgress,
   Alert,
   Card,
   CardContent,
   CardActions,
   Chip,
-  IconButton,
   useTheme,
   useMediaQuery
 } from '@mui/material';
@@ -332,6 +328,8 @@ const Dashboard = () => {
                {t('common.viewAll', 'Всі записи')}
              </Button>
           </Box>
+
+          {masterError && <Alert severity="warning" sx={{ mb: 2 }}>{masterError}</Alert>}
           
           <Grid container spacing={3}>
             <Grid item xs={12} md={6}>

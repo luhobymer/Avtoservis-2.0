@@ -33,12 +33,10 @@ async function requestJson(url, options = {}) {
 function mapStatus(status) {
   const value = (status || '').toLowerCase();
   if (value === 'pending') return 'pending';
-  if (value === 'confirmed') return 'confirmed';
-  if (value === 'in_progress') return 'in_progress';
+  if (value === 'confirmed' || value === 'scheduled') return 'confirmed';
+  if (value === 'in_progress' || value === 'in-progress') return 'in_progress';
   if (value === 'completed') return 'completed';
   if (value === 'cancelled' || value === 'canceled') return 'cancelled';
-  if (value === 'scheduled') return 'pending';
-  if (value === 'in-progress') return 'in_progress';
   return 'pending';
 }
 
@@ -139,6 +137,12 @@ export async function updateStatus(id, status, completionData = {}) {
   await requestJson(`/api/appointments/${id}/status`, {
     method: 'PUT',
     body
+  });
+}
+
+export async function remove(id) {
+  await requestJson(`/api/appointments/${id}`, {
+    method: 'DELETE'
   });
 }
 

@@ -159,6 +159,13 @@ const Vehicles = () => {
                     <Button 
                       size="small" 
                       component={Link} 
+                      to={`/vehicles/${vehicle.vin}?tab=1`}
+                    >
+                      {t('maintenance.title', 'Регламент')}
+                    </Button>
+                    <Button 
+                      size="small" 
+                      component={Link} 
                       to={`/service-records?vehicleId=${vehicle.id || index}`}
                     >
                       {t('serviceRecord.title')}

@@ -16,7 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Picker } from '@react-native-picker/picker';
 import { useAuth } from '../context/AuthContext';
 import { getUserVehicles } from '../api/vehiclesApi';
-import { createAppointment } from '../api/appointmentsService';
+import { createAppointment, getMyMechanics } from '../api/appointmentsService';
 import { getAllServices } from '../api/servicesApi';
 import { getMasterAvailability } from '../api/scheduleService';
 import { createAppointmentReminder } from '../api/notificationsService';
@@ -64,7 +64,8 @@ export default function CreateAppointmentScreen({ navigation, route }) {
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [selectedDate, setSelectedDate] = useState(null);
-  
+  const [mastersMode, setMastersMode] = useState('all'); // 'all' or 'my'
+
   // Завантаження даних при монтуванні компонента
   useEffect(() => {
     const fetchInitialData = async () => {
@@ -120,22 +121,39 @@ export default function CreateAppointmentScreen({ navigation, route }) {
     };
 
     refresh();
-  }, [masterCity]);
+  }, [masterCity, mastersMode]);
   
   // Отримання списку майстрів
   const fetchMasters = async (token, city) => {
     try {
-      const data = await listMasters(city ? { city } : undefined);
-      let mastersData = Array.isArray(data)
-        ? data.map(m => ({
-            id: m.id,
-            name: `${m.first_name || m.name || ''} ${m.last_name || ''}`.trim() || m.name || '',
-            specialization: m.specialization || ''
-          }))
-        : [];
+      let mastersData = [];
+      if (mastersMode === 'my') {
+         const myMechanics = await getMyMechanics(token);
+         // Filter by city if needed, or show all my mechanics
+         mastersData = myMechanics.map(m => ({
+           id: m.mechanic_id, // Note: response from getClientMechanics has mechanic_id
+           name: m.name || '',
+           specialization: 'Мій майстер', // Or fetch details
+           isMy: true
+         }));
+      } else {
+        const data = await listMasters(city ? { city } : undefined);
+        mastersData = Array.isArray(data)
+          ? data.map(m => ({
+              id: m.id,
+              name: `${m.first_name || m.name || ''} ${m.last_name || ''}`.trim() || m.name || '',
+              specialization: m.specialization || ''
+            }))
+          : [];
+      }
+      
       setMasters(mastersData);
       if (mastersData.length > 0) {
-        setFormData(prev => ({ ...prev, masterId: mastersData[0].id }));
+        // Only reset masterId if current selection is not in new list
+        const currentStillExists = mastersData.find(m => m.id === formData.masterId);
+        if (!currentStillExists) {
+           setFormData(prev => ({ ...prev, masterId: mastersData[0].id }));
+        }
       } else {
         setFormData(prev => ({ ...prev, masterId: '' }));
       }
@@ -375,12 +393,33 @@ export default function CreateAppointmentScreen({ navigation, route }) {
           
           <Text style={styles.sectionTitle}>{t('appointments.master_info')}</Text>
 
-          <TextInput
-            style={styles.input}
-            value={masterCity}
-            onChangeText={(text) => setMasterCity(text)}
-            placeholder={t('profile.city', 'Місто')}
-          />
+          <View style={styles.masterModeContainer}>
+            <TouchableOpacity 
+              style={[styles.modeButton, mastersMode === 'all' && styles.activeModeButton]}
+              onPress={() => setMastersMode('all')}
+            >
+              <Text style={[styles.modeButtonText, mastersMode === 'all' && styles.activeModeButtonText]}>
+                {t('common.all_masters', 'Всі майстри')}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.modeButton, mastersMode === 'my' && styles.activeModeButton]}
+              onPress={() => setMastersMode('my')}
+            >
+              <Text style={[styles.modeButtonText, mastersMode === 'my' && styles.activeModeButtonText]}>
+                {t('common.my_masters', 'Мої майстри')}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {mastersMode === 'all' && (
+            <TextInput
+              style={styles.input}
+              value={masterCity}
+              onChangeText={(text) => setMasterCity(text)}
+              placeholder={t('profile.city', 'Місто')}
+            />
+          )}
           
           <View style={styles.pickerContainer}>
             <Picker
@@ -542,5 +581,35 @@ const styles = StyleSheet.create({
   serviceDetailsText: {
     fontSize: 14,
     color: '#424242',
+  },
+  masterModeContainer: {
+    flexDirection: 'row',
+    marginBottom: 16,
+    backgroundColor: '#f5f5f5',
+    borderRadius: 8,
+    padding: 4,
+  },
+  modeButton: {
+    flex: 1,
+    paddingVertical: 8,
+    alignItems: 'center',
+    borderRadius: 6,
+  },
+  activeModeButton: {
+    backgroundColor: '#ffffff',
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 1,
+  },
+  modeButtonText: {
+    fontSize: 14,
+    color: '#757575',
+    fontWeight: '500',
+  },
+  activeModeButtonText: {
+    color: '#1976d2',
+    fontWeight: 'bold',
   },
 });

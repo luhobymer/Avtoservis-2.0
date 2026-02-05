@@ -548,7 +548,14 @@ exports.createAppointment = async (req, res) => {
 exports.updateAppointmentStatus = async (req, res) => {
   try {
     const { id } = req.params;
-    const { status, completion_notes, completion_mileage, parts } = req.body;
+    const {
+      status,
+      completion_notes,
+      completion_mileage,
+      parts,
+      appointment_price,
+      appointment_duration,
+    } = req.body;
 
     const db = await getDb();
 
@@ -574,22 +581,41 @@ exports.updateAppointmentStatus = async (req, res) => {
       }
     }
 
-    // Check for completion_mileage column
-    const { hasCompletionMileage } = await (async () => {
-      const columns = await db.prepare('PRAGMA table_info(appointments)').all();
-      const names = new Set(columns.map(c => c.name));
-      return { hasCompletionMileage: names.has('completion_mileage') };
-    })();
+    const columns = await db.prepare('PRAGMA table_info(appointments)').all();
+    const names = new Set((columns || []).map((c) => c.name));
+    const hasCompletionMileage = names.has('completion_mileage');
+    const hasCompletionNotes = names.has('completion_notes');
+    const hasAppointmentPrice = names.has('appointment_price');
+    const hasAppointmentDuration = names.has('appointment_duration');
 
-    let updateQuery = 'UPDATE appointments SET status = ?, completion_notes = ?';
-    let updateParams = [status, completion_notes];
-    
-    if (hasCompletionMileage && completion_mileage !== undefined) {
-      updateQuery += ', completion_mileage = ?';
-      updateParams.push(completion_mileage);
+    const updates = ['status = ?'];
+    const updateParams = [status];
+
+    if (hasCompletionNotes && completion_notes !== undefined) {
+      updates.push('completion_notes = ?');
+      updateParams.push(completion_notes);
     }
     
-    updateQuery += ' WHERE id = ?';
+    if (hasCompletionMileage && completion_mileage !== undefined) {
+      updates.push('completion_mileage = ?');
+      updateParams.push(completion_mileage);
+    }
+
+    if (hasAppointmentPrice && appointment_price !== undefined) {
+      const raw = appointment_price == null ? '' : String(appointment_price);
+      const n = raw.trim() === '' ? null : Number(raw.replace(',', '.'));
+      updates.push('appointment_price = ?');
+      updateParams.push(Number.isFinite(n) ? n : null);
+    }
+
+    if (hasAppointmentDuration && appointment_duration !== undefined) {
+      const raw = appointment_duration == null ? '' : String(appointment_duration);
+      const n = raw.trim() === '' ? null : Number(raw.replace(',', '.'));
+      updates.push('appointment_duration = ?');
+      updateParams.push(Number.isFinite(n) ? n : null);
+    }
+    
+    const updateQuery = `UPDATE appointments SET ${updates.join(', ')} WHERE id = ?`;
     updateParams.push(id);
 
     const updateResult = await db
@@ -676,12 +702,9 @@ exports.updateAppointmentStatus = async (req, res) => {
             .map((sid) => Number(serviceMap.get(sid)?.price || 0))
             .reduce((a, b) => a + b, 0);
           
-          // Add parts cost if purchased by owner? Or mechanic? 
-          // Usually service record cost includes parts if mechanic bought them.
-          // Let's assume cost is labor + parts sold by mechanic.
           if (Array.isArray(parts)) {
              const partsCost = parts
-                .filter(p => p.purchased_by !== 'owner') // Only include if shop provided it
+                .filter(p => p.purchased_by !== 'owner') 
                 .reduce((sum, p) => sum + (Number(p.price || 0) * Number(p.quantity || 1)), 0);
              cost += partsCost;
           }
@@ -697,7 +720,6 @@ exports.updateAppointmentStatus = async (req, res) => {
           const recordId = crypto.randomUUID();
           const now = new Date().toISOString();
           
-          // Serialize parts for legacy support in service_records table if needed
           const partsJson = Array.isArray(parts) ? JSON.stringify(parts) : null;
 
           await db
@@ -725,10 +747,94 @@ exports.updateAppointmentStatus = async (req, res) => {
       }
     }
 
+    // --- Notification Logic ---
+    if (nextStatus !== prevStatus) {
+      const notificationUserId = updated.user_id;
+      if (notificationUserId) {
+        let message = `Статус вашого запису змінено на "${nextStatus}".`;
+        if (nextStatus === 'confirmed') message = 'Ваш запис підтверджено майстром.';
+        if (nextStatus === 'in_progress') message = 'Роботи за вашим авто розпочато.';
+        if (nextStatus === 'completed') message = 'Роботи завершено! Авто готове до видачі.';
+        if (nextStatus === 'cancelled') message = 'Ваш запис скасовано.';
+
+        const notificationId = crypto.randomUUID();
+        const now = new Date().toISOString();
+        
+        try {
+          await db.prepare(`
+            INSERT INTO notifications (id, user_id, type, message, is_read, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+          `).run(
+            notificationId, 
+            notificationUserId, 
+            'appointment_status', 
+            message, 
+            0, 
+            now
+          );
+        } catch (notifErr) {
+          console.error('Failed to create notification:', notifErr);
+        }
+      }
+    }
+    // --------------------------
+
     res.json(updated);
   } catch (err) {
     console.error('Update appointment status error:', err);
     res.status(500).json({ message: 'Помилка сервера', error: err.message });
+  }
+};
+
+exports.deleteAppointment = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const db = await getDb();
+
+    const tableExists = async (name) => {
+      try {
+        const row = await db
+          .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name = ?")
+          .get(name);
+        return Boolean(row && row.name);
+      } catch (_) {
+        return false;
+      }
+    };
+
+    const appointment = await db.prepare('SELECT * FROM appointments WHERE id = ?').get(id);
+    if (!appointment) {
+      return res.status(404).json({ message: 'Запис не знайдено' });
+    }
+
+    const role = String(req.user?.role || '').toLowerCase();
+    const isMasterLike = ['master', 'mechanic', 'admin'].includes(role);
+    if (!isMasterLike) {
+      return res.status(403).json({ message: 'Доступ заборонено' });
+    }
+
+    if (await tableExists('interactions')) {
+      await db
+        .prepare(
+          "DELETE FROM interactions WHERE related_entity = 'appointment' AND related_entity_id = ?"
+        )
+        .run(id);
+    }
+    if (await tableExists('vehicle_parts')) {
+      await db.prepare('DELETE FROM vehicle_parts WHERE appointment_id = ?').run(id);
+    }
+    if (await tableExists('service_records')) {
+      await db.prepare('DELETE FROM service_records WHERE appointment_id = ?').run(id);
+    }
+    if (await tableExists('service_history')) {
+      await db.prepare('DELETE FROM service_history WHERE appointment_id = ?').run(id);
+    }
+    await db.prepare('DELETE FROM appointments WHERE id = ?').run(id);
+
+    return res.sendStatus(204);
+  } catch (err) {
+    console.error('Delete appointment error:', err);
+    return res.status(500).json({ message: 'Помилка сервера', error: err.message });
   }
 };
 
