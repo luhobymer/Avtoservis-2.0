@@ -270,7 +270,7 @@ const Dashboard = () => {
       {/* Header Section */}
       <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
         <Box>
-          <Typography variant="h4" fontWeight="bold" gutterBottom>
+          <Typography variant={isMobile ? 'h5' : 'h4'} fontWeight="bold" gutterBottom>
             {t('dashboard.title', 'Головна панель')}
           </Typography>
           <Typography variant="subtitle1" color="text.secondary">
@@ -308,15 +308,17 @@ const Dashboard = () => {
             to="/appointments"
           />
         </Grid>
-        <Grid item xs={12} sm={6} md={4}>
-          <StatCard 
-            title={t('dashboard.recentServiceRecords', 'Історія')} 
-            value={serviceRecords.length} 
-            icon={<ServiceIcon />} 
-            color="info"
-            to="/service-records"
-          />
-        </Grid>
+        {isMasterUser && (
+          <Grid item xs={12} sm={6} md={4}>
+            <StatCard 
+              title={t('dashboard.recentServiceRecords', 'Історія')} 
+              value={serviceRecords.length} 
+              icon={<ServiceIcon />} 
+              color="info"
+              to="/service-records"
+            />
+          </Grid>
+        )}
       </Grid>
 
       {/* Master Section */}
@@ -387,7 +389,7 @@ const Dashboard = () => {
       {/* User Section - My Appointments */}
       <Box sx={{ mb: 4 }}>
         <Typography variant="h5" fontWeight="bold" gutterBottom>
-          {t('dashboard.myAppointments', 'Мої записи')}
+          {t('dashboard.myAppointments', 'Найближчі записи')}
         </Typography>
         
         {appointments.length === 0 ? (
