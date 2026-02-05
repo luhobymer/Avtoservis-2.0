@@ -294,14 +294,17 @@ const AppointmentDetails = ({ isNew }) => {
         // If editing, fetch all services (including disabled) to ensure current service is found.
         // If creating new, only fetch enabled services.
         const rows = await listMechanicServices(mechanicId, { enabled: isNewAppointment });
-        setServices(rows);
+        
+        // Ensure we handle case where rows might be undefined or not array
+        const safeRows = Array.isArray(rows) ? rows : [];
+        setServices(safeRows);
       } catch (err) {
         setServices([]);
         setError(err?.message || t('errors.failedToLoadServices'));
       }
     };
     run();
-  }, [formData.mechanic_id, t]);
+  }, [formData.mechanic_id, t, isNewAppointment]);
 
   const serviceCategories = useMemo(() => {
     const map = new Map();
@@ -337,7 +340,17 @@ const AppointmentDetails = ({ isNew }) => {
           setServiceCategoryId(String(selectedCategory));
       }
       return;
+    } else if (formData.service_id && services.length > 0) {
+        // Service ID exists but not found in services list? 
+        // Try to find if it's because of type mismatch or something.
+        // Or maybe services list is incomplete?
+        // But we load ALL services now.
+        console.warn('Service ID exists but not found in list:', formData.service_id);
     }
+    
+    // Fallback: if we have service_id but couldn't find it in the list (shouldn't happen due to previous fix, but just in case)
+    // we might need to wait for services to load.
+    
     // If no service selected, or service has no category, don't auto-select first category if we are editing
     if (!isNewAppointment && !serviceCategoryId) {
        // Do nothing, let user select
