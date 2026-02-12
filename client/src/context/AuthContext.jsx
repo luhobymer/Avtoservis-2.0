@@ -73,15 +73,31 @@ axiosInstance.interceptors.response.use((response) => response, async (error) =>
   return Promise.reject(error);
 });
 
+const normalizeRoleValue = (value) =>
+  (value == null ? '' : String(value)).toLowerCase();
+
+const isProfileComplete = (profile) => {
+  const role = normalizeRoleValue(profile?.role);
+  const allowed = role === 'client' || role === 'master';
+  if (!allowed) return false;
+  const firstName = profile?.firstName || profile?.first_name;
+  const lastName = profile?.lastName || profile?.last_name;
+  const region = profile?.region;
+  const city = profile?.city;
+  const phone = profile?.phone;
+  return Boolean(firstName && lastName && region && city && phone);
+};
+
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [error, setError] = useState(null);
+  const [needsProfileSetup, setNeedsProfileSetup] = useState(false);
+  const [googleProfile, setGoogleProfile] = useState(null);
 
-  const normalizeRole = (value) => (value == null ? '' : String(value)).toLowerCase();
-  const userRole = normalizeRole(user?.role);
-  const hasRole = (role) => userRole === normalizeRole(role);
+  const userRole = normalizeRoleValue(user?.role);
+  const hasRole = (role) => userRole === normalizeRoleValue(role);
   const isMaster = () => userRole === 'master' || userRole === 'mechanic';
   const isAdmin = () => isMaster();
   const isClient = () => userRole === 'client';
@@ -99,13 +115,16 @@ export const AuthProvider = ({ children }) => {
         if (apiUser) {
           setUser(apiUser);
           setIsAuthenticated(true);
+          setNeedsProfileSetup(!isProfileComplete(apiUser));
         } else {
           setUser(null);
           setIsAuthenticated(false);
+          setNeedsProfileSetup(false);
         }
       } catch {
         setUser(null);
         setIsAuthenticated(false);
+        setNeedsProfileSetup(false);
       } finally {
         setLoading(false);
       }
@@ -113,14 +132,59 @@ export const AuthProvider = ({ children }) => {
     checkLoggedIn();
   }, []);
 
+  const refreshUser = async () => {
+    try {
+      const storedToken = localStorage.getItem(tokenStorageKey);
+      if (storedToken) {
+        setAuthHeader(storedToken);
+      }
+      const res = await axiosInstance.get('/api/auth/me');
+      const apiUser = res?.data?.user || null;
+      if (apiUser) {
+        setUser(apiUser);
+        setIsAuthenticated(true);
+        setNeedsProfileSetup(!isProfileComplete(apiUser));
+        return apiUser;
+      }
+      setUser(null);
+      setIsAuthenticated(false);
+      setNeedsProfileSetup(false);
+      return null;
+    } catch (err) {
+      setUser(null);
+      setIsAuthenticated(false);
+      setNeedsProfileSetup(false);
+      throw err;
+    }
+  };
+
+  const normalizeIdentifier = (value) => {
+    if (!value) return '';
+    const raw = String(value).trim();
+    const phoneRegex = /^(\+?380|0)\d{9}$/;
+    if (phoneRegex.test(raw)) {
+      let cleanedPhone = raw.replace(/\s+/g, '');
+      if (cleanedPhone.startsWith('0')) {
+        return '+380' + cleanedPhone.slice(1);
+      }
+      if (cleanedPhone.startsWith('380')) {
+        return '+' + cleanedPhone;
+      }
+      return cleanedPhone;
+    }
+    return raw;
+  };
+
   const login = async (credentials) => {
     setError(null);
     try {
+      const identifier = normalizeIdentifier(credentials?.identifier || credentials?.email);
       const response = await axiosInstance.post(
         '/api/auth/login',
         {
-          email: credentials.email,
-          password: credentials.password
+          identifier,
+          password: credentials.password,
+          token2fa: credentials?.token2fa
         },
         { withCredentials: true }
       );
@@ -142,6 +206,7 @@ export const AuthProvider = ({ children }) => {
       }
       setUser(apiUser);
       setIsAuthenticated(true);
+      setNeedsProfileSetup(!isProfileComplete(apiUser));
       return apiUser;
     } catch (err) {
       const status = err?.response?.status || null;
@@ -164,6 +229,97 @@ export const AuthProvider = ({ children }) => {
           msg = 'API сервер не запущено. Запусти бекенд на порту 5001 (наприклад: npm run dev:full у корені проєкту).';
         }
       }
+      setError(msg);
+      throw new Error(msg);
+    }
+  };
+
+  const googleLogin = async (idToken, token2fa) => {
+    setError(null);
+    try {
+      const response = await axiosInstance.post(
+        '/api/auth/google',
+        {
+          idToken,
+          token2fa
+        },
+        { withCredentials: true }
+      );
+      const apiUser = response?.data?.user;
+      const token = response?.data?.token || response?.data?.accessToken || null;
+      const refreshToken =
+        response?.data?.refresh_token || response?.data?.refreshToken || null;
+      const requireProfileSetup = Boolean(response?.data?.requireProfileSetup);
+      const nextGoogleProfile = response?.data?.googleProfile || null;
+      if (!apiUser) {
+        const msg = 'Не вдалося отримати дані користувача';
+        setError(msg);
+        throw new Error(msg);
+      }
+      if (token) {
+        localStorage.setItem(tokenStorageKey, token);
+        setAuthHeader(token);
+      }
+      if (refreshToken) {
+        localStorage.setItem(refreshTokenStorageKey, refreshToken);
+      }
+      setUser(apiUser);
+      setIsAuthenticated(true);
+      setNeedsProfileSetup(requireProfileSetup || !isProfileComplete(apiUser));
+      setGoogleProfile(nextGoogleProfile);
+      return { user: apiUser, requireProfileSetup };
+    } catch (err) {
+      const msg =
+        err?.response?.data?.message ||
+        err?.message ||
+        'Помилка Google автентифікації';
+      setError(msg);
+      throw new Error(msg);
+    }
+  };
+
+  const completeGoogleProfile = async (payload) => {
+    setError(null);
+    try {
+      const response = await axiosInstance.post(
+        '/api/auth/google/complete-profile',
+        {
+          role: payload.role,
+          firstName: payload.firstName,
+          lastName: payload.lastName,
+          patronymic: payload.patronymic,
+          region: payload.region,
+          city: payload.city,
+          phone: payload.phone
+        },
+        { withCredentials: true }
+      );
+      const apiUser = response?.data?.user;
+      const token = response?.data?.token || response?.data?.accessToken || null;
+      const refreshToken =
+        response?.data?.refresh_token || response?.data?.refreshToken || null;
+      if (!apiUser) {
+        const msg = 'Не вдалося отримати дані користувача';
+        setError(msg);
+        throw new Error(msg);
+      }
+      if (token) {
+        localStorage.setItem(tokenStorageKey, token);
+        setAuthHeader(token);
+      }
+      if (refreshToken) {
+        localStorage.setItem(refreshTokenStorageKey, refreshToken);
+      }
+      setUser(apiUser);
+      setIsAuthenticated(true);
+      setNeedsProfileSetup(!isProfileComplete(apiUser));
+      setGoogleProfile(null);
+      return apiUser;
+    } catch (err) {
+      const msg =
+        err?.response?.data?.message ||
+        err?.message ||
+        'Помилка оновлення профілю';
       setError(msg);
       throw new Error(msg);
     }
@@ -261,8 +417,13 @@ export const AuthProvider = ({ children }) => {
         error,
         login,
         register,
+        googleLogin,
         logout,
         updateProfile,
+        refreshUser,
+        needsProfileSetup,
+        googleProfile,
+        completeGoogleProfile,
         hasRole,
         isAdmin,
         isMaster,

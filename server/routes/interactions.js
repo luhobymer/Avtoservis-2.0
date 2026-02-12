@@ -16,7 +16,9 @@ router.get('/conversations', auth, async (req, res) => {
       return res.status(401).json({ msg: 'Unauthorized' });
     }
 
-    const relatedEntity = req.query.related_entity ? String(req.query.related_entity) : 'appointment';
+    const relatedEntity = req.query.related_entity
+      ? String(req.query.related_entity)
+      : 'appointment';
     const limit = Math.min(1000, Math.max(50, Number(req.query.limit || 400)));
     const db = await getDb();
     const uid = String(req.user.id);
@@ -38,7 +40,8 @@ router.get('/conversations', auth, async (req, res) => {
       if (!entityId) continue;
 
       if (!map.has(entityId)) {
-        const peerId = String(row.sender_id) === uid ? String(row.recipient_id) : String(row.sender_id);
+        const peerId =
+          String(row.sender_id) === uid ? String(row.recipient_id) : String(row.sender_id);
         map.set(entityId, {
           related_entity: relatedEntity,
           related_entity_id: entityId,
@@ -200,18 +203,15 @@ router.post('/', auth, async (req, res) => {
         const notifId = crypto.randomUUID();
         const senderName = payload.sender_name || 'Користувач';
         const notifMessage = `Нове повідомлення від ${senderName}: ${message.substring(0, 50)}${message.length > 50 ? '...' : ''}`;
-        
-        await db.prepare(`
+
+        await db
+          .prepare(
+            `
           INSERT INTO notifications (id, user_id, type, message, is_read, created_at)
           VALUES (?, ?, ?, ?, ?, ?)
-        `).run(
-          notifId,
-          recipientId,
-          'chat_message',
-          notifMessage,
-          0,
-          now
-        );
+        `
+          )
+          .run(notifId, recipientId, 'chat_message', notifMessage, 0, now);
       } catch (notifErr) {
         logger.error('Failed to create chat notification:', notifErr);
         // Don't fail the request if notification fails

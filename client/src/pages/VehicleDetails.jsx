@@ -45,6 +45,9 @@ import { Tabs, Tab } from '@mui/material';
 import ServiceRecords from './ServiceRecords';
 import MyParts from './MyParts';
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+const resolveUrl = (url) => (url.startsWith('http') ? url : `${API_BASE_URL}${url}`);
+
 const VehicleDetailsContent = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -92,6 +95,7 @@ const VehicleDetailsContent = () => {
 
   const [photoFile, setPhotoFile] = useState(null);
   const [photoPreview, setPhotoPreview] = useState(null);
+  const [vehicleMeta, setVehicleMeta] = useState({ id: null, userId: null, vin: '' });
 
   const [loading, setLoading] = useState(!isNewVehicle);
   const [saving, setSaving] = useState(false);
@@ -126,6 +130,11 @@ const VehicleDetailsContent = () => {
         mileage: v.mileage || '',
         photoUrl: v.photoUrl || ''
       });
+      setVehicleMeta({
+        id: v.id || null,
+        userId: v.UserId || v.user_id || null,
+        vin: v.vin || ''
+      });
       if (v.photoUrl) {
         setPhotoPreview(v.photoUrl);
       }
@@ -151,7 +160,7 @@ const VehicleDetailsContent = () => {
         const [list, myClients] = await Promise.all([
           listUsers(),
           token
-            ? fetch('/api/relationships/clients', {
+            ? fetch(resolveUrl('/api/relationships/clients'), {
                 headers: { Authorization: `Bearer ${token}` }
               })
                 .then((r) => (r.ok ? r.json() : []))
@@ -654,7 +663,11 @@ const VehicleDetailsContent = () => {
         )}
 
         {tabValue === 2 && !isNewVehicle && (
-          <ServiceRecords />
+          <ServiceRecords
+            vehicleId={vehicleMeta.id}
+            ownerId={vehicleMeta.userId}
+            vehicleVin={vehicleMeta.vin || formData.vin}
+          />
         )}
 
         {tabValue === 3 && !isNewVehicle && (

@@ -1,6 +1,9 @@
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+const resolveUrl = (url) => (url.startsWith('http') ? url : `${API_BASE_URL}${url}`);
+
 async function requestJson(url, options = {}) {
   const token = localStorage.getItem('auth_token');
-  const response = await fetch(url, {
+  const response = await fetch(resolveUrl(url), {
     method: options.method || 'GET',
     headers: {
       'Content-Type': 'application/json',
@@ -187,7 +190,7 @@ export async function uploadPhoto(file) {
   const formData = new FormData();
   formData.append('photo', file);
 
-  const response = await fetch('/api/upload', {
+  const response = await fetch(resolveUrl('/api/upload'), {
     method: 'POST',
     headers: {
       ...(token ? { Authorization: `Bearer ${token}` } : {})

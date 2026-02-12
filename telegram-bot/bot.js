@@ -638,12 +638,14 @@ class AutoServiceAPI {
       console.log(`[Bot] Попередження: номер не відповідає формату +380XXXXXXXXX: ${normalizedPhone}`);
     }
     
+    const requestedRole = userData.role || 'client';
+    const normalizedRole = requestedRole === 'mechanic' ? 'master' : requestedRole;
     const registerData = {
       email: `${normalizedPhone.replace(/[^0-9]/g, '')}@telegram.local`,
       password: `telegram${normalizedPhone.replace(/[^0-9]/g, '')}`,
       name: userData.firstName + (userData.lastName ? ' ' + userData.lastName : ''),
       phone: normalizedPhone,
-      role: 'client' // За замовчуванням роль клієнта
+      role: normalizedRole
     };
     
     try {
@@ -761,12 +763,30 @@ class AutoServiceAPI {
 }
 
 // Функція для динамічного створення головного меню
+async function getUserRole(chatId) {
+  const user = await userManager.getUser(chatId);
+  return user?.role || 'client';
+}
+
 async function getMainKeyboard(chatId) {
   try {
     const isLinked = await userManager.isUserLinked(chatId);
     
     if (!isLinked) {
       return keyboards.auth;
+    }
+    const role = await getUserRole(chatId);
+    if (role === 'master') {
+      return {
+        reply_markup: {
+          keyboard: [
+            ['📋 Мої записи'],
+            ['🔧 Послуги', '📞 Контакти'],
+            ['⚙️ Профіль']
+          ],
+          resize_keyboard: true
+        }
+      };
     }
     
     const credentials = await userManager.getServerCredentials(chatId);
@@ -1121,6 +1141,34 @@ bot.on('message', async (msg) => {
 
     // Ігноруємо команди та повідомлення без тексту
     if (!text || text.startsWith('/')) return;
+    const registrationState = userStates.get(chatId);
+    if (registrationState === 'register_role') {
+      if (text === '👤 Я клієнт' || text === '🧰 Я механік') {
+        const pending = registrationData.get(chatId);
+        if (!pending) {
+          userStates.delete(chatId);
+          await bot.sendMessage(chatId, '❌ Не вдалося знайти дані для реєстрації. Спробуйте ще раз.', keyboards.auth);
+          return;
+        }
+        const role = text === '🧰 Я механік' ? 'master' : 'client';
+        const userData = { ...pending, role };
+        try {
+          await processRegistration(chatId, userData);
+        } finally {
+          registrationData.delete(chatId);
+          userStates.delete(chatId);
+        }
+        return;
+      }
+      await bot.sendMessage(chatId, 'Будь ласка, оберіть роль за допомогою кнопок нижче.', {
+        reply_markup: {
+          keyboard: [['👤 Я клієнт', '🧰 Я механік'], ['❌ Скасувати']],
+          resize_keyboard: true,
+          one_time_keyboard: true
+        }
+      });
+      return;
+    }
 
     // Уніфікована обробка держномерів тут (єдиний вхід)
     const plateRegex = /^[A-ZА-ЯІЇЄ0-9]{5,10}$/i;
@@ -1142,6 +1190,12 @@ bot.on('message', async (msg) => {
       } finally {
         activeSearches.delete(key);
       }
+      return;
+    }
+
+    const userRole = await getUserRole(chatId);
+    if (userRole === 'master' && ['🚗 Мої авто', '➕ Новий запис', '➕ Додати авто'].includes(text)) {
+      await bot.sendMessage(chatId, 'Ця дія доступна лише для клієнтів.', await getMainKeyboard(chatId));
       return;
     }
 
@@ -1177,6 +1231,7 @@ bot.on('message', async (msg) => {
       // Перевіряємо, чи користувач в процесі авторизації/реєстрації
       if (userStates.has(chatId)) {
         userStates.delete(chatId);
+        registrationData.delete(chatId);
         await bot.sendMessage(chatId, '❌ Дію скасовано.', keyboards.auth);
       } else {
         // Скасування запису на сервіс
@@ -1305,6 +1360,7 @@ bot.on('message', async (msg) => {
 
 // Зберігаємо стан користувача для розрізнення авторизації та реєстрації
 const userStates = new Map();
+const registrationData = new Map();
 
 // Обробка фото повністю видалена. OCR не використовується.
 
@@ -1319,139 +1375,12 @@ bot.on('contact', async (msg) => {
         phone,
         firstName: msg.from.first_name,
         lastName: msg.from.last_name,
-        username: msg.from.username,
-        role: 'client'
+        username: msg.from.username
       };
-      try {
-        // Спочатку перевіримо, чи існує користувач з таким номером телефону
-        try {
-          console.log('[Bot] Перевірка існування користувача перед реєстрацією:', phone);
-          const loginResponse = await AutoServiceAPI.loginUser({ phone });
-          
-          // Якщо запит успішний, значить користувач вже існує
-          console.log('[Bot] Користувач вже існує, спроба автоматичного входу:', phone);
-          
-          const isLoginSuccess = loginResponse && (loginResponse.success === true || loginResponse.status === 'success');
-          const loginToken = loginResponse.token || loginResponse.access_token;
-          const loginUser = loginResponse.user;
-          
-          if (isLoginSuccess && loginToken && loginUser) {
-            await userManager.linkUserToServer(chatId, loginUser.id, loginToken);
-            await bot.sendMessage(chatId, '✅ Ви успішно авторизовані!', await getMainKeyboard(chatId));
-            return;
-          } else {
-            await bot.sendMessage(chatId, '⚠️ Цей номер телефону вже зареєстрований. Спробуйте авторизуватися.', keyboards.auth);
-            return;
-          }
-        } catch (loginError) {
-          // Якщо отримали помилку 404, значить користувача немає і можна продовжити реєстрацію
-          if (loginError.response?.status !== 404 && loginError.response?.data?.code !== 'USER_NOT_FOUND') {
-            console.log('[Bot] Помилка при перевірці існування користувача:', loginError.message);
-          } else {
-            console.log('[Bot] Користувач не знайдений, продовжуємо реєстрацію');
-          }
-        }
-        
-        // Продовжуємо реєстрацію, якщо користувач не існує
-        const response = await AutoServiceAPI.registerUser(userData);
-        console.log('[Bot] Registration response:', JSON.stringify(response, null, 2));
-        
-        if (response && response.success === true) {
-          try {
-            const loginResponse = await AutoServiceAPI.loginUser({ phone });
-            console.log('[Bot] Auto-login after registration response:', JSON.stringify(loginResponse, null, 2));
-             
-             const isLoginSuccess = loginResponse && (loginResponse.success === true || loginResponse.status === 'success');
-             const loginToken = loginResponse.token || loginResponse.access_token;
-             const loginUser = loginResponse.user;
-             
-             console.log('[Bot] Auto-login response analysis:', { 
-               hasResponse: !!loginResponse, 
-               success: loginResponse?.success, 
-               status: loginResponse?.status, 
-               hasToken: !!loginToken, 
-               hasUser: !!loginUser,
-               isLoginSuccess 
-             });
-            
-            if (isLoginSuccess && loginToken && loginUser) {
-              console.log('[Bot] Auto-linking user after registration:', { chatId, userId: loginUser.id, hasToken: !!loginToken });
-              await userManager.linkUserToServer(chatId, loginUser.id, loginToken);
-              
-              // Перевіряємо, чи дані збереглися
-              const savedUser = await userManager.getUser(chatId);
-              console.log('[Bot] User data after auto-linking:', savedUser ? 'saved successfully' : 'failed to save');
-              
-              await bot.sendMessage(chatId, '✅ Ви успішно зареєстровані та авторизовані!', await getMainKeyboard(chatId));
-            } else {
-              console.log('[Bot] Auto-login failed - missing data:', { isLoginSuccess, hasToken: !!loginToken, hasUser: !!loginUser });
-              await bot.sendMessage(chatId, '✅ Реєстрація успішна! Але не вдалося автоматично авторизуватися. Спробуйте увійти вручну.', keyboards.auth);
-            }
-          } catch (loginError) {
-            logger.error('Помилка автоматичного входу після реєстрації:', loginError);
-            console.error('[Bot] Auto-login error details:', loginError.response?.data || loginError.message);
-            await bot.sendMessage(chatId, '✅ Реєстрація успішна! Але не вдалося автоматично авторизуватися. Спробуйте увійти вручну.', keyboards.auth);
-          }
-        } else {
-          await bot.sendMessage(chatId, '❌ Не вдалося зареєструватися. Можливо, цей номер телефону вже зареєстрований.');
-        }
-      } catch (error) {
-        console.log('[Bot] Детальна інформація про помилку реєстрації:', {
-          status: error.response?.status,
-          code: error.response?.data?.code,
-          message: error.response?.data?.message,
-          details: error.response?.data?.details
-        });
-        
-        if (error.response && error.response.status === 409) {
-          // Спробуємо автоматично авторизуватися, якщо номер вже зареєстрований
-          try {
-            console.log('[Bot] Спроба автоматичного входу для вже зареєстрованого номера:', phone);
-            const loginResponse = await AutoServiceAPI.loginUser({ phone });
-            
-            const isLoginSuccess = loginResponse && (loginResponse.success === true || loginResponse.status === 'success');
-            const loginToken = loginResponse.token || loginResponse.access_token;
-            const loginUser = loginResponse.user;
-            
-            if (isLoginSuccess && loginToken && loginUser) {
-              await userManager.linkUserToServer(chatId, loginUser.id, loginToken);
-              await bot.sendMessage(chatId, '✅ Ви успішно авторизовані!', await getMainKeyboard(chatId));
-              return;
-            }
-          } catch (loginError) {
-            console.error('[Bot] Помилка автоматичного входу для вже зареєстрованого номера:', loginError.message);
-          }
-          
-          await bot.sendMessage(chatId, '⚠️ Цей номер телефону вже зареєстрований. Спробуйте авторизуватися.', keyboards.auth);
-        } else if (error.response?.data?.code === 'PHONE_EXISTS') {
-          // Спробуємо автоматично авторизуватися, якщо номер вже зареєстрований
-          try {
-            console.log('[Bot] Спроба автоматичного входу для вже зареєстрованого номера (PHONE_EXISTS):', phone);
-            const loginResponse = await AutoServiceAPI.loginUser({ phone });
-            
-            const isLoginSuccess = loginResponse && (loginResponse.success === true || loginResponse.status === 'success');
-            const loginToken = loginResponse.token || loginResponse.access_token;
-            const loginUser = loginResponse.user;
-            
-            if (isLoginSuccess && loginToken && loginUser) {
-              await userManager.linkUserToServer(chatId, loginUser.id, loginToken);
-              await bot.sendMessage(chatId, '✅ Ви успішно авторизовані!', await getMainKeyboard(chatId));
-              return;
-            }
-          } catch (loginError) {
-            console.error('[Bot] Помилка автоматичного входу для вже зареєстрованого номера (PHONE_EXISTS):', loginError.message);
-          }
-          
-          await bot.sendMessage(chatId, '⚠️ Цей номер телефону вже зареєстрований. Спробуйте авторизуватися.', keyboards.auth);
-        } else if (error.response?.data?.details) {
-          await bot.sendMessage(chatId, `❌ Помилка реєстрації: ${error.response.data.details}`, keyboards.auth);
-        } else if (error.response?.data?.message) {
-          await bot.sendMessage(chatId, `❌ Помилка реєстрації: ${error.response.data.message}`, keyboards.auth);
-        } else {
-          logger.error('Помилка реєстрації:', error);
-          await bot.sendMessage(chatId, '❌ Помилка реєстрації. Будь ласка, спробуйте пізніше.', keyboards.auth);
-        }
-      }
+      registrationData.set(chatId, userData);
+      userStates.set(chatId, 'register_role');
+      await promptRoleSelection(chatId);
+      return;
     } else {
       // Авторизація існуючого користувача
       try {
@@ -1475,7 +1404,7 @@ bot.on('contact', async (msg) => {
         
         if (isSuccess && token && user) {
           console.log('[Bot] Linking user to server:', { chatId, userId: user.id, hasToken: !!token });
-          await userManager.linkUserToServer(chatId, user.id, token);
+          await userManager.linkUserToServer(chatId, user.id, token, undefined, user.role);
           
           // Перевіряємо, чи дані збереглися
           const savedUser = await userManager.getUser(chatId);
@@ -1550,9 +1479,149 @@ bot.on('contact', async (msg) => {
     console.error('Contact handler error:', error);
     await bot.sendMessage(msg.chat.id, '❌ Виникла помилка. Спробуйте пізніше.', keyboards.auth);
   } finally {
-    userStates.delete(msg.chat.id);
+    const state = userStates.get(msg.chat.id);
+    if (state !== 'register_role') {
+      userStates.delete(msg.chat.id);
+    }
   }
 });
+
+async function promptRoleSelection(chatId) {
+  await bot.sendMessage(chatId, 'Оберіть вашу роль:', {
+    reply_markup: {
+      keyboard: [['👤 Я клієнт', '🧰 Я механік'], ['❌ Скасувати']],
+      resize_keyboard: true,
+      one_time_keyboard: true
+    }
+  });
+}
+
+async function processRegistration(chatId, userData) {
+  const phone = userData.phone;
+  try {
+    try {
+      console.log('[Bot] Перевірка існування користувача перед реєстрацією:', phone);
+      const loginResponse = await AutoServiceAPI.loginUser({ phone });
+      
+      console.log('[Bot] Користувач вже існує, спроба автоматичного входу:', phone);
+      
+      const isLoginSuccess = loginResponse && (loginResponse.success === true || loginResponse.status === 'success');
+      const loginToken = loginResponse.token || loginResponse.access_token;
+      const loginUser = loginResponse.user;
+      
+      if (isLoginSuccess && loginToken && loginUser) {
+        await userManager.linkUserToServer(chatId, loginUser.id, loginToken, undefined, loginUser.role || userData.role);
+        await bot.sendMessage(chatId, '✅ Ви успішно авторизовані!', await getMainKeyboard(chatId));
+        return;
+      } else {
+        await bot.sendMessage(chatId, '⚠️ Цей номер телефону вже зареєстрований. Спробуйте авторизуватися.', keyboards.auth);
+        return;
+      }
+    } catch (loginError) {
+      if (loginError.response?.status !== 404 && loginError.response?.data?.code !== 'USER_NOT_FOUND') {
+        console.log('[Bot] Помилка при перевірці існування користувача:', loginError.message);
+      } else {
+        console.log('[Bot] Користувач не знайдений, продовжуємо реєстрацію');
+      }
+    }
+    
+    const response = await AutoServiceAPI.registerUser(userData);
+    console.log('[Bot] Registration response:', JSON.stringify(response, null, 2));
+    
+    if (response && response.success === true) {
+      try {
+        const loginResponse = await AutoServiceAPI.loginUser({ phone });
+        console.log('[Bot] Auto-login after registration response:', JSON.stringify(loginResponse, null, 2));
+         
+         const isLoginSuccess = loginResponse && (loginResponse.success === true || loginResponse.status === 'success');
+         const loginToken = loginResponse.token || loginResponse.access_token;
+         const loginUser = loginResponse.user;
+         
+         console.log('[Bot] Auto-login response analysis:', { 
+           hasResponse: !!loginResponse, 
+           success: loginResponse?.success, 
+           status: loginResponse?.status, 
+           hasToken: !!loginToken, 
+           hasUser: !!loginUser,
+           isLoginSuccess 
+         });
+        
+        if (isLoginSuccess && loginToken && loginUser) {
+          console.log('[Bot] Auto-linking user after registration:', { chatId, userId: loginUser.id, hasToken: !!loginToken });
+          await userManager.linkUserToServer(chatId, loginUser.id, loginToken, undefined, loginUser.role || userData.role);
+          
+          const savedUser = await userManager.getUser(chatId);
+          console.log('[Bot] User data after auto-linking:', savedUser ? 'saved successfully' : 'failed to save');
+          
+          await bot.sendMessage(chatId, '✅ Ви успішно зареєстровані та авторизовані!', await getMainKeyboard(chatId));
+        } else {
+          console.log('[Bot] Auto-login failed - missing data:', { isLoginSuccess, hasToken: !!loginToken, hasUser: !!loginUser });
+          await bot.sendMessage(chatId, '✅ Реєстрація успішна! Але не вдалося автоматично авторизуватися. Спробуйте увійти вручну.', keyboards.auth);
+        }
+      } catch (loginError) {
+        logger.error('Помилка автоматичного входу після реєстрації:', loginError);
+        console.error('[Bot] Auto-login error details:', loginError.response?.data || loginError.message);
+        await bot.sendMessage(chatId, '✅ Реєстрація успішна! Але не вдалося автоматично авторизуватися. Спробуйте увійти вручну.', keyboards.auth);
+      }
+    } else {
+      await bot.sendMessage(chatId, '❌ Не вдалося зареєструватися. Можливо, цей номер телефону вже зареєстрований.');
+    }
+  } catch (error) {
+    console.log('[Bot] Детальна інформація про помилку реєстрації:', {
+      status: error.response?.status,
+      code: error.response?.data?.code,
+      message: error.response?.data?.message,
+      details: error.response?.data?.details
+    });
+    
+    if (error.response && error.response.status === 409) {
+      try {
+        console.log('[Bot] Спроба автоматичного входу для вже зареєстрованого номера:', phone);
+        const loginResponse = await AutoServiceAPI.loginUser({ phone });
+        
+        const isLoginSuccess = loginResponse && (loginResponse.success === true || loginResponse.status === 'success');
+        const loginToken = loginResponse.token || loginResponse.access_token;
+        const loginUser = loginResponse.user;
+        
+        if (isLoginSuccess && loginToken && loginUser) {
+          await userManager.linkUserToServer(chatId, loginUser.id, loginToken, undefined, loginUser.role || userData.role);
+          await bot.sendMessage(chatId, '✅ Ви успішно авторизовані!', await getMainKeyboard(chatId));
+          return;
+        }
+      } catch (loginError) {
+        console.error('[Bot] Помилка автоматичного входу для вже зареєстрованого номера:', loginError.message);
+      }
+      
+      await bot.sendMessage(chatId, '⚠️ Цей номер телефону вже зареєстрований. Спробуйте авторизуватися.', keyboards.auth);
+    } else if (error.response?.data?.code === 'PHONE_EXISTS') {
+      try {
+        console.log('[Bot] Спроба автоматичного входу для вже зареєстрованого номера (PHONE_EXISTS):', phone);
+        const loginResponse = await AutoServiceAPI.loginUser({ phone });
+        
+        const isLoginSuccess = loginResponse && (loginResponse.success === true || loginResponse.status === 'success');
+        const loginToken = loginResponse.token || loginResponse.access_token;
+        const loginUser = loginResponse.user;
+        
+        if (isLoginSuccess && loginToken && loginUser) {
+          await userManager.linkUserToServer(chatId, loginUser.id, loginToken, undefined, loginUser.role || userData.role);
+          await bot.sendMessage(chatId, '✅ Ви успішно авторизовані!', await getMainKeyboard(chatId));
+          return;
+        }
+      } catch (loginError) {
+        console.error('[Bot] Помилка автоматичного входу для вже зареєстрованого номера (PHONE_EXISTS):', loginError.message);
+      }
+      
+      await bot.sendMessage(chatId, '⚠️ Цей номер телефону вже зареєстрований. Спробуйте авторизуватися.', keyboards.auth);
+    } else if (error.response?.data?.details) {
+      await bot.sendMessage(chatId, `❌ Помилка реєстрації: ${error.response.data.details}`, keyboards.auth);
+    } else if (error.response?.data?.message) {
+      await bot.sendMessage(chatId, `❌ Помилка реєстрації: ${error.response.data.message}`, keyboards.auth);
+    } else {
+      logger.error('Помилка реєстрації:', error);
+      await bot.sendMessage(chatId, '❌ Помилка реєстрації. Будь ласка, спробуйте пізніше.', keyboards.auth);
+    }
+  }
+}
 
 // Функція для обробки авторизації
 async function handleLogin(msg) {

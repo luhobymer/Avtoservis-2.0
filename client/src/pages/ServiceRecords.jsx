@@ -23,7 +23,7 @@ import {
 import dayjs from 'dayjs';
 import ServiceBookExport from '../components/ServiceBookExport';
 
-const ServiceRecords = () => {
+const ServiceRecords = ({ vehicleId: vehicleIdProp, ownerId: ownerIdProp, vehicleVin: vehicleVinProp } = {}) => {
   const { t } = useTranslation();
   const location = useLocation();
   const queryParams = new URLSearchParams(location.search);
@@ -34,14 +34,16 @@ const ServiceRecords = () => {
   const [vehicles, setVehicles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [filteredVehicleId] = useState(vehicleIdParam || null);
+  const filteredVehicleId = vehicleIdProp || vehicleIdParam || null;
+  const filteredVehicleVin = vehicleVinProp || null;
+  const effectiveUserId = ownerIdProp || user?.id || null;
 
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
       setError(null);
       try {
-        if (!user || !user.id) {
+        if (!effectiveUserId) {
           setRecords([]);
           setVehicles([]);
           setError(
@@ -54,8 +56,11 @@ const ServiceRecords = () => {
         }
 
         const [recordsList, vehiclesList] = await Promise.all([
-          serviceRecordsDao.listForUser(user.id),
-          vehiclesDao.listForUser(user.id)
+          serviceRecordsDao.listForUser(effectiveUserId, {
+            vehicleId: filteredVehicleId,
+            vehicleVin: filteredVehicleVin
+          }),
+          vehiclesDao.listForUser(effectiveUserId)
         ]);
         let filteredRecords = recordsList;
         if (filteredVehicleId) {
@@ -90,7 +95,18 @@ const ServiceRecords = () => {
       }
     };
     fetchData();
-  }, [filteredVehicleId, t, user]);
+  }, [effectiveUserId, filteredVehicleId, filteredVehicleVin, t]);
+
+  const headerVehicle =
+    records[0]?.Vehicle || records[0]?.vehicles || records[0]?.vehicle || null;
+  const selectedVehicle =
+    filteredVehicleId ? vehicles.find(v => v.id?.toString() === filteredVehicleId) : null;
+  const selectedVehicleVin = selectedVehicle?.vin || filteredVehicleVin || '';
+  const headerVehicleLabel = headerVehicle
+    ? `${headerVehicle.make || headerVehicle.brand || ''} ${headerVehicle.model || ''} (${
+        headerVehicle.licensePlate || headerVehicle.license_plate || ''
+      })`.trim()
+    : null;
 
   if (loading) {
     return (
@@ -116,7 +132,7 @@ const ServiceRecords = () => {
           <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
             <Button 
               component={Link} 
-              to={`/service-records/new?vehicle_vin=${selectedVehicle?.vin || ''}`}
+              to={`/service-records/new?vehicle_vin=${selectedVehicleVin}`}
               variant="contained" 
               color="primary"
             >
@@ -171,16 +187,6 @@ const ServiceRecords = () => {
       );
     }
   }
-
-  const headerVehicle =
-    records[0]?.Vehicle || records[0]?.vehicles || records[0]?.vehicle || null;
-  const selectedVehicle =
-    filteredVehicleId ? vehicles.find(v => v.id?.toString() === filteredVehicleId) : null;
-  const headerVehicleLabel = headerVehicle
-    ? `${headerVehicle.make || headerVehicle.brand || ''} ${headerVehicle.model || ''} (${
-        headerVehicle.licensePlate || headerVehicle.license_plate || ''
-      })`.trim()
-    : null;
 
   return (
     <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>

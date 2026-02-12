@@ -17,7 +17,6 @@ import {
   getAllAppointments, 
   confirmAppointment, 
   startAppointment, 
-  completeAppointment, 
   cancelAppointment 
 } from '../api/appointmentsService';
 import FloatingActionButton from '../components/FloatingActionButton';
@@ -154,26 +153,12 @@ export default function AppointmentsScreen({ navigation }) {
     }
   };
 
-  const handleCompleteAppointment = async (id) => {
-    try {
-      setLoading(true);
-      const token = await getToken();
-      await completeAppointment(id, { notes: '' }, token);
-      
-      // Оновлюємо локальний стан
-      setAppointments(prevAppointments => 
-        prevAppointments.map(app => 
-          app.id === id ? { ...app, status: 'completed' } : app
-        )
-      );
-      
-      Alert.alert(t('common.success'), t('appointments.complete_success'));
-    } catch (error) {
-      console.error('[AppointmentsScreen] Помилка при завершенні запису:', error);
-      Alert.alert(t('common.error'), t('appointments.complete_error'));
-    } finally {
-      setLoading(false);
-    }
+  const handleCompleteAppointment = (appointment) => {
+    navigation.navigate('CompleteAppointment', {
+      appointmentId: appointment.id,
+      currentNotes: appointment.notes,
+      vehicleVin: appointment.vehicle_vin
+    });
   };
 
   const handleCancelAppointment = async (id) => {
@@ -268,7 +253,7 @@ export default function AppointmentsScreen({ navigation }) {
         return (
           <TouchableOpacity
             style={[styles.actionButton, styles.completeButton]}
-            onPress={() => handleCompleteAppointment(id)}
+            onPress={() => handleCompleteAppointment(appointment)}
           >
             <Text style={styles.actionButtonText}>{t('appointments.complete')}</Text>
           </TouchableOpacity>

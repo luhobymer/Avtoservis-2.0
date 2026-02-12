@@ -56,6 +56,9 @@ import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import Snackbar from '@mui/material/Snackbar';
 import AppointmentChat from '../components/chat/AppointmentChat';
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+const resolveUrl = (url) => (url.startsWith('http') ? url : `${API_BASE_URL}${url}`);
+
 const AppointmentDetails = ({ isNew }) => {
   const { t } = useTranslation();
   const { id } = useParams();
@@ -110,6 +113,7 @@ const AppointmentDetails = ({ isNew }) => {
   const [formData, setFormData] = useState({
     vehicle_vin: '',
     service_id: null,
+    service_ids: [],
     mechanic_id: null,
     serviceType: '',
     description: '',
@@ -170,7 +174,7 @@ const AppointmentDetails = ({ isNew }) => {
         if (!isNewAppointment || isClientUser) return;
         const token = localStorage.getItem('auth_token');
         if (!token) return;
-        const res = await fetch('/api/relationships/clients', {
+        const res = await fetch(resolveUrl('/api/relationships/clients'), {
           headers: { Authorization: `Bearer ${token}` }
         });
         const data = await res.json();
@@ -198,7 +202,7 @@ const AppointmentDetails = ({ isNew }) => {
         if (role === 'client') {
              setHideMechanicSelection(false);
              const token = localStorage.getItem('auth_token');
-             const res = await fetch('/api/relationships/mechanics', {
+             const res = await fetch(resolveUrl('/api/relationships/mechanics'), {
                headers: { Authorization: `Bearer ${token}` }
              });
              const data = await res.json();
@@ -246,14 +250,22 @@ const AppointmentDetails = ({ isNew }) => {
       try {
         const appointment = await getAppointmentById(id);
         setAppointmentUserId(appointment?.UserId || appointment?.user_id || '');
-        const fallbackServiceId =
-          (Array.isArray(appointment?.service_ids) && appointment.service_ids[0]) ||
-          (Array.isArray(appointment?.service_ids_list) && appointment.service_ids_list[0]) ||
-          null;
+        const serviceIdsFromAppointment = Array.isArray(appointment?.service_ids)
+          ? appointment.service_ids
+          : Array.isArray(appointment?.service_ids_list)
+            ? appointment.service_ids_list
+            : [];
+        const normalizedServiceIds = serviceIdsFromAppointment
+          .map((sid) => (sid == null ? '' : String(sid).trim()))
+          .filter(Boolean);
+        const fallbackServiceId = normalizedServiceIds[0] || null;
         setFormData((prev) => ({
           ...prev,
           vehicle_vin: appointment.vehicle_vin || prev.vehicle_vin || '',
           service_id: appointment.service_id || appointment.serviceId || fallbackServiceId || prev.service_id || null,
+          service_ids: normalizedServiceIds.length > 0
+            ? normalizedServiceIds
+            : (appointment.service_id || appointment.serviceId ? [String(appointment.service_id || appointment.serviceId)] : prev.service_ids || []),
           mechanic_id: appointment.mechanic_id || prev.mechanic_id || null,
           serviceType: appointment.serviceType || appointment.service_type || prev.serviceType || '',
           description: appointment.description || '',
@@ -370,8 +382,11 @@ const AppointmentDetails = ({ isNew }) => {
       setServiceCategoryId('');
       return;
     }
-    const selectedService = formData.service_id
-      ? (services || []).find((s) => String(s.id) === String(formData.service_id))
+    const selectedServiceId = (formData.service_ids && formData.service_ids.length > 0)
+      ? formData.service_ids[0]
+      : formData.service_id;
+    const selectedService = selectedServiceId
+      ? (services || []).find((s) => String(s.id) === String(selectedServiceId))
       : null;
 
     if (selectedService) {
@@ -405,7 +420,7 @@ const AppointmentDetails = ({ isNew }) => {
     if (!serviceCategoryId && serviceCategories.length > 0 && isNewAppointment) {
       setServiceCategoryId(String(serviceCategories[0].id));
     }
-  }, [services, formData.service_id, serviceCategories, serviceCategoryId, isNewAppointment]);
+  }, [services, formData.service_id, formData.service_ids, serviceCategories, serviceCategoryId, isNewAppointment]);
 
   useEffect(() => {
     if (!mechanics || mechanics.length === 0) return;
@@ -451,21 +466,28 @@ const AppointmentDetails = ({ isNew }) => {
 
   const handleServiceChange = (e) => {
     const { value } = e.target;
-    const selected = (services || []).find((s) => String(s.id) === String(value));
-    const selectedPrice =
-      selected && (selected.price ?? selected.base_price ?? selected.basePrice ?? null);
-    const selectedDuration =
-      selected && (selected.duration ?? selected.base_duration ?? selected.baseDuration ?? null);
+    const selectedIds = Array.isArray(value)
+      ? value.map((v) => String(v)).filter(Boolean)
+      : (value ? [String(value)] : []);
+    const selectedServices = (services || []).filter((s) =>
+      selectedIds.includes(String(s.id))
+    );
+    const selectedPrice = selectedServices
+      .map((s) => Number(s.price ?? s.base_price ?? s.basePrice ?? 0))
+      .filter((n) => Number.isFinite(n))
+      .reduce((a, b) => a + b, 0);
+    const selectedDuration = selectedServices
+      .map((s) => Number(s.duration ?? s.base_duration ?? s.baseDuration ?? 0))
+      .filter((n) => Number.isFinite(n))
+      .reduce((a, b) => a + b, 0);
+    const serviceType = selectedServices.map((s) => s.name).filter(Boolean).join(', ');
     setFormData((prev) => ({
       ...prev,
-      service_id: value || null,
-      serviceType: selected ? selected.name || '' : prev.serviceType,
-      appointment_price: isNewAppointment
-          ? (selectedPrice != null ? String(selectedPrice) : '')
-          : prev.appointment_price || (selectedPrice != null ? String(selectedPrice) : ''),
-      appointment_duration: isNewAppointment
-          ? (selectedDuration != null ? String(selectedDuration) : '')
-          : prev.appointment_duration || (selectedDuration != null ? String(selectedDuration) : ''),
+      service_ids: selectedIds,
+      service_id: selectedIds[0] || null,
+      serviceType: serviceType || prev.serviceType,
+      appointment_price: selectedIds.length > 0 ? String(selectedPrice || '') : '',
+      appointment_duration: selectedIds.length > 0 ? String(selectedDuration || '') : '',
     }));
   };
 
@@ -475,6 +497,7 @@ const AppointmentDetails = ({ isNew }) => {
       ...prev,
       mechanic_id: value || null,
       service_id: null,
+      service_ids: [],
       appointment_price: '',
       appointment_duration: ''
     }));
@@ -588,7 +611,7 @@ const AppointmentDetails = ({ isNew }) => {
 
     try {
       const token = localStorage.getItem('auth_token');
-      const response = await fetch('/api/ocr/parse', {
+      const response = await fetch(resolveUrl('/api/ocr/parse'), {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
         body: formData
@@ -625,13 +648,20 @@ const AppointmentDetails = ({ isNew }) => {
     setError(null);
     try {
       if (!formData.scheduledDate) throw new Error(t('errors.invalidScheduledDate', 'Некоректна дата'));
-      if (!formData.service_id) throw new Error(t('errors.serviceRequired', 'Оберіть послугу'));
+      if (!formData.service_id && (!formData.service_ids || formData.service_ids.length === 0)) {
+        throw new Error(t('errors.serviceRequired', 'Оберіть послугу'));
+      }
       if (!formData.mechanic_id) throw new Error(t('errors.mechanicRequired', 'Оберіть механіка'));
       
       const isClientUser = String(user?.role || '').toLowerCase() === 'client';
+      const effectiveServiceIds =
+        formData.service_ids && formData.service_ids.length > 0
+          ? formData.service_ids
+          : (formData.service_id ? [String(formData.service_id)] : []);
       const payload = {
         user_id: isClientUser ? (user?.id || null) : (clientId || null),
-        service_id: formData.service_id || null,
+        service_id: formData.service_id || effectiveServiceIds[0] || null,
+        service_ids: effectiveServiceIds,
         mechanic_id: formData.mechanic_id || null,
         service_type: formData.serviceType,
         scheduled_time: formData.scheduledDate.toISOString(),
@@ -799,7 +829,7 @@ const AppointmentDetails = ({ isNew }) => {
                 <Grid item xs={12} sm={6}>
                   <FormControl fullWidth required disabled={!formData.mechanic_id || services.length === 0}>
                     <InputLabel>{t('services.category')}</InputLabel>
-                    <Select value={serviceCategoryId || ''} onChange={(e) => { setServiceCategoryId(String(e.target.value)); setFormData(prev => ({...prev, service_id: null})); }} label={t('services.category')}>
+                    <Select value={serviceCategoryId || ''} onChange={(e) => { setServiceCategoryId(String(e.target.value)); setFormData(prev => ({...prev, service_id: null, service_ids: []})); }} label={t('services.category')}>
                       {serviceCategories.map((cat) => <MenuItem key={cat.id} value={cat.id}>{cat.name}</MenuItem>)}
                     </Select>
                   </FormControl>
@@ -807,7 +837,21 @@ const AppointmentDetails = ({ isNew }) => {
                 <Grid item xs={12} sm={6}>
                    <FormControl fullWidth required disabled={!serviceCategoryId}>
                       <InputLabel>{t('appointment.serviceType')}</InputLabel>
-                      <Select name="service_id" value={formData.service_id || ''} onChange={handleServiceChange} label={t('appointment.serviceType')}>
+                      <Select
+                        multiple
+                        name="service_id"
+                        value={formData.service_ids || []}
+                        onChange={handleServiceChange}
+                        label={t('appointment.serviceType')}
+                        renderValue={(selected) => (
+                          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                            {selected.map((id) => {
+                              const service = filteredServices.find((s) => String(s.id) === String(id));
+                              return <Chip key={id} label={service ? service.name : id} size="small" />;
+                            })}
+                          </Box>
+                        )}
+                      >
                          {filteredServices.map((service) => <MenuItem key={service.id} value={service.id}>{service.name} {formatServicePrice(service)}</MenuItem>)}
                       </Select>
                    </FormControl>

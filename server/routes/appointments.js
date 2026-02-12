@@ -93,7 +93,8 @@ router.put('/:id', auth, async (req, res) => {
     const serviceIds = req.body.service_ids ?? req.body.serviceIds ?? null;
     const mechanicId = req.body.mechanic_id ?? req.body.mechanicId ?? null;
     const appointmentPrice = req.body.appointment_price ?? req.body.appointmentPrice ?? null;
-    const appointmentDuration = req.body.appointment_duration ?? req.body.appointmentDuration ?? null;
+    const appointmentDuration =
+      req.body.appointment_duration ?? req.body.appointmentDuration ?? null;
     const vehicleVin = req.body.vehicle_vin ?? null;
     const notes = req.body.notes ?? null;
     const appointmentDate = req.body.appointment_date ?? null;
@@ -156,9 +157,7 @@ router.put('/:id', auth, async (req, res) => {
         const isEnabled = row && Number(row.is_enabled || 0) === 1;
         const isActive = row ? Number(row.is_active ?? 1) === 1 : false;
         if (!isEnabled || !isActive) {
-          return res
-            .status(400)
-            .json({ message: 'Послуга недоступна для вибраного механіка' });
+          return res.status(400).json({ message: 'Послуга недоступна для вибраного механіка' });
         }
       }
     }

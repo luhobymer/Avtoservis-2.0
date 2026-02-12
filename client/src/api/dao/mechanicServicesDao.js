@@ -1,6 +1,9 @@
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+const resolveUrl = (url) => (url.startsWith('http') ? url : `${API_BASE_URL}${url}`);
+
 async function requestJson(url, options = {}) {
   const token = localStorage.getItem('auth_token');
-  const response = await fetch(url, {
+  const response = await fetch(resolveUrl(url), {
     method: options.method || 'GET',
     headers: {
       'Content-Type': 'application/json',

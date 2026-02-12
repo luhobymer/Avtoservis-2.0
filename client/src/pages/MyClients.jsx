@@ -22,17 +22,20 @@ import {
   CheckCircle as CheckCircleIcon
 } from '@mui/icons-material';
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+const resolveUrl = (url) => (url.startsWith('http') ? url : `${API_BASE_URL}${url}`);
+
 const api = {
   getMyClients: async () => {
     const token = localStorage.getItem('auth_token');
-    const res = await fetch('/api/relationships/clients', {
+    const res = await fetch(resolveUrl('/api/relationships/clients'), {
       headers: { Authorization: `Bearer ${token}` }
     });
     return res.json();
   },
   updateStatus: async (id, status) => {
     const token = localStorage.getItem('auth_token');
-    const res = await fetch(`/api/relationships/${id}`, {
+    const res = await fetch(resolveUrl(`/api/relationships/${id}`), {
       method: 'PUT',
       headers: { 
         'Content-Type': 'application/json',

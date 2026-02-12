@@ -1,51 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, Alert, ActivityIndicator, SafeAreaView } from 'react-native';
+import { View, Text, StyleSheet, FlatList, RefreshControl, Alert, ActivityIndicator, SafeAreaView } from 'react-native';
 import { useTranslation } from 'react-i18next';
-import { useAuth } from '../context/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
 import { Card, Button } from 'react-native-paper';
-import { getAllVehicles, deleteVehicle as deleteVehicleSvc } from '../api/vehiclesService';
+import { getAllVehicles } from '../api/vehiclesService';
 import FloatingActionButton from '../components/FloatingActionButton';
 
 export default function VehiclesScreen({ navigation }) {
   const { t } = useTranslation();
-  const { getToken } = useAuth();
   const [vehicles, setVehicles] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
-  
-  // Обробка редагування автомобіля
-  const handleEditVehicle = (vehicle) => {
-    navigation.navigate('EditVehicle', { vehicle });
-  };
-  
-  // Обробка видалення автомобіля
-  const handleDeleteVehicle = (vehicleId) => {
-    Alert.alert(
-      t('common.confirm'),
-      t('vehicles.delete_confirm'),
-      [
-        { text: t('common.cancel'), style: 'cancel' },
-        { 
-          text: t('common.delete'), 
-          onPress: () => deleteVehicle(vehicleId),
-          style: 'destructive' 
-        },
-      ]
-    );
-  };
-  
-  // Функція видалення автомобіля
-  const deleteVehicle = async (vehicleId) => {
-    try {
-      await deleteVehicleSvc(vehicleId);
-      Alert.alert(t('common.success'), t('vehicles.delete_success'));
-      fetchVehicles();
-    } catch (error) {
-      console.error('Failed to delete vehicle:', error);
-      Alert.alert(t('common.error'), t('vehicles.delete_error'));
-    }
-  };
 
   const fetchVehicles = async () => {
     try {
@@ -81,7 +46,10 @@ export default function VehiclesScreen({ navigation }) {
   }, []);
 
   const renderVehicleItem = ({ item }) => (
-    <Card style={styles.card}>
+    <Card
+      style={styles.card}
+      onPress={() => navigation.navigate('VehicleDetails', { vehicleId: item.vin || item.id })}
+    >
       <Card.Title title={`${item.brand} ${item.model}`} subtitle={`${item.year}`} />
       <Card.Content>
         <View style={styles.vehicleDetails}>
@@ -94,10 +62,6 @@ export default function VehiclesScreen({ navigation }) {
           )}
         </View>
       </Card.Content>
-      <Card.Actions>
-        <Button onPress={() => handleEditVehicle(item)}>{t('common.edit')}</Button>
-        <Button onPress={() => handleDeleteVehicle(item.id)}>{t('common.delete')}</Button>
-      </Card.Actions>
     </Card>
   );
 

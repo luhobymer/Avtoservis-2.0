@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { list as listVehicles } from '../api/dao/vehiclesDao';
 import useAuth from '../context/useAuth';
@@ -10,18 +10,17 @@ import {
   Grid,
   Card,
   CardContent,
-  CardActions,
   CardMedia,
   CircularProgress,
   Alert,
-  Box,
-  Divider
+  Box
 } from '@mui/material';
 import { format } from 'date-fns';
 
 const Vehicles = () => {
   const { t } = useTranslation();
   const { isAdmin, isMaster } = useAuth();
+  const navigate = useNavigate();
 
   const isMasterUser =
     typeof isMaster === 'function'
@@ -95,8 +94,11 @@ const Vehicles = () => {
         <Grid container spacing={3}>
           
           {vehicles.map((vehicle, index) => (
-              <Grid item key={vehicle.id || `vehicle-${index}`} xs={12} sm={6} md={4}>
-                <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+            <Grid item key={vehicle.id || `vehicle-${index}`} xs={12} sm={6} md={4}>
+                <Card 
+                  sx={{ height: '100%', display: 'flex', flexDirection: 'column', cursor: 'pointer' }}
+                  onClick={() => navigate(`/vehicles/${vehicle.vin}`)}
+                >
                   <CardMedia
                     component="div"
                     sx={{
@@ -147,30 +149,6 @@ const Vehicles = () => {
                       </Typography>
                     )}
                   </CardContent>
-                  <Divider />
-                  <CardActions>
-                    <Button 
-                      size="small" 
-                      component={Link} 
-                      to={`/vehicles/${vehicle.vin}`}
-                    >
-                      {t('common.edit')}
-                    </Button>
-                    <Button 
-                      size="small" 
-                      component={Link} 
-                      to={`/vehicles/${vehicle.vin}?tab=1`}
-                    >
-                      {t('maintenance.title', 'Регламент')}
-                    </Button>
-                    <Button 
-                      size="small" 
-                      component={Link} 
-                      to={`/service-records?vehicleId=${vehicle.id || index}`}
-                    >
-                      {t('serviceRecord.title')}
-                    </Button>
-                  </CardActions>
                 </Card>
               </Grid>
             ))}

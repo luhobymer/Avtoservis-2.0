@@ -141,6 +141,8 @@ export const createAppointment = async (appointmentData, token) => {
       user_id: appointmentData.user_id,
       vehicle_vin: appointmentData.vehicle_vin,
       service_type: appointmentData.service_type,
+      service_id: appointmentData.service_id,
+      service_ids: appointmentData.service_ids,
       scheduled_time: appointmentData.scheduled_time,
       status: appointmentData.status || 'pending',
       notes: appointmentData.notes || '',
@@ -169,6 +171,12 @@ export const updateAppointment = async (id, appointmentData, token) => {
     }
     if (appointmentData.service_type !== undefined) {
       payload.service_type = appointmentData.service_type;
+    }
+    if (appointmentData.service_id !== undefined) {
+      payload.service_id = appointmentData.service_id;
+    }
+    if (appointmentData.service_ids !== undefined) {
+      payload.service_ids = appointmentData.service_ids;
     }
     if (appointmentData.scheduled_time !== undefined) {
       payload.scheduled_time = appointmentData.scheduled_time;
@@ -302,10 +310,19 @@ export const cancelAppointment = async (id, cancellationData, token) => {
 
 export const getMyMechanics = async (token) => {
   try {
+    return await listMyMechanics(token);
+  } catch (error) {
+    console.error('[AppointmentsService] Failed to fetch my mechanics:', error);
+    return [];
+  }
+};
+
+export const listMyMechanics = async (token) => {
+  try {
     const response = await axiosAuth.get('/api/relationships/mechanics');
     return response.data || [];
   } catch (error) {
-    console.error('[AppointmentsService] Failed to fetch my mechanics:', error);
+    console.error('[AppointmentsService] Failed to list my mechanics:', error);
     return [];
   }
 };

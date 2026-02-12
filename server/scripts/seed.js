@@ -130,7 +130,9 @@ async function seed() {
 
     logger.info('Механіки створені:', createdMechanics);
 
-    const allServiceIds = db.prepare('SELECT id FROM services WHERE COALESCE(is_active, 1) = 1').all();
+    const allServiceIds = db
+      .prepare('SELECT id FROM services WHERE COALESCE(is_active, 1) = 1')
+      .all();
     const serviceIds = (allServiceIds || []).map((row) => row.id).filter(Boolean);
     for (const mechanic of createdMechanics) {
       for (const serviceId of serviceIds) {

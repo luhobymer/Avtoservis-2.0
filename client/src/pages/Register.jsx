@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/useAuth';
@@ -22,7 +22,10 @@ const Register = () => {
 
   const [phoneError, setPhoneError] = useState('');
   const navigate = useNavigate();
-  const { register } = useAuth();
+  const { register, googleLogin } = useAuth();
+  const googleButtonRef = useRef(null);
+  const googleRenderedRef = useRef(false);
+  const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
   
   const [formData, setFormData] = useState({
     name: '',
@@ -37,6 +40,52 @@ const Register = () => {
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+
+  useEffect(() => {
+    if (!googleClientId || googleRenderedRef.current || !googleButtonRef.current) return;
+    const initialize = () => {
+      if (!window.google?.accounts?.id) return;
+      window.google.accounts.id.initialize({
+        client_id: googleClientId,
+        callback: async (credentialResponse) => {
+          if (!credentialResponse?.credential) return;
+          setLoading(true);
+          setError(null);
+          try {
+            const result = await googleLogin(credentialResponse.credential);
+            if (result?.requireProfileSetup) {
+              navigate('/auth/complete-profile');
+              return;
+            }
+            navigate('/');
+          } catch (err) {
+            setError(err.message || t('auth.login_failed'));
+          } finally {
+            setLoading(false);
+          }
+        }
+      });
+      window.google.accounts.id.renderButton(googleButtonRef.current, {
+        theme: 'outline',
+        size: 'large',
+        width: 320
+      });
+      googleRenderedRef.current = true;
+    };
+
+    const existingScript = document.getElementById('google-identity');
+    if (existingScript) {
+      initialize();
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = 'https://accounts.google.com/gsi/client';
+    script.async = true;
+    script.defer = true;
+    script.id = 'google-identity';
+    script.onload = initialize;
+    document.body.appendChild(script);
+  }, [googleClientId, googleLogin, navigate, t]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -320,6 +369,11 @@ const Register = () => {
             >
               {loading ? <CircularProgress size={24} /> : t('auth.register')}
             </Button>
+            {googleClientId && (
+              <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2 }}>
+                <div ref={googleButtonRef} />
+              </Box>
+            )}
             <Grid container justifyContent="flex-end">
               <Grid item>
                 <Link to="/auth/login" variant="body2">

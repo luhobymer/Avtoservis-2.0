@@ -15,6 +15,7 @@ import Register from './pages/Register';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 import VerifyEmail from './pages/VerifyEmail';
+import CompleteGoogleProfile from './pages/CompleteGoogleProfile';
 import Dashboard from './pages/Dashboard';
 import Vehicles from './pages/Vehicles';
 import VehicleDetails from './pages/VehicleDetails';
@@ -103,7 +104,7 @@ const theme = createTheme({
 });
 
 const App = () => {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, needsProfileSetup } = useAuth();
 
   return (
     <ThemeProvider theme={theme}>
@@ -114,13 +115,26 @@ const App = () => {
             <Route index element={<Navigate to="login" replace />} />
             <Route path="login" element={<Login />} />
             <Route path="register" element={<Register />} />
+            <Route path="complete-profile" element={<CompleteGoogleProfile />} />
             <Route path="verify-email" element={<VerifyEmail />} />
             <Route path="forgot-password" element={<ForgotPassword />} />
             <Route path="reset-password" element={<ResetPassword />} />
           </Route>
           
           {/* Protected Routes */}
-          <Route element={isAuthenticated ? <MainLayout /> : <Navigate to="/auth/login" />}>
+          <Route
+            element={
+              isAuthenticated ? (
+                needsProfileSetup ? (
+                  <Navigate to="/auth/complete-profile" replace />
+                ) : (
+                  <MainLayout />
+                )
+              ) : (
+                <Navigate to="/auth/login" />
+              )
+            }
+          >
             <Route path="/" element={<Dashboard />} />
             <Route path="/vehicles" element={<Vehicles />} />
             <Route path="/vehicles/add" element={<VehicleDetails isNew={true} />} />

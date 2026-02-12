@@ -1,6 +1,5 @@
 const { createWorker } = require('tesseract.js');
 const fs = require('fs');
-const path = require('path');
 
 exports.parsePartsFromImage = async (req, res) => {
   try {
@@ -9,10 +8,12 @@ exports.parsePartsFromImage = async (req, res) => {
     }
 
     const imagePath = req.file.path;
-    
+
     // Initialize Tesseract worker
     const worker = await createWorker('ukr+eng');
-    const { data: { text } } = await worker.recognize(imagePath);
+    const {
+      data: { text },
+    } = await worker.recognize(imagePath);
     await worker.terminate();
 
     // Clean up uploaded file
@@ -31,134 +32,158 @@ exports.parsePartsFromImage = async (req, res) => {
   }
 };
 
-// Parser logic based on the user provided example structure and typical OCR output
-// We look for blocks of text that resemble a product entry
 function parseOcrText(text) {
-  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  const normalizeLine = (line) => line.replace(/\s+/g, ' ').trim();
+  const lines = text.replace(/\r/g, '\n').split('\n').map(normalizeLine).filter(Boolean);
+
   const parts = [];
-  
-  let currentPart = null;
-  
-  // Heuristic:
-  // 1. Look for Manufacturer + Code (often uppercase, alphanum)
-  // 2. Look for "Ціна" or price
-  // 3. Look for "Кількість" or quantity
-  
-  // Regex patterns
-  const priceRegex = /(?:Ціна|Цена|Price).*?(\d+[\d\s]*)/i;
-  const qtyRegex = /(?:Кількість|Количество|Qty).*?(\d+)/i;
-  const sumRegex = /(?:Сума|Сумма|Sum).*?(\d+[\d\s]*)/i;
-  // A heuristic for the main header line of a part: e.g., "VICTOR REINZ 40-76149-00"
-  // It usually starts with uppercase letters.
-  
-  // Since OCR output can be messy (lines interleaved or grouped), we try to group by proximity or pattern.
-  // Given the layout described (rows), we might see repeated patterns.
-  
-  // Let's try a simple state machine or block parser.
-  
-  // For this specific layout, it seems each "block" ends with "X удалить" or a Sum.
-  
-  // Let's try to iterate and build objects.
-  
+  const seen = new Set();
+  const buffer = [];
+
+  const numberPattern = /(\d{1,3}(?:[ \u00A0]\d{3})*(?:[.,]\d{1,2})?|\d+(?:[.,]\d{1,2})?)/g;
+  const priceKeywords = /(ціна|цiна|цена|price)/i;
+  const qtyKeywords = /(кількість|количество|qty|шт\.?|pcs|x)/i;
+  const currencyKeywords = /(грн|uah|₴)/i;
+  const noiseKeywords =
+    /(сума|сумма|всього|разом|итого|підсумок|оплата|знижка|накладна|рахунок|invoice|замовлення|термін поставки|термин поставки|постачальник|покупець|iban|edrpou|єдрпоу|код|тел|телефон|адреса)/i;
+  const deleteKeywords = /(удалить|видалити|delete)/i;
+
+  const parseNumber = (value) => {
+    if (!value) return null;
+    const cleaned = value.replace(/\s/g, '').replace(',', '.');
+    const num = Number(cleaned);
+    return Number.isFinite(num) ? num : null;
+  };
+
+  const extractNumber = (value) => {
+    const match = value.match(numberPattern);
+    if (!match || match.length === 0) return null;
+    return parseNumber(match[0]);
+  };
+
+  const extractQty = (value) => {
+    const match = value.match(/(?:кількість|количество|qty|шт\.?|pcs|x)\s*[:x]?\s*(\d+)/i);
+    if (match) {
+      const num = Number(match[1]);
+      return Number.isFinite(num) && num > 0 ? num : null;
+    }
+    return null;
+  };
+
+  const isNoiseLine = (line) => {
+    if (!line) return true;
+    if (noiseKeywords.test(line)) return true;
+    if (deleteKeywords.test(line)) return true;
+    const noLetters = !/[A-Za-zА-Яа-яІіЇїЄє]/.test(line);
+    const hasNumber = numberPattern.test(line);
+    if (noLetters && !hasNumber) return true;
+    return false;
+  };
+
+  const isPriceLine = (line) => {
+    if (!line) return false;
+    if (!(priceKeywords.test(line) || currencyKeywords.test(line))) return false;
+    const num = extractNumber(line);
+    return Number.isFinite(num);
+  };
+
+  const parseRowLine = (line) => {
+    if (!/[A-Za-zА-Яа-яІіЇїЄє]/.test(line)) return null;
+    const numbers = Array.from(line.matchAll(numberPattern))
+      .map((m) => parseNumber(m[0]))
+      .filter((n) => Number.isFinite(n));
+    if (numbers.length < 2) return null;
+    let qty = 1;
+    let price = null;
+    if (numbers.length >= 3) {
+      const last = numbers[numbers.length - 1];
+      const secondLast = numbers[numbers.length - 2];
+      const thirdLast = numbers[numbers.length - 3];
+      if (Number.isInteger(thirdLast) && thirdLast > 0 && thirdLast <= 1000) {
+        qty = thirdLast;
+        price = secondLast;
+      } else if (Number.isInteger(secondLast) && secondLast > 0 && secondLast <= 1000) {
+        qty = secondLast;
+        price = thirdLast;
+      } else {
+        price = secondLast;
+      }
+      if (!price && Number.isFinite(last)) {
+        price = last;
+      }
+    } else if (numbers.length === 2) {
+      const [a, b] = numbers;
+      if (Number.isInteger(b) && b > 0 && b <= 1000) {
+        qty = b;
+        price = a;
+      } else {
+        price = b;
+      }
+    }
+    if (!Number.isFinite(price) || price <= 0) return null;
+    const name = line.replace(numberPattern, ' ').replace(/[₴]/g, ' ').replace(/\s+/g, ' ').trim();
+    if (!name || isNoiseLine(name)) return null;
+    return { name, price, quantity: qty };
+  };
+
+  const pushPart = (name, price, quantity, lineForPartNumber) => {
+    const cleanedName = normalizeLine(name);
+    if (!cleanedName || isNoiseLine(cleanedName)) return;
+    if (!Number.isFinite(price) || price <= 0) return;
+    const qty = Number.isFinite(quantity) && quantity > 0 ? quantity : 1;
+    const partNumberMatch = (lineForPartNumber || cleanedName).match(
+      /([A-Z0-9]{3,}-[A-Z0-9]{2,}|[A-Z0-9]{5,})/
+    );
+    const partNumber = partNumberMatch ? partNumberMatch[1] : '';
+    const key = `${cleanedName.toLowerCase()}|${price}|${qty}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    parts.push({
+      name: cleanedName,
+      price,
+      quantity: qty,
+      part_number: partNumber,
+      purchased_by: 'owner',
+    });
+  };
+
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    
-    // Check if line is likely a start of a new item (Name/Code)
-    // If we found a price/sum in the previous item, this might be a new item.
-    // Or if the line looks like "BRAND CODE"
-    
-    // However, Tesseract might just dump all text.
-    // Let's look for the specific markers "Ціна (грн):" which splits items well.
-    
-    if (priceRegex.test(line)) {
-        // We found a price line. The lines BEFORE this (until the previous item end) describe the product.
-        const priceMatch = line.match(priceRegex);
-        const price = priceMatch ? parseFloat(priceMatch[1].replace(/\s/g, '')) : 0;
-        
-        // Look ahead for Quantity and Sum
-        let qty = 1;
-        let j = i + 1;
-        while (j < lines.length && j < i + 5) { // Look a few lines ahead
-            const l = lines[j];
-            const qtyMatch = l.match(qtyRegex);
-            if (qtyMatch) {
-                qty = parseInt(qtyMatch[1], 10);
-                break;
-            }
-            j++;
-        }
-        
-        // The name/code is likely in the lines preceding the price line.
-        // We need to backtrack to find where this item started.
-        // The item likely started after the previous "X удалить" or "Sum" or similar marker.
-        
-        // This is tricky without strict structure.
-        // Let's assume the 2-3 lines before "Termin postavki" or "Cina" are the name.
-        
-        // Let's try to find "Термін поставки" before the price
-        let nameLines = [];
-        let k = i - 1;
-        let foundTermin = false;
-        
-        // Backtrack to find "Termin postavki"
-        while (k >= 0) {
-            if (lines[k].includes('Термін поставки') || lines[k].includes('Термин')) {
-                foundTermin = true;
-                // The lines BEFORE "Termin..." are the name
-                let m = k - 1;
-                while (m >= 0) {
-                    // Stop if we hit a "Sum" or "X delete" or another "Price" line from previous item
-                    if (lines[m].includes('Сума') || lines[m].includes('удалить') || lines[m].includes('X') || lines[m].match(priceRegex)) {
-                        break;
-                    }
-                    nameLines.unshift(lines[m]);
-                    m--;
-                }
-                break;
-            }
-            k--;
-        }
-        
-        // If we didn't find "Termin", maybe just take 1-2 lines before price?
-        if (!foundTermin) {
-             let m = i - 1;
-             let count = 0;
-             while (m >= 0 && count < 2) {
-                if (lines[m].includes('Сума') || lines[m].includes('удалить')) break;
-                nameLines.unshift(lines[m]);
-                m--;
-                count++;
-             }
-        }
-        
-        const fullTitle = nameLines.join(' ').trim();
-        // Try to split Code and Name. Usually "BRAND CODE Name..."
-        // e.g. "VICTOR REINZ 40-76149-00 Прокладка, термостат"
-        // Let's just use the full string as name for now, or try to split.
-        
-        // Basic parsing of title
-        let brand = '';
-        let partNumber = '';
-        let name = fullTitle;
-        
-        const partsSplit = fullTitle.split(' ');
-        if (partsSplit.length >= 2) {
-            // Heuristic: First word Brand, second Code? Or first 2 words Brand?
-            // "VICTOR REINZ" is 2 words.
-            // Let's just store the full text in 'name' and let user edit.
-        }
+    if (!line) continue;
 
-        if (name && price) {
-            parts.push({
-                name: name,
-                price: price,
-                quantity: qty,
-                part_number: '', // Hard to extract reliably without more logic
-                purchased_by: 'owner' // Default
-            });
+    const rowCandidate = parseRowLine(line);
+    if (rowCandidate) {
+      pushPart(rowCandidate.name, rowCandidate.price, rowCandidate.quantity, line);
+      buffer.length = 0;
+      continue;
+    }
+
+    if (isPriceLine(line)) {
+      const price = extractNumber(line);
+      let qty = extractQty(line);
+      if (!qty) {
+        for (let j = i + 1; j <= i + 2 && j < lines.length; j++) {
+          const nextLine = lines[j];
+          qty = extractQty(nextLine);
+          if (qty) break;
         }
+      }
+      if (!qty) qty = 1;
+
+      const nameLines = buffer.filter(
+        (l) => !isNoiseLine(l) && !isPriceLine(l) && !qtyKeywords.test(l)
+      );
+      const name = nameLines.join(' ').trim();
+      pushPart(name, price, qty, nameLines.join(' '));
+      buffer.length = 0;
+      continue;
+    }
+
+    if (!isNoiseLine(line)) {
+      buffer.push(line);
+      if (buffer.length > 4) buffer.shift();
     }
   }
-  
+
   return parts;
 }

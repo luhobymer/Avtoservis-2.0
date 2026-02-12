@@ -14,7 +14,6 @@ import {
   Button,
   CircularProgress,
   Alert,
-  Switch,
   TextField,
   Dialog,
   DialogTitle,
@@ -26,27 +25,72 @@ import {
   MenuItem
 } from '@mui/material';
 import AlarmIcon from '@mui/icons-material/Alarm';
-import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import AddAlertIcon from '@mui/icons-material/AddAlert';
 import { useAuth } from '../context/useAuth';
 import * as vehiclesDao from '../api/dao/vehiclesDao';
 
-// Mock API for reminders (since we don't have a dedicated endpoint yet)
-// In a real implementation, this would call /api/reminders
-const remindersDao = {
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+const resolveUrl = (url) => (url.startsWith('http') ? url : `${API_BASE_URL}${url}`);
+
+async function requestJson(url, options = {}) {
+  const token = localStorage.getItem('auth_token');
+  const response = await fetch(resolveUrl(url), {
+    method: options.method || 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(options.headers || {})
+    },
+    body: options.body ? JSON.stringify(options.body) : undefined
+  });
+
+  if (!response.ok) {
+    let message = `Request failed with status ${response.status}`;
+    try {
+      const errorBody = await response.json();
+      if (errorBody && typeof errorBody.message === 'string') {
+        message = errorBody.message;
+      }
+    } catch (error) {
+      void error;
+    }
+    throw new Error(message);
+  }
+
+  const contentType = response.headers.get('content-type') || '';
+  if (contentType.includes('application/json')) {
+    return response.json();
+  }
+  return null;
+}
+
+const remindersApi = {
   list: async () => {
-    // Return empty list or mock data
-    return [];
+    const data = await requestJson('/api/reminders');
+    return data || [];
   },
   create: async (data) => {
-    console.log('Create reminder:', data);
-    return { id: Date.now(), ...data };
+    const payload = await requestJson('/api/reminders', {
+      method: 'POST',
+      body: data
+    });
+    return payload || null;
   },
-  delete: async (id) => {
-    console.log('Delete reminder:', id);
+  remove: async (id) => {
+    await requestJson(`/api/reminders/${id}`, { method: 'DELETE' });
     return true;
   }
+};
+
+const resolveReminderDate = (reminder) =>
+  reminder?.reminder_date || reminder?.due_date || reminder?.date || null;
+
+const formatReminderDate = (reminder) => {
+  const value = resolveReminderDate(reminder);
+  if (!value) return '-';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? '-' : date.toLocaleDateString();
 };
 
 const Reminders = () => {
@@ -69,20 +113,17 @@ const Reminders = () => {
     setLoading(true);
     try {
       if (user?.id) {
-        // Fetch reminders (mock for now)
-        const remindersData = await remindersDao.list();
+        const remindersData = await remindersApi.list();
         setReminders(remindersData);
-        
-        // Fetch vehicles for selection
         const vehiclesData = await vehiclesDao.listForUser(user.id);
         setVehicles(vehiclesData || []);
       }
     } catch (err) {
-      setError('Failed to load data');
+      setError(err?.message || t('errors.loadFailed', 'Помилка завантаження даних'));
     } finally {
       setLoading(false);
     }
-  }, [user?.id]);
+  }, [user?.id, t]);
 
   useEffect(() => {
     fetchData();
@@ -95,21 +136,29 @@ const Reminders = () => {
     }
 
     try {
-      const created = await remindersDao.create(newReminder);
-      setReminders([...reminders, created]);
+      const payload = {
+        title: newReminder.title,
+        reminder_date: newReminder.date,
+        vehicle_vin: newReminder.vehicleVin || null,
+        reminder_type: newReminder.type || 'maintenance'
+      };
+      const created = await remindersApi.create(payload);
+      if (created) {
+        setReminders((prev) => [...prev, created]);
+      }
       setDialogOpen(false);
       setNewReminder({ title: '', date: '', vehicleVin: '', type: 'maintenance' });
     } catch (err) {
-      alert('Error creating reminder');
+      alert(err?.message || t('errors.saveFailed', 'Помилка збереження даних'));
     }
   };
 
   const handleDelete = async (id) => {
     try {
-      await remindersDao.delete(id);
+      await remindersApi.remove(id);
       setReminders(reminders.filter(r => r.id !== id));
     } catch (err) {
-      alert('Error deleting reminder');
+      alert(err?.message || t('errors.deleteFailed', 'Помилка видалення'));
     }
   };
 
@@ -165,7 +214,7 @@ const Reminders = () => {
                   </ListItemIcon>
                   <ListItemText
                     primary={reminder.title}
-                    secondary={`${new Date(reminder.date).toLocaleDateString()} • ${reminder.type}`}
+                    secondary={`${formatReminderDate(reminder)} • ${reminder.reminder_type || reminder.type}`}
                   />
                 </ListItem>
                 <Divider />

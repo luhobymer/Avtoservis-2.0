@@ -6,14 +6,14 @@ import CustomButton from '../components/CustomButton';
 import { Ionicons } from '@expo/vector-icons';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
-import { getAllServiceRecords } from '../api/serviceRecordsService';
-import { getVehicleMakes, getVehicleModels } from '../api/vehicleCatalogApi';
+import { Buffer } from 'buffer';
+import { downloadServiceHistoryPdf, getAllServiceRecords } from '../api/serviceRecordsService';
 import FloatingActionButton from '../components/FloatingActionButton';
 import { getAllVehicles } from '../api/vehiclesService';
 
 export default function ServiceBookScreen({ navigation }) {
   const { t } = useTranslation();
-  const { getToken, user } = useAuth();
+  const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [vehicles, setVehicles] = useState([]);
   const [selectedVehicle, setSelectedVehicle] = useState(null);
@@ -48,9 +48,6 @@ export default function ServiceBookScreen({ navigation }) {
   const fetchServiceRecords = async () => {
     try {
       setLoading(true);
-      const token = await getToken();
-      
-      // Отримуємо дані про сервісні записи з API
       const serviceRecords = await getAllServiceRecords();
       const formattedRecords = (serviceRecords || []).map(record => ({
         id: record.id,
@@ -83,52 +80,20 @@ export default function ServiceBookScreen({ navigation }) {
 
     setLoading(true);
     try {
-      // Створюємо HTML-контент для PDF
-      const filteredHistory = filterServiceHistoryByVehicle();
-      let htmlContent = `
-        <html>
-        <head>
-          <style>
-            body { font-family: Arial, sans-serif; }
-            h1 { color: #1976d2; }
-            .record { margin-bottom: 20px; border-bottom: 1px solid #eee; padding-bottom: 10px; }
-            .date { color: #666; }
-            .title { font-weight: bold; }
-            .mileage { color: #1976d2; }
-            .cost { font-weight: bold; }
-          </style>
-        </head>
-        <body>
-          <h1>Сервісна книга: ${selectedVehicle.make} ${selectedVehicle.model} (${selectedVehicle.year})</h1>
-          <p>Номерний знак: ${selectedVehicle.licensePlate || 'Не вказано'}</p>
-      `;
-
-      filteredHistory.forEach(record => {
-        htmlContent += `
-          <div class="record">
-            <p class="date">${new Date(record.date).toLocaleDateString()}</p>
-            <p class="title">${record.title}</p>
-            <p class="description">${record.description}</p>
-            <p class="mileage">Пробіг: ${record.mileage} км</p>
-            <p class="cost">Вартість: ${record.cost} грн</p>
-            <p class="master">Виконавець: ${record.masterName}</p>
-          </div>
-        `;
+      const vehicleVin = selectedVehicle.vin || selectedVehicle.vehicle_vin || '';
+      if (!vehicleVin) {
+        Alert.alert(t('common.error'), t('service_book.export_error'));
+        return;
+      }
+      const { data, filename } = await downloadServiceHistoryPdf(vehicleVin);
+      const fileName = filename || `service-book-${vehicleVin}.pdf`;
+      const fileUri = `${FileSystem.cacheDirectory}${fileName}`;
+      const base64 = Buffer.from(data).toString('base64');
+      await FileSystem.writeAsStringAsync(fileUri, base64, {
+        encoding: FileSystem.EncodingType.Base64,
       });
-      
-      htmlContent += `
-        </body>
-        </html>
-      `;
-
-      // Зберігаємо HTML як тимчасовий файл
-      const fileName = `service_history_${selectedVehicle.make}_${selectedVehicle.model}.html`;
-      const filePath = `${FileSystem.documentDirectory}${fileName}`;
-      await FileSystem.writeAsStringAsync(filePath, htmlContent);
-
-      // Ділимося файлом
-      await Sharing.shareAsync(filePath, {
-        mimeType: 'text/html',
+      await Sharing.shareAsync(fileUri, {
+        mimeType: 'application/pdf',
         dialogTitle: t('service_book.export_dialog_title')
       });
     } catch (error) {

@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const PDFDocument = require('pdfkit');
 const { getDb } = require('../db/d1');
 const logger = require('../middleware/logger.js');
 
@@ -41,6 +42,28 @@ const getVehicleSelectParts = (columns) => {
     year: `${yearSelect} AS vehicle_year`,
     license: `${licenseSelect} AS vehicle_license_plate`,
   };
+};
+
+const formatDate = (value) => {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '-';
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const year = String(date.getFullYear());
+  return `${day}.${month}.${year}`;
+};
+
+const normalizeText = (value) =>
+  value === null || value === undefined || value === '' ? '-' : String(value);
+
+const buildFilename = (vin, licensePlate) => {
+  const base = ['service-book', vin || licensePlate || 'vehicle'].filter(Boolean).join('-');
+  const sanitized = base
+    .replace(/[^a-zA-Z0-9._-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+  return sanitized || 'service-book';
 };
 
 // Отримати всі записи про обслуговування для автомобілів користувача
@@ -358,6 +381,146 @@ exports.deleteServiceRecord = async (req, res) => {
     res.json({ msg: 'Service record removed' });
   } catch (err) {
     logger.error('Delete service record error:', err);
+    res.status(500).json({ message: 'Помилка сервера' });
+  }
+};
+
+exports.exportServiceHistoryPdf = async (req, res) => {
+  try {
+    if (!req.user || !req.user.id) {
+      return res.status(401).json({ msg: 'Unauthorized' });
+    }
+
+    const vin = req.params && req.params.vin ? String(req.params.vin).trim() : '';
+    if (!vin) {
+      return res.status(400).json({ message: 'VIN is required' });
+    }
+
+    const db = await getDb();
+    const vehicleColumns = await getVehicleColumnMap(db);
+    if (!vehicleColumns.vinColumn) {
+      return res.status(400).json({ message: 'VIN is not available' });
+    }
+
+    const vehicleSelect = getVehicleSelectParts(vehicleColumns);
+    const vehicle = await db
+      .prepare(
+        `SELECT v.id,
+        ${vehicleSelect.vin},
+        ${vehicleSelect.brand},
+        ${vehicleSelect.make},
+        ${vehicleSelect.model},
+        ${vehicleSelect.year},
+        ${vehicleSelect.license}
+      FROM vehicles v
+      WHERE v.${vehicleColumns.vinColumn} = ?
+        AND v.user_id = ?
+      LIMIT 1`
+      )
+      .get(vin, req.user.id);
+
+    if (!vehicle) {
+      return res.status(404).json({ message: 'Vehicle not found' });
+    }
+
+    const records = await db
+      .prepare(
+        `SELECT sr.*
+      FROM service_records sr
+      WHERE sr.vehicle_id = ?
+        AND sr.user_id = ?
+      ORDER BY sr.service_date DESC`
+      )
+      .all(vehicle.id, req.user.id);
+
+    const filename = buildFilename(vehicle.vehicle_vin || vin, vehicle.vehicle_license_plate);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}.pdf"`);
+
+    const doc = new PDFDocument({ margin: 40, size: 'A4' });
+    doc.pipe(res);
+
+    const vehicleTitle = [vehicle.vehicle_make || vehicle.vehicle_brand, vehicle.vehicle_model]
+      .filter(Boolean)
+      .join(' ');
+
+    doc.fontSize(18).text('Сервісна книга');
+    doc.moveDown(0.5);
+    doc.fontSize(12);
+    if (vehicleTitle) doc.text(`Авто: ${vehicleTitle}`);
+    if (vehicle.vehicle_year) doc.text(`Рік: ${vehicle.vehicle_year}`);
+    if (vehicle.vehicle_license_plate) doc.text(`Номер: ${vehicle.vehicle_license_plate}`);
+    doc.text(`VIN: ${vehicle.vehicle_vin || vin}`);
+    doc.moveDown();
+
+    if (!records.length) {
+      doc.text('Записів не знайдено');
+      doc.end();
+      return;
+    }
+
+    const columns = [
+      { key: 'date', label: 'Дата', width: 0.16 },
+      { key: 'type', label: 'Послуга', width: 0.3 },
+      { key: 'mileage', label: 'Пробіг', width: 0.16 },
+      { key: 'performedBy', label: 'Виконавець', width: 0.2 },
+      { key: 'cost', label: 'Вартість', width: 0.18 },
+    ];
+
+    const pageWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
+
+    const drawHeader = () => {
+      let x = doc.page.margins.left;
+      const y = doc.y;
+      doc.font('Helvetica-Bold').fontSize(10);
+      columns.forEach((column) => {
+        const colWidth = pageWidth * column.width;
+        doc.text(column.label, x, y, { width: colWidth });
+        x += colWidth;
+      });
+      doc.moveDown(0.4);
+      doc.font('Helvetica');
+    };
+
+    drawHeader();
+    let y = doc.y;
+
+    records.forEach((record) => {
+      const row = {
+        date: formatDate(record.service_date || record.serviceDate),
+        type: normalizeText(
+          record.service_type || record.serviceType || record.service_name || record.serviceName
+        ),
+        mileage: record.mileage ? `${record.mileage} км` : '-',
+        performedBy: normalizeText(record.performed_by || record.performedBy),
+        cost: normalizeText(record.cost),
+      };
+
+      const values = columns.map((column) => row[column.key]);
+      const heights = values.map((value, index) =>
+        doc.heightOfString(value, { width: pageWidth * columns[index].width })
+      );
+      const rowHeight = Math.max(...heights) + 6;
+
+      if (y + rowHeight > doc.page.height - doc.page.margins.bottom) {
+        doc.addPage();
+        drawHeader();
+        y = doc.y;
+      }
+
+      let x = doc.page.margins.left;
+      values.forEach((value, index) => {
+        const colWidth = pageWidth * columns[index].width;
+        doc.text(value, x, y, { width: colWidth });
+        x += colWidth;
+      });
+      y += rowHeight;
+      doc.y = y;
+    });
+
+    doc.end();
+  } catch (err) {
+    logger.error('Export service history PDF error:', err);
     res.status(500).json({ message: 'Помилка сервера' });
   }
 };

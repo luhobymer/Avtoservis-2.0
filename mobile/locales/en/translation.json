@@ -48,6 +48,7 @@
     "password_placeholder": "Password",
     "login_btn": "Sign in",
     "login_failed": "Login failed",
+    "google_login": "Continue with Google",
     "dont_have_account": "Don't have an account?",
     "register": "Register",
     "register_screen_coming_soon": "Registration screen is coming soon",

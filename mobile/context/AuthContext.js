@@ -243,6 +243,52 @@ export function AuthProvider({ children }) {
     }
   };
 
+  const googleLogin = async (idToken, token2fa) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await axiosAuth.post('/api/auth/google', {
+        idToken,
+        token2fa,
+      });
+      if (response?.data?.requireTwoFactor) {
+        throw new Error('Потрібен код двофакторної автентифікації');
+      }
+      const userData = response?.data?.user || null;
+      if (!userData) {
+        throw new Error('Не вдалося отримати дані користувача');
+      }
+      const token = response?.data?.token || null;
+      const refreshToken =
+        response?.data?.refresh_token ||
+        response?.data?.refreshToken ||
+        null;
+      if (token) {
+        await secureStorage.secureSet(SECURE_STORAGE_KEYS.TOKEN, token);
+      }
+      if (refreshToken) {
+        await secureStorage.secureSet(SECURE_STORAGE_KEYS.REFRESH_TOKEN, refreshToken);
+      }
+      if (userData.id) {
+        await secureStorage.secureSet(SECURE_STORAGE_KEYS.USER_ID, userData.id.toString());
+      }
+      await secureStorage.secureSet(SECURE_STORAGE_KEYS.USER_DATA, userData);
+      setUser(userData);
+      return true;
+    } catch (err) {
+      let errorMessage = 'Помилка Google входу';
+      if (err.response && err.response.data && err.response.data.message) {
+        errorMessage = err.response.data.message;
+      } else if (err.message) {
+        errorMessage = err.message;
+      }
+      setError(errorMessage);
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Функція для виходу з системи
   const logout = async () => {
     try {
@@ -365,6 +411,7 @@ export function AuthProvider({ children }) {
         error,
         isAuthenticated: !!user,
         login,
+        googleLogin,
         register,
         logout,
         getToken,

@@ -6,9 +6,7 @@ const { getDb } = require('../db/d1');
 const userSchema = Joi.object({
   email: Joi.string().email().required(),
   password: Joi.string().min(8).required(),
-  role: Joi.string()
-    .valid('client', 'master', 'mechanic')
-    .default('client'),
+  role: Joi.string().valid('client', 'master', 'mechanic').default('client'),
   name: Joi.string().max(100),
   phone: Joi.string()
     .pattern(/^\+380\d{9}$/)

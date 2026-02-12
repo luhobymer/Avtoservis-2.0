@@ -13,17 +13,18 @@ import AdminNavigator from './AdminNavigator';
 import AppointmentDetailsScreen from '../screens/AppointmentDetailsScreen';
 import VehicleDetailsScreen from '../screens/VehicleDetails';
 import ServiceRecordDetailsScreen from '../screens/ServiceRecordDetails';
+import ServiceRecordsScreen from '../screens/ServiceRecordsScreen';
 import AddVehicleScreen from '../screens/AddVehicle';
 import EditVehicleScreen from '../screens/EditVehicle';
 import CreateServiceRecord from '../screens/CreateServiceRecord';
 import ActionMenu from '../screens/ActionMenu';
-import InteractionsScreen from '../screens/InteractionsScreen';
 import NewInteractionScreen from '../screens/NewInteractionScreen';
 import ChatScreen from '../screens/ChatScreen';
 import CreateAppointmentScreen from '../screens/CreateAppointmentScreen';
 import CompleteAppointmentScreen from '../screens/CompleteAppointmentScreen';
 import MasterWorkingHoursScreen from '../screens/MasterWorkingHoursScreen';
 import MasterDashboardScreen from '../screens/MasterDashboardScreen';
+import NotificationsScreen from '../screens/NotificationsScreen';
 
 const Stack = createStackNavigator();
 
@@ -72,6 +73,11 @@ export default function AppNavigator() {
             name="ServiceRecordDetails"
             component={ServiceRecordDetailsScreen}
             options={{ headerShown: true, title: t('service_records.details') }}
+          />
+          <Stack.Screen
+            name="ServiceRecords"
+            component={ServiceRecordsScreen}
+            options={{ headerShown: true, title: t('nav.service_records') }}
           />
           <Stack.Screen
             name="AddVehicle"
@@ -144,6 +150,11 @@ export default function AppNavigator() {
               headerShown: true, 
               title: t('master.dashboard_title')
             }}
+          />
+          <Stack.Screen
+            name="Notifications"
+            component={NotificationsScreen}
+            options={{ headerShown: true, title: t('nav.notifications') }}
           />
         </>
       )}

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/useAuth';
 import { UA_REGION_NAMES, getCitiesByRegion } from '../data/uaRegionsCities';
+import TwoFactorAuth from '../components/TwoFactorAuth';
 import {
   Container,
   Typography,
@@ -342,8 +343,7 @@ const Profile = () => {
           </Grid>
         </Box>
       </Paper>
-      
-      
+      <TwoFactorAuth user={user} />
     </Container>
   );
 };

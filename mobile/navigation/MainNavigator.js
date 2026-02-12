@@ -12,10 +12,6 @@ import VehiclesScreen from '../screens/VehiclesScreen';
 import ServiceBookScreen from '../screens/ServiceBookScreen';
 import AppointmentsScreen from '../screens/AppointmentsScreen';
 import ProfileScreen from '../screens/ProfileScreen';
-import InteractionsScreen from '../screens/InteractionsScreen';
-import ServiceRecordsScreen from '../screens/ServiceRecordsScreen';
-import ServiceRecordDetails from '../screens/ServiceRecordDetails';
-import NotificationsScreen from '../screens/NotificationsScreen';
 
 const Tab = createBottomTabNavigator();
 
@@ -46,17 +42,8 @@ export default function MainNavigator() {
             case 'Appointments':
               iconName = focused ? 'calendar' : 'calendar-outline';
               break;
-            case 'Interactions':
-              iconName = focused ? 'chatbubbles' : 'chatbubbles-outline';
-              break;
             case 'Profile':
               iconName = focused ? 'person' : 'person-outline';
-              break;
-            case 'ServiceRecords':
-              iconName = focused ? 'book' : 'book-outline';
-              break;
-            case 'Notifications':
-              iconName = focused ? 'notifications' : 'notifications-outline';
               break;
           }
 
@@ -110,27 +97,9 @@ export default function MainNavigator() {
       />
       
       <Tab.Screen
-        name="Interactions"
-        component={InteractionsScreen}
-        options={{ title: t('nav.interactions') }}
-      />
-      
-      <Tab.Screen
         name="Profile"
         component={ProfileScreen}
         options={{ title: t('nav.profile') }}
-      />
-      
-      <Tab.Screen
-        name="ServiceRecords"
-        component={ServiceRecordsScreen}
-        options={{ title: t('nav.service_records') }}
-      />
-      
-      <Tab.Screen
-        name="Notifications"
-        component={NotificationsScreen}
-        options={{ title: t('nav.notifications') }}
       />
     </Tab.Navigator>
   );

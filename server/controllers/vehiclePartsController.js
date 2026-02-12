@@ -6,13 +6,17 @@ exports.listForUser = async (req, res) => {
     const db = await getDb();
 
     // Join with vehicles to ensure we only get parts for vehicles owned by user
-    const parts = await db.prepare(`
+    const parts = await db
+      .prepare(
+        `
       SELECT vp.*, v.make, v.model, v.year 
       FROM vehicle_parts vp
       JOIN vehicles v ON v.vin = vp.vehicle_vin
       WHERE v.user_id = ?
       ORDER BY vp.installed_date DESC
-    `).all(userId);
+    `
+      )
+      .all(userId);
 
     res.json(parts || []);
   } catch (err) {
@@ -23,19 +27,19 @@ exports.listForUser = async (req, res) => {
 
 exports.createPart = async (req, res) => {
   try {
-    const { 
-      vehicle_vin, 
-      name, 
-      part_number, 
-      manufacturer, 
-      price, 
-      quantity, 
-      purchased_by, 
-      installed_date, 
+    const {
+      vehicle_vin,
+      name,
+      part_number,
+      manufacturer,
+      price,
+      quantity,
+      purchased_by,
+      installed_date,
       notes,
-      appointment_id 
+      appointment_id,
     } = req.body;
-    
+
     const userId = req.user.id;
     const db = await getDb();
 
@@ -47,31 +51,35 @@ exports.createPart = async (req, res) => {
 
     // Allow owner or master/admin
     if (vehicle.user_id !== userId && !['master', 'admin'].includes(req.user.role)) {
-        return res.status(403).json({ message: 'Доступ заборонено' });
+      return res.status(403).json({ message: 'Доступ заборонено' });
     }
 
-    const result = await db.prepare(`
+    const result = await db
+      .prepare(
+        `
       INSERT INTO vehicle_parts (
         vehicle_vin, name, part_number, manufacturer, price, quantity, 
         purchased_by, installed_date, notes, appointment_id
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      vehicle_vin, 
-      name, 
-      part_number || null, 
-      manufacturer || null, 
-      price || 0, 
-      quantity || 1, 
-      purchased_by || 'owner', 
-      installed_date || new Date().toISOString(), 
-      notes || '', 
-      appointment_id || null
-    );
+    `
+      )
+      .run(
+        vehicle_vin,
+        name,
+        part_number || null,
+        manufacturer || null,
+        price || 0,
+        quantity || 1,
+        purchased_by || 'owner',
+        installed_date || new Date().toISOString(),
+        notes || '',
+        appointment_id || null
+      );
 
-    res.status(201).json({ 
-      id: result.lastInsertRowid, 
-      success: true, 
-      message: 'Запчастину додано' 
+    res.status(201).json({
+      id: result.lastInsertRowid,
+      success: true,
+      message: 'Запчастину додано',
     });
   } catch (err) {
     console.error('Create vehicle part error:', err);
@@ -87,21 +95,25 @@ exports.listForVehicle = async (req, res) => {
 
     // Verify ownership or permission (e.g. master)
     const vehicle = await db.prepare('SELECT user_id FROM vehicles WHERE vin = ?').get(vin);
-    
+
     if (!vehicle) {
-        return res.status(404).json({ message: 'Авто не знайдено' });
+      return res.status(404).json({ message: 'Авто не знайдено' });
     }
 
     // Allow owner or master/admin
     if (vehicle.user_id !== userId && !['master', 'admin'].includes(req.user.role)) {
-        return res.status(403).json({ message: 'Доступ заборонено' });
+      return res.status(403).json({ message: 'Доступ заборонено' });
     }
 
-    const parts = await db.prepare(`
+    const parts = await db
+      .prepare(
+        `
       SELECT * FROM vehicle_parts
       WHERE vehicle_vin = ?
       ORDER BY installed_date DESC
-    `).all(vin);
+    `
+      )
+      .all(vin);
 
     res.json(parts || []);
   } catch (err) {
@@ -118,7 +130,9 @@ exports.listForAppointment = async (req, res) => {
     const db = await getDb();
 
     const appointment = await db
-      .prepare('SELECT id, user_id, mechanic_id, vehicle_vin FROM appointments WHERE id = ? LIMIT 1')
+      .prepare(
+        'SELECT id, user_id, mechanic_id, vehicle_vin FROM appointments WHERE id = ? LIMIT 1'
+      )
       .get(appointmentId);
     if (!appointment) {
       return res.status(404).json({ message: 'Запис не знайдено' });

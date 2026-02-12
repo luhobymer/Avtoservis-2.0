@@ -1,0 +1,33 @@
+name: Locales and Lint
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+jobs:
+  client-locales-lint:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: client
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+          cache-dependency-path: client/package-lock.json
+      - name: Install
+        run: npm install
+      - name: Check locales
+        run: npm run check:locales
+      - name: Check placeholders
+        run: npm run check:placeholders
+      - name: Lint
+        run: npm run lint
+      - name: Typecheck
+        run: npm run typecheck

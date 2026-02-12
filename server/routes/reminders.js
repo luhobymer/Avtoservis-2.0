@@ -2,7 +2,9 @@ const crypto = require('crypto');
 const express = require('express');
 const router = express.Router();
 const auth = require('../middleware/auth');
+const apiKey = require('../middleware/apiKey');
 const { getDb } = require('../db/d1');
+const { checkAndSendReminders } = require('../services/reminderScheduler');
 
 const normalizeBoolean = (value) => (value ? 1 : 0);
 
@@ -31,6 +33,16 @@ router.get('/', auth, async (req, res) => {
   } catch (error) {
     console.error('Помилка отримання нагадувань:', error);
     res.status(500).json({ message: 'Помилка сервера' });
+  }
+});
+
+router.post('/run-check', apiKey, async (req, res) => {
+  try {
+    await checkAndSendReminders();
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Помилка запуску перевірки нагадувань:', error);
+    res.status(500).json({ success: false, message: 'Помилка сервера' });
   }
 });
 

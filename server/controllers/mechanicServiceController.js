@@ -37,8 +37,8 @@ exports.getMechanicServices = async (req, res) => {
     // Assume categories exist or check via PRAGMA which is safer
     let hasCategories = true;
     try {
-        const check = await db.prepare('PRAGMA table_info(service_categories)').all();
-        hasCategories = check && check.length > 0;
+      const check = await db.prepare('PRAGMA table_info(service_categories)').all();
+      hasCategories = check && check.length > 0;
     } catch (_) {
       hasCategories = true;
     }
@@ -96,7 +96,8 @@ exports.getMechanicServices = async (req, res) => {
       const baseDuration = baseDurationRaw != null ? Number(baseDurationRaw) : null;
 
       const effectivePrice = row.price_override != null ? Number(row.price_override) : basePrice;
-      const effectiveDuration = row.duration_override != null ? Number(row.duration_override) : baseDuration;
+      const effectiveDuration =
+        row.duration_override != null ? Number(row.duration_override) : baseDuration;
       return {
         ...service,
         base_price: Number.isFinite(basePrice) ? basePrice : null,
@@ -228,7 +229,10 @@ exports.createMechanicService = async (req, res) => {
     }
 
     const db = await getDb();
-    const stationColumn = await getExistingColumn('mechanics', ['service_station_id', 'station_id']);
+    const stationColumn = await getExistingColumn('mechanics', [
+      'service_station_id',
+      'station_id',
+    ]);
     const mechanic = await db
       .prepare(`SELECT id, ${stationColumn} AS station_id FROM mechanics WHERE id = ?`)
       .get(mechanicId);
@@ -390,7 +394,9 @@ exports.updateMechanicServiceDetails = async (req, res) => {
 
       if (serviceColumns.hasCreatedBy) {
         await db
-          .prepare(`UPDATE services SET ${updates.join(', ')} WHERE id = ? AND created_by_mechanic_id = ?`)
+          .prepare(
+            `UPDATE services SET ${updates.join(', ')} WHERE id = ? AND created_by_mechanic_id = ?`
+          )
           .run(...params, mechanicId);
       } else {
         await db.prepare(`UPDATE services SET ${updates.join(', ')} WHERE id = ?`).run(...params);
@@ -401,19 +407,21 @@ exports.updateMechanicServiceDetails = async (req, res) => {
     }
 
     if (priceValue == null && durationValue == null) {
-      return res.status(403).json({ message: 'Можна змінювати тільки ціну/час для не власних послуг' });
+      return res
+        .status(403)
+        .json({ message: 'Можна змінювати тільки ціну/час для не власних послуг' });
     }
 
     const overrideConfig = await getMechanicServiceOverrideConfig(db);
     if (priceValue != null && !overrideConfig.hasPriceOverride) {
-      return res
-        .status(500)
-        .json({ message: 'Потрібне оновлення бази: відсутнє поле price_override у mechanic_services' });
+      return res.status(500).json({
+        message: 'Потрібне оновлення бази: відсутнє поле price_override у mechanic_services',
+      });
     }
     if (durationValue != null && !overrideConfig.hasDurationOverride) {
-      return res
-        .status(500)
-        .json({ message: 'Потрібне оновлення бази: відсутнє поле duration_override у mechanic_services' });
+      return res.status(500).json({
+        message: 'Потрібне оновлення бази: відсутнє поле duration_override у mechanic_services',
+      });
     }
 
     const overrideUpdates = [];

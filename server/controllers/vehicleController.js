@@ -77,7 +77,9 @@ const listVehiclesByOwner = async (db, ownerId, orderBy) => {
   let lastError = null;
   for (const col of candidates) {
     try {
-      const rows = await db.prepare(`SELECT * FROM vehicles WHERE ${col} = ? ORDER BY ${orderBy}`).all(ownerId);
+      const rows = await db
+        .prepare(`SELECT * FROM vehicles WHERE ${col} = ? ORDER BY ${orderBy}`)
+        .all(ownerId);
       return { rows: rows || [], column: col };
     } catch (err) {
       lastError = err;
@@ -238,6 +240,12 @@ exports.getUserVehicles = async (req, res) => {
               .all(historyTarget)
           : [];
 
+        const mainPhoto = await db
+          .prepare(
+            `SELECT url FROM photos WHERE object_type = 'vehicle' AND object_id = ? ORDER BY created_at DESC LIMIT 1`
+          )
+          .get(vehicle.id);
+
         return {
           ...vehicle,
           make: vehicle[makeColumn] || vehicle.make || vehicle.brand,
@@ -245,6 +253,7 @@ exports.getUserVehicles = async (req, res) => {
           licensePlate: getVehicleLicensePlate(vehicle, licenseColumn),
           appointments: appointments || [],
           service_history: serviceHistory || [],
+          photo_url: mainPhoto?.url || null,
         };
       })
     );
@@ -252,7 +261,9 @@ exports.getUserVehicles = async (req, res) => {
     res.json(vehiclesWithDetails);
   } catch (err) {
     const includeDetails = String(process.env.NODE_ENV || '').toLowerCase() !== 'production';
-    res.status(500).json({ message: 'Помилка сервера', ...(includeDetails ? { details: err?.message } : {}) });
+    res
+      .status(500)
+      .json({ message: 'Помилка сервера', ...(includeDetails ? { details: err?.message } : {}) });
   }
 };
 
@@ -275,11 +286,9 @@ exports.getVehicleByVin = async (req, res) => {
 
     let vehicle;
     if (isMaster) {
-       vehicle = await db
-        .prepare(`SELECT * FROM vehicles WHERE vin = ?`)
-        .get(vin);
+      vehicle = await db.prepare(`SELECT * FROM vehicles WHERE vin = ?`).get(vin);
     } else {
-       vehicle = await db
+      vehicle = await db
         .prepare(`SELECT * FROM vehicles WHERE vin = ? AND ${ownerColumn} = ?`)
         .get(vin, userId);
     }
@@ -313,17 +322,28 @@ exports.getVehicleByVin = async (req, res) => {
           .all(historyTarget)
       : [];
 
+    const mainPhoto = await db
+      .prepare(
+        `SELECT url FROM photos WHERE object_type = 'vehicle' AND object_id = ? ORDER BY created_at DESC LIMIT 1`
+      )
+      .get(vehicle.id);
+
     const appointmentsWithDetails = await Promise.all(
       (appointments || []).map(async (appointment) => {
         const serviceId = parseServiceIdFromAppointment(appointment);
-        const mechanicId = appointment && appointment.mechanic_id ? String(appointment.mechanic_id) : null;
+        const mechanicId =
+          appointment && appointment.mechanic_id ? String(appointment.mechanic_id) : null;
 
         const services = serviceId
-          ? await db.prepare('SELECT id, name, description, price, duration FROM services WHERE id = ?').get(serviceId)
+          ? await db
+              .prepare('SELECT id, name, description, price, duration FROM services WHERE id = ?')
+              .get(serviceId)
           : null;
         const mechanics = mechanicId
           ? await db
-              .prepare('SELECT id, first_name, last_name, phone, email, specialization_id FROM mechanics WHERE id = ?')
+              .prepare(
+                'SELECT id, first_name, last_name, phone, email, specialization_id FROM mechanics WHERE id = ?'
+              )
               .get(mechanicId)
           : null;
 
@@ -342,6 +362,7 @@ exports.getVehicleByVin = async (req, res) => {
       licensePlate: getVehicleLicensePlate(vehicle, licenseColumn),
       appointments: appointmentsWithDetails || [],
       service_history: serviceHistory || [],
+      photo_url: mainPhoto?.url || null,
     });
   } catch (err) {
     res.status(500).json({ message: 'Помилка сервера' });
@@ -366,9 +387,12 @@ exports.addVehicle = async (req, res) => {
       license_plate,
       licensePlate,
       registration_number,
+      photoUrl,
     } = req.body || {};
 
-    const normalizedPlate = normalizeLicensePlate(license_plate || licensePlate || registration_number || '');
+    const normalizedPlate = normalizeLicensePlate(
+      license_plate || licensePlate || registration_number || ''
+    );
 
     const db = await getDb();
     const { columnNames, makeColumn, licenseColumn } = await getVehicleColumnInfo(db);
@@ -398,12 +422,26 @@ exports.addVehicle = async (req, res) => {
       updated_at: now,
     };
 
-    const entries = Object.entries(row).filter(([key, value]) => columnNames.has(key) && value !== undefined);
+    const entries = Object.entries(row).filter(
+      ([key, value]) => columnNames.has(key) && value !== undefined
+    );
     const columns = entries.map(([key]) => key);
     const placeholders = entries.map(() => '?').join(', ');
     const values = entries.map(([, value]) => value);
 
-    await db.prepare(`INSERT INTO vehicles (${columns.join(', ')}) VALUES (${placeholders})`).run(...values);
+    await db
+      .prepare(`INSERT INTO vehicles (${columns.join(', ')}) VALUES (${placeholders})`)
+      .run(...values);
+
+    if (photoUrl && String(photoUrl).trim()) {
+      const photoId = crypto.randomUUID();
+      await db
+        .prepare(
+          `INSERT INTO photos (id, object_id, object_type, url, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?)`
+        )
+        .run(photoId, vehicleId, 'vehicle', String(photoUrl).trim(), now, now);
+    }
 
     // Додаємо базовий регламент обслуговування
     try {
@@ -433,11 +471,18 @@ exports.addVehicle = async (req, res) => {
       .prepare('SELECT * FROM vehicles WHERE vin = ? AND user_id = ?')
       .get(vin, userId);
 
+    const createdPhoto = await db
+      .prepare(
+        `SELECT url FROM photos WHERE object_type = 'vehicle' AND object_id = ? ORDER BY created_at DESC LIMIT 1`
+      )
+      .get(vehicleId);
+
     res.status(201).json({
       ...created,
       make: created?.[makeColumn] || created?.make || created?.brand,
       brand: created?.[makeColumn] || created?.brand || created?.make,
       licensePlate: getVehicleLicensePlate(created, licenseColumn),
+      photo_url: createdPhoto?.url || null,
     });
   } catch (err) {
     res.status(500).json({ message: 'Помилка сервера' });
@@ -464,17 +509,24 @@ exports.updateVehicle = async (req, res) => {
 
     const payload = req.body || {};
     const normalizedPlate =
-      payload.license_plate !== undefined || payload.licensePlate !== undefined || payload.registration_number !== undefined
-        ? normalizeLicensePlate(payload.license_plate || payload.licensePlate || payload.registration_number || '')
+      payload.license_plate !== undefined ||
+      payload.licensePlate !== undefined ||
+      payload.registration_number !== undefined
+        ? normalizeLicensePlate(
+            payload.license_plate || payload.licensePlate || payload.registration_number || ''
+          )
         : undefined;
 
     const updateRow = {
-      [makeColumn]: payload.make !== undefined || payload.brand !== undefined ? payload.make || payload.brand || null : undefined,
+      [makeColumn]:
+        payload.make !== undefined || payload.brand !== undefined
+          ? payload.make || payload.brand || null
+          : undefined,
       model: payload.model !== undefined ? payload.model : undefined,
       year: payload.year !== undefined ? Number(payload.year) : undefined,
       color: payload.color !== undefined ? payload.color : undefined,
       mileage: payload.mileage !== undefined ? Number(payload.mileage) : undefined,
-      [licenseColumn]: normalizedPlate !== undefined ? (normalizedPlate || null) : undefined,
+      [licenseColumn]: normalizedPlate !== undefined ? normalizedPlate || null : undefined,
       updated_at: new Date().toISOString(),
     };
 
@@ -485,18 +537,55 @@ exports.updateVehicle = async (req, res) => {
     if (fields.length > 0) {
       const setClause = fields.map((field) => `${field} = ?`).join(', ');
       const values = fields.map((field) => updateRow[field]);
-      await db.prepare(`UPDATE vehicles SET ${setClause} WHERE vin = ? AND user_id = ?`).run(...values, vin, userId);
+      await db
+        .prepare(`UPDATE vehicles SET ${setClause} WHERE vin = ? AND user_id = ?`)
+        .run(...values, vin, userId);
+    }
+
+    if (payload.photoUrl && String(payload.photoUrl).trim()) {
+      const existingPhoto = await db
+        .prepare(
+          `SELECT id FROM photos WHERE object_type = 'vehicle' AND object_id = ? ORDER BY created_at ASC LIMIT 1`
+        )
+        .get(existing.id);
+      const now = new Date().toISOString();
+      if (existingPhoto && existingPhoto.id) {
+        await db
+          .prepare(`UPDATE photos SET url = ?, updated_at = ? WHERE id = ?`)
+          .run(String(payload.photoUrl).trim(), now, existingPhoto.id);
+      } else {
+        await db
+          .prepare(
+            `INSERT INTO photos (id, object_id, object_type, url, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?)`
+          )
+          .run(
+            crypto.randomUUID(),
+            existing.id,
+            'vehicle',
+            String(payload.photoUrl).trim(),
+            now,
+            now
+          );
+      }
     }
 
     const updated = await db
       .prepare('SELECT * FROM vehicles WHERE vin = ? AND user_id = ?')
       .get(vin, userId);
 
+    const updatedPhoto = await db
+      .prepare(
+        `SELECT url FROM photos WHERE object_type = 'vehicle' AND object_id = ? ORDER BY created_at DESC LIMIT 1`
+      )
+      .get(updated.id);
+
     res.json({
       ...updated,
       make: updated?.[makeColumn] || updated?.make || updated?.brand,
       brand: updated?.[makeColumn] || updated?.brand || updated?.make,
       licensePlate: getVehicleLicensePlate(updated, licenseColumn),
+      photo_url: updatedPhoto?.url || null,
     });
   } catch (err) {
     res.status(500).json({ message: 'Помилка сервера' });

@@ -25,7 +25,7 @@ export default function CompleteAppointmentScreen() {
   const navigation = useNavigation();
   const { getToken } = useAuth();
 
-  const { appointmentId, currentNotes } = route.params || {};
+  const { appointmentId, currentNotes, vehicleVin } = route.params || {};
 
   const [loading, setLoading] = useState(false);
   const [completionNotes, setCompletionNotes] = useState(currentNotes || '');
@@ -164,7 +164,7 @@ export default function CompleteAppointmentScreen() {
           <PartPhotoInput 
             onPhotoSelect={() => {}} 
             onDetailsRecognized={handlePartRecognized}
-            vehicleId={null} // We might need vehicleId if we want history context
+            vehicleId={vehicleVin || null}
           />
         </View>
 

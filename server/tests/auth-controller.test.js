@@ -202,7 +202,6 @@ describe('AuthController - D1 інтеграційні тести', () => {
 
   describe('register', () => {
     test('повинен реєструвати нового користувача по email', async () => {
-      const now = new Date().toISOString();
       const salt = 'salt';
       const hashed = 'hashedPassword';
       const tokenPair = {

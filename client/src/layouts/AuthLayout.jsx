@@ -1,5 +1,5 @@
 import React from 'react';
-import { Outlet, Navigate } from 'react-router-dom';
+import { Outlet, Navigate, useLocation } from 'react-router-dom';
 import { Container, Box, Typography } from '@mui/material';
 import { useTranslation } from 'react-i18next';
 import LanguageSwitcher from '../components/LanguageSwitcher';
@@ -7,11 +7,18 @@ import useAuth from '../context/useAuth';
 
 const AuthLayout = () => {
   const { t } = useTranslation();
-  const { isAuthenticated, loading } = useAuth();
+  const { isAuthenticated, loading, needsProfileSetup } = useAuth();
+  const location = useLocation();
 
   // Redirect if already authenticated
+  const isCompleteProfileRoute = location.pathname === '/auth/complete-profile';
   if (isAuthenticated && !loading) {
-    return <Navigate to="/" />;
+    if (needsProfileSetup && !isCompleteProfileRoute) {
+      return <Navigate to="/auth/complete-profile" replace />;
+    }
+    if (!needsProfileSetup) {
+      return <Navigate to="/" />;
+    }
   }
 
   return (

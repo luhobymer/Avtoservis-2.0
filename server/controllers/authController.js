@@ -2,11 +2,79 @@ const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const speakeasy = require('speakeasy');
 const QRCode = require('qrcode');
+const { OAuth2Client } = require('google-auth-library');
 const { generateTokenPair, verifyRefreshToken } = require('../config/jwt');
 const { getDb } = require('../db/d1');
 const mailer = require('../services/mailer');
 
 const allowedUserFields = new Set(['email', 'phone', 'id']);
+let googleClient = null;
+
+const normalizeRole = (value) => (value == null ? '' : String(value).trim().toLowerCase());
+const normalizePhone = (value) => {
+  if (!value) return null;
+  const raw = String(value).trim().replace(/\s+/g, '');
+  if (raw.startsWith('0')) {
+    return '+380' + raw.slice(1);
+  }
+  if (raw.startsWith('380')) {
+    return '+' + raw;
+  }
+  return raw;
+};
+const isPhoneValid = (value) => {
+  if (!value) return false;
+  const raw = String(value).trim().replace(/\s+/g, '');
+  return /^(\+?380|0)\d{9}$/.test(raw);
+};
+const isRoleAllowed = (role) => {
+  const normalized = normalizeRole(role);
+  return normalized === 'client' || normalized === 'master';
+};
+const isProfileComplete = (user) => {
+  if (!user) return false;
+  const role = normalizeRole(user.role);
+  if (!isRoleAllowed(role)) return false;
+  const firstName = user.first_name || user.firstName || null;
+  const lastName = user.last_name || user.lastName || null;
+  const region = user.region || null;
+  const city = user.city || null;
+  const phone = user.phone || null;
+  if (!firstName || !lastName || !region || !city || !phone) return false;
+  return true;
+};
+
+const getGoogleClientIds = () => {
+  const ids = [];
+  const raw = process.env.GOOGLE_CLIENT_ID;
+  if (raw) {
+    ids.push(
+      ...String(raw)
+        .split(',')
+        .map((value) => value.trim())
+        .filter(Boolean)
+    );
+  }
+  const envIds = [
+    process.env.GOOGLE_WEB_CLIENT_ID,
+    process.env.GOOGLE_IOS_CLIENT_ID,
+    process.env.GOOGLE_ANDROID_CLIENT_ID,
+  ];
+  envIds
+    .filter(Boolean)
+    .map((value) => String(value).trim())
+    .filter(Boolean)
+    .forEach((value) => ids.push(value));
+  return Array.from(new Set(ids));
+};
+
+const getGoogleClient = () => {
+  if (!googleClient) {
+    const ids = getGoogleClientIds();
+    googleClient = new OAuth2Client(ids[0] || undefined);
+  }
+  return googleClient;
+};
 
 const getUserByField = async (field, value) => {
   if (!allowedUserFields.has(field)) {
@@ -227,6 +295,343 @@ exports.login = async (req, res) => {
       status: 'error',
       code: 'SERVER_ERROR',
       message: 'Помилка сервера при автентифікації',
+    });
+  }
+};
+
+exports.googleLogin = async (req, res) => {
+  try {
+    const { idToken, token2fa } = req.body || {};
+    if (!idToken) {
+      return res.status(400).json({
+        status: 'error',
+        code: 'GOOGLE_TOKEN_REQUIRED',
+        message: 'Необхідно надати Google token',
+      });
+    }
+
+    const clientIds = getGoogleClientIds();
+    if (!clientIds.length) {
+      return res.status(500).json({
+        status: 'error',
+        code: 'GOOGLE_CLIENT_NOT_CONFIGURED',
+        message: 'Google автентифікація не налаштована на сервері',
+      });
+    }
+
+    const ticket = await getGoogleClient().verifyIdToken({
+      idToken,
+      audience: clientIds,
+    });
+    const payload = ticket?.getPayload() || {};
+    const email = payload.email ? String(payload.email).trim() : null;
+
+    if (!email) {
+      return res.status(400).json({
+        status: 'error',
+        code: 'GOOGLE_EMAIL_REQUIRED',
+        message: 'Не вдалося отримати email з Google',
+      });
+    }
+
+    if (payload.email_verified === false) {
+      return res.status(403).json({
+        status: 'error',
+        code: 'GOOGLE_EMAIL_NOT_VERIFIED',
+        message: 'Email Google не підтверджений',
+      });
+    }
+
+    let user = await getUserByField('email', email);
+
+    if (!user) {
+      const now = new Date().toISOString();
+      const firstName =
+        payload.given_name && String(payload.given_name).trim()
+          ? String(payload.given_name).trim()
+          : null;
+      const lastName =
+        payload.family_name && String(payload.family_name).trim()
+          ? String(payload.family_name).trim()
+          : null;
+      const userName =
+        payload.name && String(payload.name).trim()
+          ? String(payload.name).trim()
+          : [firstName, lastName].filter(Boolean).join(' ').trim() || 'Користувач';
+      const salt = await bcrypt.genSalt(10);
+      const hashedPassword = await bcrypt.hash(crypto.randomBytes(16).toString('hex'), salt);
+      const createdUserId = crypto.randomUUID();
+      const db = await getDb();
+      await db
+        .prepare(
+          `INSERT INTO users (
+          id,
+          email,
+          password,
+          role,
+          name,
+          phone,
+          first_name,
+          last_name,
+          patronymic,
+          region,
+          city,
+          two_factor_enabled,
+          two_factor_pending,
+          email_verified,
+          email_verification_token_hash,
+          email_verification_expires_at,
+          email_verified_at,
+          created_at,
+          updated_at
+        )
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, NULL, NULL, ?, ?, ?)`
+        )
+        .run(
+          createdUserId,
+          email,
+          hashedPassword,
+          'client',
+          userName || null,
+          null,
+          firstName,
+          lastName,
+          null,
+          null,
+          null,
+          1,
+          now,
+          now,
+          now
+        );
+      user = await db
+        .prepare(
+          'SELECT id, email, phone, role, name, first_name, last_name, patronymic, region, city, two_factor_enabled FROM users WHERE id = ?'
+        )
+        .get(createdUserId);
+    } else if (payload.email_verified && Number(user.email_verified || 0) !== 1) {
+      const now = new Date().toISOString();
+      const db = await getDb();
+      await db
+        .prepare(
+          'UPDATE users SET email_verified = 1, email_verification_token_hash = NULL, email_verification_expires_at = NULL, email_verified_at = ?, updated_at = ? WHERE id = ?'
+        )
+        .run(now, now, user.id);
+    }
+
+    if (user && user.two_factor_enabled) {
+      if (!token2fa) {
+        return res.status(200).json({
+          status: 'pending',
+          code: 'TWO_FACTOR_REQUIRED',
+          requireTwoFactor: true,
+          message: 'Потрібен код двофакторної автентифікації',
+          user: {
+            id: user.id,
+            email: user.email,
+            role: user.role,
+            twoFactorEnabled: true,
+          },
+        });
+      }
+
+      let verified = false;
+      try {
+        verified = speakeasy.totp.verify({
+          secret: user.two_factor_secret,
+          encoding: 'base32',
+          token: token2fa,
+          window: 1,
+        });
+      } catch (verifyError) {
+        console.error('[Auth] 2FA verification error:', verifyError);
+        return res.status(400).json({
+          status: 'error',
+          code: 'INVALID_2FA_TOKEN',
+          message: 'Невірний код двофакторної автентифікації',
+        });
+      }
+
+      if (!verified) {
+        return res.status(400).json({
+          status: 'error',
+          code: 'INVALID_2FA_TOKEN',
+          message: 'Невірний код двофакторної автентифікації',
+        });
+      }
+    }
+
+    if (!user) {
+      return res.status(500).json({
+        status: 'error',
+        code: 'USER_CREATE_FAILED',
+        message: 'Не вдалося створити користувача',
+      });
+    }
+
+    const identifier = user.email || user.phone;
+    const tokenPair = generateTokenPair(user.id, user.role, identifier);
+    try {
+      await insertRefreshToken(user.id, tokenPair.refreshToken);
+    } catch (tokenError) {
+      console.error('[Auth] Error saving refresh token:', tokenError);
+    }
+
+    const userResponse = {
+      id: user.id,
+      role: user.role,
+      twoFactorEnabled: !!user.two_factor_enabled,
+    };
+
+    if (user.name) userResponse.name = user.name;
+    if (user.email) userResponse.email = user.email;
+    if (user.phone) userResponse.phone = user.phone;
+    if (user.first_name) userResponse.firstName = user.first_name;
+    if (user.last_name) userResponse.lastName = user.last_name;
+    if (user.patronymic) userResponse.patronymic = user.patronymic;
+    if (user.region) userResponse.region = user.region;
+    if (user.city) userResponse.city = user.city;
+
+    const profileComplete = isProfileComplete(user);
+    const googleProfile = {
+      email,
+      name: payload.name || user.name || null,
+      firstName: payload.given_name || user.first_name || null,
+      lastName: payload.family_name || user.last_name || null,
+    };
+
+    return res.json({
+      status: 'success',
+      token: tokenPair.accessToken,
+      refresh_token: tokenPair.refreshToken,
+      token_type: 'Bearer',
+      expires_in: tokenPair.expiresIn,
+      user: userResponse,
+      requireProfileSetup: !profileComplete,
+      googleProfile,
+    });
+  } catch (err) {
+    console.error('[Auth] Google login error:', err);
+    return res.status(500).json({
+      status: 'error',
+      code: 'SERVER_ERROR',
+      message: 'Помилка сервера при Google автентифікації',
+    });
+  }
+};
+
+exports.completeGoogleProfile = async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    const role = normalizeRole(req.body?.role);
+    const firstName = req.body?.firstName ? String(req.body.firstName).trim() : '';
+    const lastName = req.body?.lastName ? String(req.body.lastName).trim() : '';
+    const patronymic = req.body?.patronymic ? String(req.body.patronymic).trim() : '';
+    const region = req.body?.region ? String(req.body.region).trim() : '';
+    const city = req.body?.city ? String(req.body.city).trim() : '';
+    const phoneRaw = req.body?.phone ? String(req.body.phone).trim() : '';
+
+    if (!userId) {
+      return res.status(401).json({
+        status: 'error',
+        code: 'UNAUTHORIZED',
+        message: 'Необхідна авторизація',
+      });
+    }
+
+    if (!isRoleAllowed(role)) {
+      return res.status(400).json({
+        status: 'error',
+        code: 'INVALID_ROLE',
+        message: 'Невірна роль',
+      });
+    }
+
+    if (!firstName || !lastName || !region || !city) {
+      return res.status(400).json({
+        status: 'error',
+        code: 'MISSING_REQUIRED_FIELDS',
+        message: 'Заповніть обовʼязкові поля профілю',
+      });
+    }
+
+    if (!isPhoneValid(phoneRaw)) {
+      return res.status(400).json({
+        status: 'error',
+        code: 'INVALID_PHONE',
+        message: 'Невірний формат телефону',
+      });
+    }
+
+    const phone = normalizePhone(phoneRaw);
+    const fullName = [firstName, lastName, patronymic].filter(Boolean).join(' ').trim();
+
+    const db = await getDb();
+    await db
+      .prepare(
+        `UPDATE users SET role = ?, name = ?, phone = ?, first_name = ?, last_name = ?, patronymic = ?, region = ?, city = ?, updated_at = ? WHERE id = ?`
+      )
+      .run(
+        role,
+        fullName || null,
+        phone,
+        firstName,
+        lastName,
+        patronymic || null,
+        region,
+        city,
+        new Date().toISOString(),
+        userId
+      );
+
+    const user = await db
+      .prepare(
+        'SELECT id, email, name, phone, role, first_name, last_name, patronymic, region, city, two_factor_enabled FROM users WHERE id = ?'
+      )
+      .get(userId);
+
+    if (!user) {
+      return res.status(404).json({
+        status: 'error',
+        code: 'USER_NOT_FOUND',
+        message: 'Користувача не знайдено',
+      });
+    }
+
+    const identifier = user.email || user.phone;
+    const tokenPair = generateTokenPair(user.id, user.role, identifier);
+    try {
+      await insertRefreshToken(user.id, tokenPair.refreshToken);
+    } catch (tokenError) {
+      console.error('[Auth] Error saving refresh token:', tokenError);
+    }
+
+    return res.json({
+      status: 'success',
+      token: tokenPair.accessToken,
+      refresh_token: tokenPair.refreshToken,
+      token_type: 'Bearer',
+      expires_in: tokenPair.expiresIn,
+      user: {
+        id: user.id,
+        role: user.role,
+        name: user.name || null,
+        email: user.email || null,
+        phone: user.phone || null,
+        firstName: user.first_name || null,
+        lastName: user.last_name || null,
+        patronymic: user.patronymic || null,
+        region: user.region || null,
+        city: user.city || null,
+        twoFactorEnabled: !!user.two_factor_enabled,
+      },
+    });
+  } catch (err) {
+    console.error('[Auth] Complete Google profile error:', err);
+    return res.status(500).json({
+      status: 'error',
+      code: 'SERVER_ERROR',
+      message: 'Помилка сервера при оновленні профілю',
     });
   }
 };

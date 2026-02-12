@@ -15,7 +15,7 @@ const getD1Config = (overrideDbId = null) => {
   }
   const accountId = getEnv('CLOUDFLARE_ACCOUNT_ID');
   const databaseId = overrideDbId || getEnv('CLOUDFLARE_D1_DATABASE_ID');
-  const apiToken = getEnv('CLOUDFLARE_API_TOKEN');
+  const apiToken = getEnv('CLOUDFLARE_API_TOKEN_D1') || getEnv('CLOUDFLARE_API_TOKEN');
   if (!accountId || !databaseId || !apiToken) {
     return null;
   }
@@ -357,7 +357,9 @@ const ensureSchemaSqliteSync = (sqliteDb) => {
     )
   `);
   sqliteDb.exec('CREATE INDEX IF NOT EXISTS idx_vehicle_parts_vin ON vehicle_parts(vehicle_vin)');
-  sqliteDb.exec('CREATE INDEX IF NOT EXISTS idx_vehicle_parts_appointment ON vehicle_parts(appointment_id)');
+  sqliteDb.exec(
+    'CREATE INDEX IF NOT EXISTS idx_vehicle_parts_appointment ON vehicle_parts(appointment_id)'
+  );
 
   sqliteDb.exec(`
     CREATE TABLE IF NOT EXISTS maintenance_schedules (
@@ -372,7 +374,26 @@ const ensureSchemaSqliteSync = (sqliteDb) => {
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP
     )
   `);
-  sqliteDb.exec('CREATE INDEX IF NOT EXISTS idx_maintenance_schedules_vin ON maintenance_schedules(vehicle_vin)');
+  sqliteDb.exec(
+    'CREATE INDEX IF NOT EXISTS idx_maintenance_schedules_vin ON maintenance_schedules(vehicle_vin)'
+  );
+
+  sqliteDb.exec(`
+    CREATE TABLE IF NOT EXISTS insurances (
+      id TEXT PRIMARY KEY,
+      vehicle_vin TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      policy_number TEXT,
+      insurance_company TEXT,
+      start_date TEXT,
+      end_date TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  sqliteDb.exec('CREATE INDEX IF NOT EXISTS idx_insurances_vin ON insurances(vehicle_vin)');
+  sqliteDb.exec('CREATE INDEX IF NOT EXISTS idx_insurances_user ON insurances(user_id)');
+  sqliteDb.exec('CREATE INDEX IF NOT EXISTS idx_insurances_end_date ON insurances(end_date)');
 
   ensureColumnsSync('services', [
     { name: 'is_active', def: 'INTEGER DEFAULT 1' },
@@ -533,7 +554,7 @@ const ensureSchema = async (client) => {
     { name: 'completion_mileage', def: 'INTEGER' },
   ]);
   await ensureTableColumns(client, 'service_records', [{ name: 'appointment_id', def: 'TEXT' }]);
-  
+
   await client.query(`
     CREATE TABLE IF NOT EXISTS vehicle_parts (
       id TEXT PRIMARY KEY,
@@ -551,8 +572,12 @@ const ensureSchema = async (client) => {
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP
     )
   `);
-  await client.query('CREATE INDEX IF NOT EXISTS idx_vehicle_parts_vin ON vehicle_parts(vehicle_vin)');
-  await client.query('CREATE INDEX IF NOT EXISTS idx_vehicle_parts_appointment ON vehicle_parts(appointment_id)');
+  await client.query(
+    'CREATE INDEX IF NOT EXISTS idx_vehicle_parts_vin ON vehicle_parts(vehicle_vin)'
+  );
+  await client.query(
+    'CREATE INDEX IF NOT EXISTS idx_vehicle_parts_appointment ON vehicle_parts(appointment_id)'
+  );
 
   await client.query(`
     CREATE TABLE IF NOT EXISTS maintenance_schedules (
@@ -567,7 +592,26 @@ const ensureSchema = async (client) => {
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP
     )
   `);
-  await client.query('CREATE INDEX IF NOT EXISTS idx_maintenance_schedules_vin ON maintenance_schedules(vehicle_vin)');
+  await client.query(
+    'CREATE INDEX IF NOT EXISTS idx_maintenance_schedules_vin ON maintenance_schedules(vehicle_vin)'
+  );
+
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS insurances (
+      id TEXT PRIMARY KEY,
+      vehicle_vin TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      policy_number TEXT,
+      insurance_company TEXT,
+      start_date TEXT,
+      end_date TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  await client.query('CREATE INDEX IF NOT EXISTS idx_insurances_vin ON insurances(vehicle_vin)');
+  await client.query('CREATE INDEX IF NOT EXISTS idx_insurances_user ON insurances(user_id)');
+  await client.query('CREATE INDEX IF NOT EXISTS idx_insurances_end_date ON insurances(end_date)');
 
   await ensureTableColumns(client, 'services', [
     { name: 'is_active', def: 'INTEGER DEFAULT 1' },

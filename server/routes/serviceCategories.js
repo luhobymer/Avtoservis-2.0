@@ -9,7 +9,9 @@ router.get('/', async (_req, res) => {
   try {
     const db = await getDb();
     const rows = await db
-      .prepare('SELECT id, name, description, created_at, updated_at FROM service_categories ORDER BY name')
+      .prepare(
+        'SELECT id, name, description, created_at, updated_at FROM service_categories ORDER BY name'
+      )
       .all();
     return res.json(Array.isArray(rows) ? rows : []);
   } catch (err) {
@@ -47,4 +49,3 @@ router.post('/', auth, async (req, res) => {
 });
 
 module.exports = router;
-

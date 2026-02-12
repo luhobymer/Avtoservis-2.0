@@ -75,6 +75,7 @@
     "password_placeholder": "Пароль",
     "login_btn": "Увійти",
     "login_failed": "Помилка входу",
+    "google_login": "Увійти через Google",
     "dont_have_account": "Немає облікового запису?",
     "register": "Зареєструватися",
     "register_screen_coming_soon": "Екран реєстрації знаходиться в розробці",

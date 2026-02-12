@@ -199,8 +199,8 @@ exports.getAllAppointments = async (req, res) => {
 
     let selectClause = 'a.*, u.id AS user_id_ref, u.email AS user_email';
     let joinClause = 'LEFT JOIN users u ON u.id = a.user_id';
-    
-    // Якщо користувач - майстер або адмін, він має бачити і свої записи, 
+
+    // Якщо користувач - майстер або адмін, він має бачити і свої записи,
     // і записи, де він виступає як механік (якщо він механік).
     // Але цей метод getUserAppointments призначений саме для "Моїх записів" як КЛІЄНТА (власника авто).
     // Тому ми фільтруємо по user_id = userId.
@@ -208,17 +208,19 @@ exports.getAllAppointments = async (req, res) => {
     // Тобто логіка тут правильна: показуємо ті записи, де поточний юзер є ЗАМОВНИКОМ.
 
     if (hasServiceId) {
-        selectClause += `, s.id AS service_id_ref, s.name AS service_name, s.${serviceColumns.price} AS service_price, s.${serviceColumns.duration} AS service_duration`;
-        joinClause += ' LEFT JOIN services s ON s.id = a.service_id';
+      selectClause += `, s.id AS service_id_ref, s.name AS service_name, s.${serviceColumns.price} AS service_price, s.${serviceColumns.duration} AS service_duration`;
+      joinClause += ' LEFT JOIN services s ON s.id = a.service_id';
     } else {
-        selectClause += ', NULL AS service_id_ref, NULL AS service_name, NULL AS service_price, NULL AS service_duration';
+      selectClause +=
+        ', NULL AS service_id_ref, NULL AS service_name, NULL AS service_price, NULL AS service_duration';
     }
 
     if (hasMechanicId) {
-        selectClause += `, m.id AS mechanic_id_ref, m.first_name AS mechanic_first_name, m.last_name AS mechanic_last_name, ${mechanicSpec.select}`;
-        joinClause += ` LEFT JOIN mechanics m ON m.id = a.mechanic_id ${mechanicSpec.join}`;
+      selectClause += `, m.id AS mechanic_id_ref, m.first_name AS mechanic_first_name, m.last_name AS mechanic_last_name, ${mechanicSpec.select}`;
+      joinClause += ` LEFT JOIN mechanics m ON m.id = a.mechanic_id ${mechanicSpec.join}`;
     } else {
-        selectClause += ', NULL AS mechanic_id_ref, NULL AS mechanic_first_name, NULL AS mechanic_last_name, NULL AS mechanic_specialization';
+      selectClause +=
+        ', NULL AS mechanic_id_ref, NULL AS mechanic_first_name, NULL AS mechanic_last_name, NULL AS mechanic_specialization';
     }
 
     const rows = await db
@@ -253,19 +255,21 @@ exports.getAppointmentById = async (req, res) => {
 
     let selectClause = 'a.*, u.id AS user_id_ref, u.email AS user_email';
     let joinClause = 'LEFT JOIN users u ON u.id = a.user_id';
-    
+
     if (hasServiceId) {
-        selectClause += `, s.id AS service_id_ref, s.name AS service_name, s.${serviceColumns.price} AS service_price, s.${serviceColumns.duration} AS service_duration`;
-        joinClause += ' LEFT JOIN services s ON s.id = a.service_id';
+      selectClause += `, s.id AS service_id_ref, s.name AS service_name, s.${serviceColumns.price} AS service_price, s.${serviceColumns.duration} AS service_duration`;
+      joinClause += ' LEFT JOIN services s ON s.id = a.service_id';
     } else {
-        selectClause += ', NULL AS service_id_ref, NULL AS service_name, NULL AS service_price, NULL AS service_duration';
+      selectClause +=
+        ', NULL AS service_id_ref, NULL AS service_name, NULL AS service_price, NULL AS service_duration';
     }
 
     if (hasMechanicId) {
-        selectClause += `, m.id AS mechanic_id_ref, m.first_name AS mechanic_first_name, m.last_name AS mechanic_last_name, ${mechanicSpec.select}`;
-        joinClause += ` LEFT JOIN mechanics m ON m.id = a.mechanic_id ${mechanicSpec.join}`;
+      selectClause += `, m.id AS mechanic_id_ref, m.first_name AS mechanic_first_name, m.last_name AS mechanic_last_name, ${mechanicSpec.select}`;
+      joinClause += ` LEFT JOIN mechanics m ON m.id = a.mechanic_id ${mechanicSpec.join}`;
     } else {
-        selectClause += ', NULL AS mechanic_id_ref, NULL AS mechanic_first_name, NULL AS mechanic_last_name, NULL AS mechanic_specialization';
+      selectClause +=
+        ', NULL AS mechanic_id_ref, NULL AS mechanic_first_name, NULL AS mechanic_last_name, NULL AS mechanic_specialization';
     }
 
     const row = await db
@@ -300,19 +304,21 @@ exports.getUserAppointments = async (req, res) => {
 
     let selectClause = 'a.*, u.id AS user_id_ref, u.email AS user_email';
     let joinClause = 'LEFT JOIN users u ON u.id = a.user_id';
-    
+
     if (hasServiceId) {
-        selectClause += `, s.id AS service_id_ref, s.name AS service_name, s.${serviceColumns.price} AS service_price, s.${serviceColumns.duration} AS service_duration`;
-        joinClause += ' LEFT JOIN services s ON s.id = a.service_id';
+      selectClause += `, s.id AS service_id_ref, s.name AS service_name, s.${serviceColumns.price} AS service_price, s.${serviceColumns.duration} AS service_duration`;
+      joinClause += ' LEFT JOIN services s ON s.id = a.service_id';
     } else {
-        selectClause += ', NULL AS service_id_ref, NULL AS service_name, NULL AS service_price, NULL AS service_duration';
+      selectClause +=
+        ', NULL AS service_id_ref, NULL AS service_name, NULL AS service_price, NULL AS service_duration';
     }
 
     if (hasMechanicId) {
-        selectClause += `, m.id AS mechanic_id_ref, m.first_name AS mechanic_first_name, m.last_name AS mechanic_last_name, ${mechanicSpec.select}`;
-        joinClause += ` LEFT JOIN mechanics m ON m.id = a.mechanic_id ${mechanicSpec.join}`;
+      selectClause += `, m.id AS mechanic_id_ref, m.first_name AS mechanic_first_name, m.last_name AS mechanic_last_name, ${mechanicSpec.select}`;
+      joinClause += ` LEFT JOIN mechanics m ON m.id = a.mechanic_id ${mechanicSpec.join}`;
     } else {
-        selectClause += ', NULL AS mechanic_id_ref, NULL AS mechanic_first_name, NULL AS mechanic_last_name, NULL AS mechanic_specialization';
+      selectClause +=
+        ', NULL AS mechanic_id_ref, NULL AS mechanic_first_name, NULL AS mechanic_last_name, NULL AS mechanic_specialization';
     }
 
     const rows = await db
@@ -389,7 +395,7 @@ exports.createAppointment = async (req, res) => {
 
     // Перевірка доступності часу
     const db = await getDb();
-    
+
     const {
       hasServiceId,
       hasMechanicId,
@@ -401,17 +407,17 @@ exports.createAppointment = async (req, res) => {
     } = await getAppointmentColumnInfo(db);
 
     if (hasMechanicId) {
-        const idsToCheck = normalizeServiceIds(serviceIdsJson);
-        if (idsToCheck.length > 0) {
-          await assertServicesEnabledForMechanic(db, effectiveMechanicId, idsToCheck);
-        }
-        const existingAppointment = await db
-          .prepare('SELECT id FROM appointments WHERE mechanic_id = ? AND scheduled_time = ? LIMIT 1')
-          .get(effectiveMechanicId, scheduled_time);
+      const idsToCheck = normalizeServiceIds(serviceIdsJson);
+      if (idsToCheck.length > 0) {
+        await assertServicesEnabledForMechanic(db, effectiveMechanicId, idsToCheck);
+      }
+      const existingAppointment = await db
+        .prepare('SELECT id FROM appointments WHERE mechanic_id = ? AND scheduled_time = ? LIMIT 1')
+        .get(effectiveMechanicId, scheduled_time);
 
-        if (existingAppointment) {
-          return res.status(400).json({ message: 'Цей час вже зайнято' });
-        }
+      if (existingAppointment) {
+        return res.status(400).json({ message: 'Цей час вже зайнято' });
+      }
     }
 
     // Створення запису
@@ -433,59 +439,70 @@ exports.createAppointment = async (req, res) => {
     }
 
     const effectiveAppointmentDate = appointment_date ?? scheduled_time;
-    
-    const insertColumns = ['id', 'user_id', 'vehicle_vin', 'service_type', 'service_ids', 'scheduled_time', 'appointment_date', 'status'];
+
+    const insertColumns = [
+      'id',
+      'user_id',
+      'vehicle_vin',
+      'service_type',
+      'service_ids',
+      'scheduled_time',
+      'appointment_date',
+      'status',
+    ];
     const insertValues = [
-        appointmentId,
-        effectiveUserId,
-        vehicle_vin ?? null,
-        effectiveServiceType,
-        serviceIdsJson,
-        scheduled_time,
-        effectiveAppointmentDate,
-        'pending'
+      appointmentId,
+      effectiveUserId,
+      vehicle_vin ?? null,
+      effectiveServiceType,
+      serviceIdsJson,
+      scheduled_time,
+      effectiveAppointmentDate,
+      'pending',
     ];
 
     if (hasVehicleId) {
-        insertColumns.push('vehicle_id');
-        insertValues.push(vehicle_id ?? null);
+      insertColumns.push('vehicle_id');
+      insertValues.push(vehicle_id ?? null);
     }
     if (hasServiceId) {
-        insertColumns.push('service_id');
-        insertValues.push(effectiveServiceId ?? null);
+      insertColumns.push('service_id');
+      insertValues.push(effectiveServiceId ?? null);
     }
     if (hasMechanicId) {
-        insertColumns.push('mechanic_id');
-        insertValues.push(effectiveMechanicId);
+      insertColumns.push('mechanic_id');
+      insertValues.push(effectiveMechanicId);
     }
     if (hasNotes) {
-        insertColumns.push('notes');
-        insertValues.push(notes ?? null);
+      insertColumns.push('notes');
+      insertValues.push(notes ?? null);
     }
     if (hasCarInfo) {
-        insertColumns.push('car_info');
-        insertValues.push(car_info ?? null);
+      insertColumns.push('car_info');
+      insertValues.push(car_info ?? null);
     }
 
     if (hasAppointmentPrice) {
-        insertColumns.push('appointment_price');
-        const raw =
-          appointment_price === undefined || appointment_price === null ? '' : String(appointment_price);
-        const n = raw.trim() === '' ? null : Number(raw.replace(',', '.'));
-        insertValues.push(Number.isFinite(n) ? n : null);
+      insertColumns.push('appointment_price');
+      const raw =
+        appointment_price === undefined || appointment_price === null
+          ? ''
+          : String(appointment_price);
+      const n = raw.trim() === '' ? null : Number(raw.replace(',', '.'));
+      insertValues.push(Number.isFinite(n) ? n : null);
     }
     if (hasAppointmentDuration) {
-        insertColumns.push('appointment_duration');
-        const raw =
-          appointment_duration === undefined || appointment_duration === null
-            ? ''
-            : String(appointment_duration);
-        const n = raw.trim() === '' ? null : Number(raw.replace(',', '.'));
-        insertValues.push(Number.isFinite(n) ? n : null);
+      insertColumns.push('appointment_duration');
+      const raw =
+        appointment_duration === undefined || appointment_duration === null
+          ? ''
+          : String(appointment_duration);
+      const n = raw.trim() === '' ? null : Number(raw.replace(',', '.'));
+      insertValues.push(Number.isFinite(n) ? n : null);
     }
 
     const placeholders = insertColumns.map(() => '?').join(', ');
-    
+
     await db
       .prepare(
         `INSERT INTO appointments
@@ -507,7 +524,9 @@ exports.createAppointment = async (req, res) => {
         const notesValue = part?.notes != null ? String(part.notes).trim() : null;
         const price = priceRaw == null || String(priceRaw).trim() === '' ? null : Number(priceRaw);
         const quantity =
-          quantityRaw == null || String(quantityRaw).trim() === '' ? 1 : Number(String(quantityRaw).trim());
+          quantityRaw == null || String(quantityRaw).trim() === ''
+            ? 1
+            : Number(String(quantityRaw).trim());
         await db
           .prepare(
             `INSERT INTO vehicle_parts (
@@ -595,7 +614,7 @@ exports.updateAppointmentStatus = async (req, res) => {
       updates.push('completion_notes = ?');
       updateParams.push(completion_notes);
     }
-    
+
     if (hasCompletionMileage && completion_mileage !== undefined) {
       updates.push('completion_mileage = ?');
       updateParams.push(completion_mileage);
@@ -614,13 +633,11 @@ exports.updateAppointmentStatus = async (req, res) => {
       updates.push('appointment_duration = ?');
       updateParams.push(Number.isFinite(n) ? n : null);
     }
-    
+
     const updateQuery = `UPDATE appointments SET ${updates.join(', ')} WHERE id = ?`;
     updateParams.push(id);
 
-    const updateResult = await db
-      .prepare(updateQuery)
-      .run(...updateParams);
+    const updateResult = await db.prepare(updateQuery).run(...updateParams);
 
     if (updateResult.changes === 0) {
       return res.status(404).json({ message: 'Запис не знайдено' });
@@ -632,7 +649,6 @@ exports.updateAppointmentStatus = async (req, res) => {
     const prevStatus = String(before?.status || '');
 
     if (prevStatus !== 'completed' && nextStatus === 'completed') {
-      
       // 1. Handle Parts
       if (Array.isArray(parts) && parts.length > 0) {
         const partsStmt = db.prepare(`
@@ -640,7 +656,7 @@ exports.updateAppointmentStatus = async (req, res) => {
             id, vehicle_vin, appointment_id, name, part_number, price, quantity, purchased_by, installed_at_mileage, installed_date, notes
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
-        
+
         for (const part of parts) {
           const partId = crypto.randomUUID();
           await partsStmt.run(
@@ -661,12 +677,15 @@ exports.updateAppointmentStatus = async (req, res) => {
 
       // 2. Update Vehicle Mileage
       if (completion_mileage && updated.vehicle_vin) {
-         // Only update if new mileage is greater than current
-         const vehicle = await db.prepare('SELECT mileage FROM vehicles WHERE vin = ?').get(updated.vehicle_vin);
-         if (vehicle && (vehicle.mileage || 0) < completion_mileage) {
-            await db.prepare('UPDATE vehicles SET mileage = ?, updated_at = ? WHERE vin = ?')
-              .run(completion_mileage, new Date().toISOString(), updated.vehicle_vin);
-         }
+        // Only update if new mileage is greater than current
+        const vehicle = await db
+          .prepare('SELECT mileage FROM vehicles WHERE vin = ?')
+          .get(updated.vehicle_vin);
+        if (vehicle && (vehicle.mileage || 0) < completion_mileage) {
+          await db
+            .prepare('UPDATE vehicles SET mileage = ?, updated_at = ? WHERE vin = ?')
+            .run(completion_mileage, new Date().toISOString(), updated.vehicle_vin);
+        }
       }
 
       // 3. Create Service Record
@@ -685,6 +704,9 @@ exports.updateAppointmentStatus = async (req, res) => {
 
         if (vehicleId) {
           const serviceIds = normalizeServiceIds(updated.service_ids);
+          if (serviceIds.length === 0 && updated.service_id) {
+            serviceIds.push(String(updated.service_id));
+          }
           const serviceMap = await buildServiceMap(db, serviceIds);
           const serviceNames = serviceIds.map((sid) => serviceMap.get(sid)?.name).filter(Boolean);
 
@@ -701,12 +723,12 @@ exports.updateAppointmentStatus = async (req, res) => {
           let cost = serviceIds
             .map((sid) => Number(serviceMap.get(sid)?.price || 0))
             .reduce((a, b) => a + b, 0);
-          
+
           if (Array.isArray(parts)) {
-             const partsCost = parts
-                .filter(p => p.purchased_by !== 'owner') 
-                .reduce((sum, p) => sum + (Number(p.price || 0) * Number(p.quantity || 1)), 0);
-             cost += partsCost;
+            const partsCost = parts
+              .filter((p) => p.purchased_by !== 'owner')
+              .reduce((sum, p) => sum + Number(p.price || 0) * Number(p.quantity || 1), 0);
+            cost += partsCost;
           }
 
           const description =
@@ -719,7 +741,7 @@ exports.updateAppointmentStatus = async (req, res) => {
 
           const recordId = crypto.randomUUID();
           const now = new Date().toISOString();
-          
+
           const partsJson = Array.isArray(parts) ? JSON.stringify(parts) : null;
 
           await db
@@ -759,19 +781,16 @@ exports.updateAppointmentStatus = async (req, res) => {
 
         const notificationId = crypto.randomUUID();
         const now = new Date().toISOString();
-        
+
         try {
-          await db.prepare(`
+          await db
+            .prepare(
+              `
             INSERT INTO notifications (id, user_id, type, message, is_read, created_at)
             VALUES (?, ?, ?, ?, ?, ?)
-          `).run(
-            notificationId, 
-            notificationUserId, 
-            'appointment_status', 
-            message, 
-            0, 
-            now
-          );
+          `
+            )
+            .run(notificationId, notificationUserId, 'appointment_status', message, 0, now);
         } catch (notifErr) {
           console.error('Failed to create notification:', notifErr);
         }

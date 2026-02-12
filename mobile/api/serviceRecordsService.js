@@ -119,3 +119,21 @@ export const deleteServiceRecord = async (id) => {
     throw error;
   }
 };
+
+export const downloadServiceHistoryPdf = async (vehicleVin) => {
+  try {
+    const response = await axiosAuth.get(
+      `/api/reports/service-history/${encodeURIComponent(vehicleVin)}`,
+      { responseType: 'arraybuffer' }
+    );
+    const disposition = response.headers ? response.headers['content-disposition'] : null;
+    const match = disposition
+      ? disposition.match(/filename="([^"]+)"/) || disposition.match(/filename=([^;]+)/)
+      : null;
+    const filename = match && match[1] ? match[1] : `service-book-${vehicleVin}.pdf`;
+    return { data: response.data, filename };
+  } catch (error) {
+    console.error('[ServiceRecordsService] Error downloading service history PDF:', error);
+    throw error;
+  }
+};

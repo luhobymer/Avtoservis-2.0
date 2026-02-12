@@ -94,14 +94,18 @@ class UserManager {
     return user;
   }
 
-  async linkUserToServer(telegramId, serverUserId, token, expiresAt) {
+  async linkUserToServer(telegramId, serverUserId, token, expiresAt, role) {
     const tokenExpiry = expiresAt || this.calculateTokenExpiry(token);
-    await this.saveUser(telegramId, {
+    const payload = {
       serverUserId,
       token,
       tokenIssued: new Date().toISOString(),
       tokenExpires: tokenExpiry
-    });
+    };
+    if (role) {
+      payload.role = role;
+    }
+    await this.saveUser(telegramId, payload);
   }
 
   async unlinkUserFromServer(telegramId) {

@@ -8,4 +8,3 @@ const paymentsController = require('../controllers/paymentsController');
 router.get('/', auth, checkAdmin, paymentsController.listPayments);
 
 module.exports = router;
-

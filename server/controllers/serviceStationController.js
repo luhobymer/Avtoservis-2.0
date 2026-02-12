@@ -34,23 +34,42 @@ exports.getAllStations = async (req, res) => {
       'service_station_id',
       'station_id',
     ]);
+    const serviceColumns = await db.prepare('PRAGMA table_info(services)').all();
+    const serviceColumnNames = new Set((serviceColumns || []).map((column) => column.name));
+    const mechanicColumns = await db.prepare('PRAGMA table_info(mechanics)').all();
+    const mechanicColumnNames = new Set((mechanicColumns || []).map((column) => column.name));
+    const serviceStationKey = serviceColumnNames.has(serviceStationColumn)
+      ? serviceStationColumn
+      : null;
+    const mechanicStationKey = mechanicColumnNames.has(mechanicStationColumn)
+      ? mechanicStationColumn
+      : null;
+    const servicePriceColumn = serviceColumnNames.has('base_price') ? 'base_price' : 'price';
+    const serviceDurationColumn = serviceColumnNames.has('duration_minutes')
+      ? 'duration_minutes'
+      : 'duration';
     const mechanicSpec = await getMechanicSpecializationConfig(db);
     const stations = await db.prepare('SELECT * FROM service_stations').all();
     const result = await Promise.all(
       stations.map(async (station) => {
-        const services = await db
-          .prepare(
-            `SELECT id, name, price, duration FROM services WHERE ${serviceStationColumn} = ?`
-          )
-          .all(station.id);
-        const mechanics = await db
-          .prepare(
-            `SELECT m.id, m.first_name, m.last_name, ${mechanicSpec.select}
-             FROM mechanics m
-             ${mechanicSpec.join}
-             WHERE m.${mechanicStationColumn} = ?`
-          )
-          .all(station.id);
+        const services = serviceStationKey
+          ? await db
+              .prepare(
+                `SELECT id, name, ${servicePriceColumn} AS price, ${serviceDurationColumn} AS duration
+                 FROM services WHERE ${serviceStationKey} = ?`
+              )
+              .all(station.id)
+          : [];
+        const mechanics = mechanicStationKey
+          ? await db
+              .prepare(
+                `SELECT m.id, m.first_name, m.last_name, ${mechanicSpec.select}
+                 FROM mechanics m
+                 ${mechanicSpec.join}
+                 WHERE m.${mechanicStationKey} = ?`
+              )
+              .all(station.id)
+          : [];
         return { ...station, services, mechanics };
       })
     );
@@ -75,6 +94,20 @@ exports.getStationById = async (req, res) => {
       'service_station_id',
       'station_id',
     ]);
+    const serviceColumns = await db.prepare('PRAGMA table_info(services)').all();
+    const serviceColumnNames = new Set((serviceColumns || []).map((column) => column.name));
+    const mechanicColumns = await db.prepare('PRAGMA table_info(mechanics)').all();
+    const mechanicColumnNames = new Set((mechanicColumns || []).map((column) => column.name));
+    const serviceStationKey = serviceColumnNames.has(serviceStationColumn)
+      ? serviceStationColumn
+      : null;
+    const mechanicStationKey = mechanicColumnNames.has(mechanicStationColumn)
+      ? mechanicStationColumn
+      : null;
+    const servicePriceColumn = serviceColumnNames.has('base_price') ? 'base_price' : 'price';
+    const serviceDurationColumn = serviceColumnNames.has('duration_minutes')
+      ? 'duration_minutes'
+      : 'duration';
     const mechanicSpec = await getMechanicSpecializationConfig(db);
     const reviewStationColumn = await getExistingColumn('reviews', [
       'service_station_id',
@@ -86,17 +119,24 @@ exports.getStationById = async (req, res) => {
       return res.status(404).json({ message: 'СТО не знайдено' });
     }
 
-    const services = await db
-      .prepare(`SELECT id, name, price, duration FROM services WHERE ${serviceStationColumn} = ?`)
-      .all(id);
-    const mechanics = await db
-      .prepare(
-        `SELECT m.id, m.first_name, m.last_name, ${mechanicSpec.select}
-         FROM mechanics m
-         ${mechanicSpec.join}
-         WHERE m.${mechanicStationColumn} = ?`
-      )
-      .all(id);
+    const services = serviceStationKey
+      ? await db
+          .prepare(
+            `SELECT id, name, ${servicePriceColumn} AS price, ${serviceDurationColumn} AS duration
+             FROM services WHERE ${serviceStationKey} = ?`
+          )
+          .all(id)
+      : [];
+    const mechanics = mechanicStationKey
+      ? await db
+          .prepare(
+            `SELECT m.id, m.first_name, m.last_name, ${mechanicSpec.select}
+             FROM mechanics m
+             ${mechanicSpec.join}
+             WHERE m.${mechanicStationKey} = ?`
+          )
+          .all(id)
+      : [];
     const reviews = (
       await db
         .prepare(

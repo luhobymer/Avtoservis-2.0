@@ -9,9 +9,7 @@ const isPrivileged = (user) => {
 const normalizeIds = (value) => {
   if (!value) return [];
   const list = Array.isArray(value) ? value : [];
-  return Array.from(
-    new Set(list.map((v) => (v == null ? '' : String(v).trim())).filter(Boolean))
-  );
+  return Array.from(new Set(list.map((v) => (v == null ? '' : String(v).trim())).filter(Boolean)));
 };
 
 exports.attachServicedVehicles = async (req, res) => {
@@ -81,4 +79,3 @@ exports.attachServicedVehicles = async (req, res) => {
     return res.status(500).json({ message: 'Помилка сервера', details: err.message });
   }
 };
-

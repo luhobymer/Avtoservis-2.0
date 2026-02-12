@@ -19,7 +19,6 @@ import VehiclesManagement from '../components/admin/VehiclesManagement';
 import ServiceRecordsManagement from '../components/admin/ServiceRecordsManagement';
 import AppointmentsManagement from '../components/admin/AppointmentsManagement';
 import PartsManagement from '../components/admin/PartsManagement';
-import InsuranceManagement from '../components/admin/InsuranceManagement';
 
 const AdminPanel = () => {
   const { t } = useTranslation();
@@ -51,7 +50,6 @@ const AdminPanel = () => {
             <Tab label={t('admin.appointments')} id="tab-3" />
             <Tab label={t('admin.serviceRecords')} id="tab-4" />
             <Tab label={t('admin.parts')} id="tab-5" />
-            <Tab label={t('admin.insurance')} id="tab-6" />
           </Tabs>
         </Box>
         
@@ -78,10 +76,6 @@ const AdminPanel = () => {
         
         <div role="tabpanel" hidden={activeTab !== 5}>
           {activeTab === 5 && <PartsManagement />}
-        </div>
-        
-        <div role="tabpanel" hidden={activeTab !== 6}>
-          {activeTab === 6 && <InsuranceManagement />}
         </div>
       </Paper>
     </Container>

@@ -1,6 +1,9 @@
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || ''
+const resolveUrl = (url) => (url.startsWith('http') ? url : `${API_BASE_URL}${url}`)
+
 async function requestJson(url, options = {}, attemptRefresh = true) {
   const token = localStorage.getItem('auth_token')
-  const response = await fetch(url, {
+  const response = await fetch(resolveUrl(url), {
     method: options.method || 'GET',
     headers: {
       'Content-Type': 'application/json',
@@ -17,7 +20,7 @@ async function requestJson(url, options = {}, attemptRefresh = true) {
       if (!storedRefreshToken) {
         throw new Error('Refresh token missing')
       }
-      const refreshResponse = await fetch('/api/auth/refresh-token', {
+      const refreshResponse = await fetch(resolveUrl('/api/auth/refresh-token'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'

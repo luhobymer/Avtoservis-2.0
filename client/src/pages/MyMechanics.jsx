@@ -33,11 +33,14 @@ import {
 } from '@mui/icons-material';
 import useAuth from '../context/useAuth';
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+const resolveUrl = (url) => (url.startsWith('http') ? url : `${API_BASE_URL}${url}`);
+
 // Mock API calls (replace with real ones later or move to dao)
 const api = {
   getMyMechanics: async () => {
     const token = localStorage.getItem('auth_token');
-    const res = await fetch('/api/relationships/mechanics', {
+    const res = await fetch(resolveUrl('/api/relationships/mechanics'), {
       headers: { Authorization: `Bearer ${token}` }
     });
     return res.json();
@@ -48,14 +51,14 @@ const api = {
     if (city) params.append('city', city);
     if (name) params.append('name', name);
     
-    const res = await fetch(`/api/relationships/search-masters?${params.toString()}`, {
+    const res = await fetch(resolveUrl(`/api/relationships/search-masters?${params.toString()}`), {
       headers: { Authorization: `Bearer ${token}` }
     });
     return res.json();
   },
   inviteMechanic: async (mechanicId) => {
     const token = localStorage.getItem('auth_token');
-    const res = await fetch('/api/relationships/invite', {
+    const res = await fetch(resolveUrl('/api/relationships/invite'), {
       method: 'POST',
       headers: { 
         'Content-Type': 'application/json',

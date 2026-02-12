@@ -1,0 +1,8 @@
+name = "avtoservis-reminders-cron"
+main = "cron-worker.js"
+compatibility_date = "2025-01-01"
+crons = ["*/30 * * * *", "0 9 * * *"]
+
+[vars]
+API_BASE_URL = ""
+SERVER_API_KEY = ""

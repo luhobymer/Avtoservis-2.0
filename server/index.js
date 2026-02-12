@@ -25,6 +25,7 @@ const appointmentRoutes = require('./routes/appointments');
 const mechanicRoutes = require('./routes/mechanics');
 const vehicleRoutes = require('./routes/vehicles');
 const serviceRecordRoutes = require('./routes/serviceRecords');
+const reportRoutes = require('./routes/reports');
 const reminderRoutes = require('./routes/reminders');
 const notificationRoutes = require('./routes/notifications');
 const interactionRoutes = require('./routes/interactions');
@@ -37,6 +38,7 @@ const vehiclePartsRoutes = require('./routes/vehicleParts');
 const paymentsRoutes = require('./routes/payments');
 const ocrRoutes = require('./routes/ocr');
 const maintenanceRoutes = require('./routes/maintenance');
+const insuranceRoutes = require('./routes/insurance');
 const { getDb } = require('./db/d1');
 
 const app = express();
@@ -81,6 +83,7 @@ app.use('/api/appointments', appointmentRoutes);
 app.use('/api/mechanics', mechanicRoutes);
 app.use('/api/vehicles', vehicleRoutes);
 app.use('/api/service-records', serviceRecordRoutes);
+app.use('/api/reports', reportRoutes);
 app.use('/api/reminders', reminderRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/interactions', interactionRoutes);
@@ -93,6 +96,7 @@ app.use('/api/vehicle-parts', vehiclePartsRoutes);
 app.use('/api/payments', paymentsRoutes);
 app.use('/api/ocr', ocrRoutes);
 app.use('/api/maintenance', maintenanceRoutes);
+app.use('/api/insurance', insuranceRoutes);
 
 // Роут для Telegram-бота
 const telegramRoutes = require('./routes/telegram');

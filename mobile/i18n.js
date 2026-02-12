@@ -25,7 +25,11 @@ const loadSavedLanguage = async () => {
     }
     
     // Якщо збереженої мови немає, використовуємо мову пристрою
-    const deviceLang = Localization.locale.split('-')[0];
+    const locales = typeof Localization.getLocales === 'function' ? Localization.getLocales() : [];
+    const primaryLocale = locales[0];
+    const deviceLang =
+      primaryLocale?.languageCode ||
+      (primaryLocale?.languageTag ? primaryLocale.languageTag.split('-')[0] : null);
     console.log('Мова пристрою:', deviceLang);
     
     // Перевіряємо, чи підтримується мова пристрою

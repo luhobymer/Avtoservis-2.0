@@ -59,9 +59,7 @@ router.put(
   check('name', 'Name is required').optional(),
   check('email', 'Please include a valid email').optional().isEmail(),
   check('phone', 'Phone number is required').optional(),
-  check('role', 'Некоректна роль')
-    .optional()
-    .isIn(['client', 'master', 'mechanic']),
+  check('role', 'Некоректна роль').optional().isIn(['client', 'master', 'mechanic']),
   controllers.updateUserById
 );
 

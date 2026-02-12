@@ -35,14 +35,26 @@ const buildPriceList = () => {
     {
       category: 'Ремонтні роботи по двигуну',
       items: [
-        { name: 'Капітальний ремонт двигуна (01-07)', price_text: '10000 (без рем. ГБЦ)', price: 10000 },
+        {
+          name: 'Капітальний ремонт двигуна (01-07)',
+          price_text: '10000 (без рем. ГБЦ)',
+          price: 10000,
+        },
         { name: 'Капітальний ремонт двигуна (ДЕО, Шевроле …)', price_text: '15000', price: 15000 },
         { name: 'Капітальний ремонт двигуна (08-015)', price_text: '10000', price: 10000 },
         { name: 'Капітальний ремонт двигуна (VAG..)', price_text: 'від 15000-40000', price: 15000 },
         { name: 'Заміна подушки двигуна', price_text: 'від 350-2000', price: 350 },
         { name: 'Заміна ГРМ+ролік вкл. бенз. (08-015)', price_text: 'від 1000-1500', price: 1000 },
-        { name: 'Заміна ГРМ+ролік 16кл. бенз. (01-2170)', price_text: 'від 1800-2400', price: 1800 },
-        { name: 'Заміна ГРМ+ролік 8кл. бенз. (іномарки)', price_text: 'від 1900-2800', price: 1900 },
+        {
+          name: 'Заміна ГРМ+ролік 16кл. бенз. (01-2170)',
+          price_text: 'від 1800-2400',
+          price: 1800,
+        },
+        {
+          name: 'Заміна ГРМ+ролік 8кл. бенз. (іномарки)',
+          price_text: 'від 1900-2800',
+          price: 1900,
+        },
         { name: 'Заміна ГРМ+ролік V6 бенз.', price_text: 'від 4800-5800', price: 4800 },
         { name: 'Заміна ГРМ+ролік V8 бенз.', price_text: 'від 6500-7500', price: 6500 },
         { name: 'Заміна ГРМ+ролік 8кл. дизель', price_text: 'від 1800-2400', price: 1800 },
@@ -70,8 +82,16 @@ const buildPriceList = () => {
     {
       category: 'Система зчеплення',
       items: [
-        { name: 'Заміна зчеплення без зняття підрамника', price_text: 'від 1500-2500', price: 1500 },
-        { name: 'Заміна зчеплення зі зняттям підрамника', price_text: 'від 1500-2500 + підрамник', price: 1500 },
+        {
+          name: 'Заміна зчеплення без зняття підрамника',
+          price_text: 'від 1500-2500',
+          price: 1500,
+        },
+        {
+          name: 'Заміна зчеплення зі зняттям підрамника',
+          price_text: 'від 1500-2500 + підрамник',
+          price: 1500,
+        },
         { name: 'Заміна зчеплення на повному приводі', price_text: 'від 3000-5000', price: 3000 },
         { name: 'Заміна вінця', price_text: '+400 до заміни зчеплення' },
         { name: 'Заміна маховика', price_text: '+200 до заміни зчеплення' },
@@ -120,7 +140,11 @@ const buildPriceList = () => {
     {
       category: 'Система запалювання',
       items: [
-        { name: 'Заміна свічки запалювання', price_text: 'від 250-1000 (зі зняттям колектора)', price: 250 },
+        {
+          name: 'Заміна свічки запалювання',
+          price_text: 'від 250-1000 (зі зняттям колектора)',
+          price: 250,
+        },
         { name: 'Заміна котушки запалювання', price_text: 'від 250-1000', price: 250 },
         { name: 'Заміна ПВН', price_text: 'від 100-400', price: 100 },
         { name: 'Заміна модуля запалювання', price_text: 'від 200-600', price: 200 },
@@ -173,7 +197,12 @@ const buildPriceList = () => {
         { name: 'Заміна АКБ (під сидінням, в бампері)', price_text: '400', price: 400 },
         { name: 'Зарядка АКБ', price_text: '150', price: 150 },
         { name: 'Підйом машини на підйомнику', price_text: '100', price: 100 },
-        { name: 'Слюсарні роботи (погодинно)', price_text: 'від 300-800 грн/год', price: 300, ...hourly },
+        {
+          name: 'Слюсарні роботи (погодинно)',
+          price_text: 'від 300-800 грн/год',
+          price: 300,
+          ...hourly,
+        },
       ],
     },
   ];
@@ -231,13 +260,7 @@ async function seedPriceList(options = {}) {
         values.push(durationText);
       }
 
-      columns.push(
-        'is_active',
-        'service_station_id',
-        'category_id',
-        'created_at',
-        'updated_at'
-      );
+      columns.push('is_active', 'service_station_id', 'category_id', 'created_at', 'updated_at');
       values.push(1, stationId, categoryId, now, now);
 
       const placeholders = columns.map(() => '?').join(', ');

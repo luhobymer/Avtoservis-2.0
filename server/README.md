@@ -35,6 +35,8 @@ JWT_EXPIRES_IN=24h
 CLOUDFLARE_ACCOUNT_ID=your-cloudflare-account-id
 CLOUDFLARE_D1_DATABASE_ID=your-d1-database-id
 CLOUDFLARE_API_TOKEN=your-cloudflare-api-token
+# (опційно) окремий токен для D1
+CLOUDFLARE_API_TOKEN_D1=your-cloudflare-api-token
 
 # (опційно) Явний режим роботи з БД
 # D1_MODE=d1|fallback
@@ -43,6 +45,13 @@ CLOUDFLARE_API_TOKEN=your-cloudflare-api-token
 SERVER_API_KEY=your-shared-server-api-key
 
 CORS_ORIGIN=http://localhost:3000
+
+## Cloudflare R2
+R2_ACCESS_KEY_ID=
+R2_SECRET_ACCESS_KEY=
+R2_BUCKET=
+R2_ENDPOINT=
+R2_PUBLIC_BASE_URL=
 
 LOG_LEVEL=info
 LOG_FILE_ERROR=logs/error.log
@@ -75,6 +84,32 @@ npm run dev
 ```bash
 npm start
 ```
+
+## Деплой на Cloudflare (бекенд)
+
+### Швидкий варіант (Node-хостинг + Cloudflare DNS/Proxy)
+
+1. Запустити сервер на будь-якому Node-хостингу.
+2. Додати DNS запис `api.<ваш-домен>` у Cloudflare та ввімкнути proxy.
+3. Встановити змінні середовища:
+   - `NODE_ENV=production`
+   - `PORT=5001`
+   - `CORS_ORIGIN=https://<ваш-домен>`
+   - `APP_BASE_URL=https://<ваш-домен>`
+   - `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_D1_DATABASE_ID`
+   - `CLOUDFLARE_API_TOKEN` (або `CLOUDFLARE_API_TOKEN_D1`)
+4. Стартувати сервер: `npm start`
+
+### Повний Cloudflare стек (план)
+
+- Перенести завантаження файлів у Cloudflare R2.
+- Перенести планувальник нагадувань на Cloudflare Cron Triggers.
+- Переписати Express-роути під Workers-сумісний рантайм.
+
+### Cron для нагадувань
+
+- Ендпоінт: `POST /api/reminders/run-check`
+- Заголовок: `x-api-key: <SERVER_API_KEY>`
 
 ## API Endpoints
 

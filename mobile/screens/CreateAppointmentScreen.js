@@ -16,7 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Picker } from '@react-native-picker/picker';
 import { useAuth } from '../context/AuthContext';
 import { getUserVehicles } from '../api/vehiclesApi';
-import { createAppointment, getMyMechanics } from '../api/appointmentsService';
+import { createAppointment, listMyMechanics } from '../api/appointmentsService';
 import { getAllServices } from '../api/servicesApi';
 import { getMasterAvailability } from '../api/scheduleService';
 import { createAppointmentReminder } from '../api/notificationsService';
@@ -38,6 +38,19 @@ const filterServicesByType = (list, type) => {
   return list;
 };
 
+const getRelationshipStatusLabel = (status) => {
+  switch (status) {
+    case 'pending':
+      return 'Запрошено';
+    case 'accepted':
+      return 'Активний';
+    case 'rejected':
+      return 'Відхилено';
+    default:
+      return status || '';
+  }
+};
+
 export default function CreateAppointmentScreen({ navigation, route }) {
   const { t } = useTranslation();
   const { user, getToken } = useAuth();
@@ -52,7 +65,7 @@ export default function CreateAppointmentScreen({ navigation, route }) {
   const [formData, setFormData] = useState({
     vehicleVin: '',
     masterId: '',
-    serviceId: null,
+    serviceIds: [],
     serviceType: initialType,
     notes: '',
     appointmentDate: null,
@@ -88,11 +101,11 @@ export default function CreateAppointmentScreen({ navigation, route }) {
         const servicesData = await getAllServices();
         const normalizedServices = Array.isArray(servicesData) ? servicesData : [];
         setServices(normalizedServices);
-        if (normalizedServices.length > 0) {
-          const filtered = filterServicesByType(normalizedServices, initialType);
-          const firstService = (filtered.length > 0 ? filtered : normalizedServices)[0];
-          setFormData(prev => ({ ...prev, serviceId: firstService.id }));
-        }
+      if (normalizedServices.length > 0) {
+        const filtered = filterServicesByType(normalizedServices, initialType);
+        const firstService = (filtered.length > 0 ? filtered : normalizedServices)[0];
+        setFormData(prev => ({ ...prev, serviceIds: firstService ? [firstService.id] : [] }));
+      }
       } catch (error) {
         console.error('[CreateAppointmentScreen] Помилка при отриманні даних:', error);
         Alert.alert(t('common.error'), t('appointments.fetch_data_error'));
@@ -128,12 +141,12 @@ export default function CreateAppointmentScreen({ navigation, route }) {
     try {
       let mastersData = [];
       if (mastersMode === 'my') {
-         const myMechanics = await getMyMechanics(token);
+         const myMechanics = await listMyMechanics(token);
          // Filter by city if needed, or show all my mechanics
          mastersData = myMechanics.map(m => ({
            id: m.mechanic_id, // Note: response from getClientMechanics has mechanic_id
-           name: m.name || '',
-           specialization: 'Мій майстер', // Or fetch details
+           name: m.name || m.email || '',
+           specialization: getRelationshipStatusLabel(m.status),
            isMy: true
          }));
       } else {
@@ -208,6 +221,17 @@ export default function CreateAppointmentScreen({ navigation, route }) {
     }
   };
   
+  const toggleServiceSelection = (serviceId) => {
+    setFormData(prev => {
+      const id = String(serviceId);
+      const exists = (prev.serviceIds || []).map(String).includes(id);
+      const nextIds = exists
+        ? (prev.serviceIds || []).filter(sid => String(sid) !== id)
+        : [...(prev.serviceIds || []), serviceId];
+      return { ...prev, serviceIds: nextIds };
+    });
+  };
+  
   // Обробник відправки форми
   const handleSubmit = async () => {
     // Перевірка заповнення всіх полів
@@ -226,7 +250,7 @@ export default function CreateAppointmentScreen({ navigation, route }) {
       return;
     }
 
-    if (!formData.serviceId) {
+    if (!Array.isArray(formData.serviceIds) || formData.serviceIds.length === 0) {
       Alert.alert(t('common.error'), t('appointments.no_service_selected_error'));
       return;
     }
@@ -242,13 +266,18 @@ export default function CreateAppointmentScreen({ navigation, route }) {
       const appointmentDateTime = new Date(formData.appointmentDate);
       const [hours, minutes] = formData.appointmentTime.split(':');
       appointmentDateTime.setHours(parseInt(hours, 10), parseInt(minutes, 10));
+      const normalizedServiceIds = (formData.serviceIds || [])
+        .map(id => (id == null ? '' : String(id).trim()))
+        .filter(Boolean);
+      const primaryServiceId = normalizedServiceIds[0] || null;
       
       // Створюємо запис на ремонт
       const appointmentData = {
         user_id: user.id,
         vehicle_vin: formData.vehicleVin,
         mechanic_id: formData.masterId,
-        service_id: formData.serviceId,
+        service_id: primaryServiceId,
+        service_ids: normalizedServiceIds,
         service_type: formData.serviceType,
         notes: formData.notes,
         scheduled_time: appointmentDateTime.toISOString(),
@@ -297,7 +326,9 @@ export default function CreateAppointmentScreen({ navigation, route }) {
   };
 
   const availableServices = filterServicesByType(services, initialType);
-  const selectedService = availableServices.find(s => s.id === formData.serviceId) || null;
+  const selectedServices = availableServices.filter(s => (formData.serviceIds || []).map(String).includes(String(s.id)));
+  const totalPrice = selectedServices.reduce((sum, s) => sum + (Number(s.price) || 0), 0);
+  const totalDuration = selectedServices.reduce((sum, s) => sum + (Number(s.duration) || 0), 0);
   
   if (loading) {
     return (
@@ -352,40 +383,49 @@ export default function CreateAppointmentScreen({ navigation, route }) {
           
           <Text style={styles.sectionTitle}>{t('appointments.service_info')}</Text>
           
-          <View style={styles.pickerContainer}>
-            <Picker
-              selectedValue={formData.serviceId}
-              onValueChange={(value) => handleChange('serviceId', value)}
-              mode="dropdown"
-              style={styles.picker}
-            >
-              {availableServices.length === 0 && (
-                <Picker.Item
-                  label={t('appointments.no_services')}
-                  value={null}
-                  enabled={false}
-                />
-              )}
-              {availableServices.map(service => (
-                <Picker.Item
-                  key={service.id}
-                  label={service.name}
-                  value={service.id}
-                />
-              ))}
-            </Picker>
+          <View style={styles.servicesList}>
+            {availableServices.length === 0 ? (
+              <Text style={styles.noItemsText}>{t('appointments.no_services')}</Text>
+            ) : (
+              availableServices.map(service => {
+                const selected = (formData.serviceIds || []).map(String).includes(String(service.id));
+                return (
+                  <TouchableOpacity
+                    key={service.id}
+                    style={[styles.serviceItem, selected && styles.serviceItemSelected]}
+                    onPress={() => toggleServiceSelection(service.id)}
+                  >
+                    <View style={styles.serviceItemHeader}>
+                      <Text style={styles.serviceName}>{service.name}</Text>
+                      {selected && <Ionicons name="checkmark-circle" size={20} color="#4caf50" />}
+                    </View>
+                    {service.price != null && (
+                      <Text style={styles.serviceMeta}>
+                        {t('appointments.service_price')}: {service.price}
+                      </Text>
+                    )}
+                    {service.duration != null && (
+                      <Text style={styles.serviceMeta}>
+                        {t('appointments.service_duration')}: {service.duration} {t('appointments.minutes_short')}
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                );
+              })
+            )}
           </View>
 
-          {selectedService && (
+          {selectedServices.length > 0 && (
             <View style={styles.serviceDetailsContainer}>
-              {selectedService.price != null && (
+              <Text style={styles.serviceDetailsText}>
+                {t('appointments.selected_count', 'Вибрано')}: {selectedServices.length}
+              </Text>
+              <Text style={styles.serviceDetailsText}>
+                {t('appointments.total_price', 'Сума')}: {totalPrice}
+              </Text>
+              {Number.isFinite(totalDuration) && totalDuration > 0 && (
                 <Text style={styles.serviceDetailsText}>
-                  {t('appointments.service_price')}: {selectedService.price}
-                </Text>
-              )}
-              {selectedService.duration != null && (
-                <Text style={styles.serviceDetailsText}>
-                  {t('appointments.service_duration')}: {selectedService.duration} {t('appointments.minutes_short')}
+                  {t('appointments.total_duration', 'Тривалість')}: {totalDuration} {t('appointments.minutes_short')}
                 </Text>
               )}
             </View>
@@ -435,13 +475,16 @@ export default function CreateAppointmentScreen({ navigation, route }) {
                   enabled={false}
                 />
               )}
-              {masters.map(master => (
+          {masters.map(master => {
+            const suffix = master.specialization ? ` (${master.specialization})` : '';
+            return (
                 <Picker.Item 
                   key={master.id} 
-                  label={`${master.name} (${master.specialization})`} 
+              label={`${master.name}${suffix}`} 
                   value={master.id} 
                 />
-              ))}
+            );
+          })}
             </Picker>
           </View>
           
@@ -581,6 +624,41 @@ const styles = StyleSheet.create({
   serviceDetailsText: {
     fontSize: 14,
     color: '#424242',
+  },
+  servicesList: {
+    marginBottom: 8,
+  },
+  noItemsText: {
+    fontSize: 14,
+    color: '#757575',
+    padding: 8,
+  },
+  serviceItem: {
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 8,
+    backgroundColor: '#f5f5f5',
+  },
+  serviceItemSelected: {
+    borderColor: '#4caf50',
+    backgroundColor: '#e8f5e9',
+  },
+  serviceItemHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  serviceName: {
+    fontSize: 16,
+    color: '#212121',
+    fontWeight: '500',
+  },
+  serviceMeta: {
+    fontSize: 13,
+    color: '#616161',
   },
   masterModeContainer: {
     flexDirection: 'row',

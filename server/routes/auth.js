@@ -34,6 +34,8 @@ const passwordResetLimiter = rateLimit({
 });
 
 router.post('/login', loginLimiter, authController.login);
+router.post('/google', loginLimiter, authController.googleLogin);
+router.post('/google/complete-profile', auth, authController.completeGoogleProfile);
 router.post('/register', loginLimiter, authController.register);
 router.post('/verify-email', loginLimiter, authController.verifyEmail);
 router.post('/refresh-token', refreshLimiter, authController.refreshToken);

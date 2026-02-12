@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/useAuth';
 import * as vehiclePartsDao from '../api/dao/vehiclePartsDao';
@@ -23,7 +24,6 @@ import {
   DialogContent,
   DialogActions,
   LinearProgress,
-  TextField,
   FormControl,
   InputLabel,
   Select,
@@ -33,9 +33,13 @@ import { format } from 'date-fns';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import AddPhotoAlternateIcon from '@mui/icons-material/AddPhotoAlternate';
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+const resolveUrl = (url) => (url.startsWith('http') ? url : `${API_BASE_URL}${url}`);
+
 const MyParts = () => {
   const { t } = useTranslation();
   const { user } = useAuth();
+  const routeParams = useParams();
   const [parts, setParts] = useState([]);
   const [vehicles, setVehicles] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -68,6 +72,20 @@ const MyParts = () => {
     fetchParts();
   }, [fetchParts]);
 
+  const queryParams = new URLSearchParams(window.location.search);
+  const vehicleIdParam = queryParams.get('vehicleId') || routeParams?.id;
+  const isTabMode = window.location.pathname.includes('/vehicles/');
+
+  useEffect(() => {
+    if (!isTabMode || !vehicleIdParam || vehicles.length === 0) return;
+    const match = vehicles.find(
+      (v) => String(v.id) === String(vehicleIdParam) || String(v.vin) === String(vehicleIdParam)
+    );
+    if (match?.vin && match.vin !== selectedVehicleVin) {
+      setSelectedVehicleVin(match.vin);
+    }
+  }, [isTabMode, vehicleIdParam, vehicles, selectedVehicleVin]);
+
   const handleImageUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -80,7 +98,7 @@ const MyParts = () => {
 
     try {
       const token = localStorage.getItem('auth_token');
-      const response = await fetch('/api/ocr/parse', {
+      const response = await fetch(resolveUrl('/api/ocr/parse'), {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`
@@ -111,7 +129,7 @@ const MyParts = () => {
         await vehiclePartsDao.createPart({
           vehicle_vin: selectedVehicleVin,
           name: part.name || t('parts.unnamed_part'),
-          part_number: part.partNumber || '',
+          part_number: part.part_number || part.partNumber || '',
           price: parseFloat(part.price) || 0,
           quantity: parseFloat(part.quantity) || 1,
           purchased_by: 'owner', // Default to owner since user is adding it
@@ -140,22 +158,14 @@ const MyParts = () => {
     );
   }
 
-  // Якщо компонент використовується як вкладка (є vehicleId в пропсах або URL)
-  const queryParams = new URLSearchParams(window.location.search);
-  const vehicleIdParam = queryParams.get('vehicleId');
-  const isTabMode = window.location.pathname.includes('/vehicles/');
-
   if (isTabMode) {
-    const vehicleParts = parts.filter(p => {
-        // Тут треба знайти VIN за ID, якщо передано ID
-        // Але оскільки parts вже мають make/model, нам треба перевірити відповідність
-        // Простіше фільтрувати за VIN, якщо він є у батьківського компонента
-        // Або якщо vehicleIdParam співпадає з vehicle.id
-        // Поки що просто фільтруємо за VIN, який маємо з vehicle list
-        const v = vehicles.find(v => v.id === vehicleIdParam);
-        if (v) return p.vehicle_vin === v.vin;
-        return true; 
-    });
+    const match = vehicles.find(
+      (v) => String(v.id) === String(vehicleIdParam) || String(v.vin) === String(vehicleIdParam)
+    );
+    const targetVin = match?.vin || selectedVehicleVin;
+    const vehicleParts = targetVin
+      ? parts.filter((p) => p.vehicle_vin === targetVin)
+      : parts;
 
     return (
       <Box sx={{ mt: 2 }}>

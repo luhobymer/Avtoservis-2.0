@@ -1,6 +1,9 @@
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+const resolveUrl = (url) => (url.startsWith('http') ? url : `${API_BASE_URL}${url}`);
+
 async function requestJson(url, options = {}) {
   const token = localStorage.getItem('auth_token');
-  const response = await fetch(url, {
+  const response = await fetch(resolveUrl(url), {
     method: options.method || 'GET',
     headers: {
       'Content-Type': 'application/json',
@@ -95,9 +98,17 @@ export async function listAdmin() {
   return rows.map(mapServiceRecord);
 }
 
-export async function listForUser(userId) {
+export async function listForUser(userId, options = {}) {
   if (!userId) return [];
-  const payload = await requestJson(`/api/service-records?user_id=${encodeURIComponent(userId)}`);
+  const params = new URLSearchParams();
+  params.set('user_id', encodeURIComponent(userId));
+  if (options.vehicleId) {
+    params.set('vehicle_id', options.vehicleId);
+  }
+  if (options.vehicleVin) {
+    params.set('vehicle_vin', options.vehicleVin);
+  }
+  const payload = await requestJson(`/api/service-records?${params.toString()}`);
   const rows = normalizeListPayload(payload);
   return rows.map(mapServiceRecord);
 }

@@ -12,4 +12,3 @@ router.put('/:id', auth, checkAdmin, partsController.updatePart);
 router.delete('/:id', auth, checkAdmin, partsController.deletePart);
 
 module.exports = router;
-

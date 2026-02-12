@@ -1,5 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, Image, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
+import * as WebBrowser from 'expo-web-browser';
+import * as Google from 'expo-auth-session/providers/google';
+import Constants from 'expo-constants';
+
+WebBrowser.maybeCompleteAuthSession();
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import { useNavigation } from '@react-navigation/native';
@@ -7,12 +12,61 @@ import CustomButton from '../components/CustomButton';
 
 export default function LoginScreen() {
   const { t } = useTranslation();
-  const { login, error, loading } = useAuth();
+  const { login, googleLogin, error, loading } = useAuth();
   const navigation = useNavigation();
   const [email, setEmail] = useState('');
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [localError, setLocalError] = useState(null);
+
+  const googleConfig = Constants?.expoConfig?.extra || Constants?.manifest?.extra || {};
+  const googleClientId =
+    googleConfig.GOOGLE_WEB_CLIENT_ID ||
+    googleConfig.GOOGLE_CLIENT_ID ||
+    '';
+  const googleIosClientId = googleConfig.GOOGLE_IOS_CLIENT_ID || '';
+  const googleAndroidClientId = googleConfig.GOOGLE_ANDROID_CLIENT_ID || '';
+  const platform = Platform.OS;
+  const resolvedWebClientId = platform === 'web' ? googleClientId : '';
+  const resolvedIosClientId = platform === 'ios' ? googleIosClientId : '';
+  const resolvedAndroidClientId = platform === 'android' ? googleAndroidClientId : '';
+
+  const hasGoogleClient =
+    platform === 'web'
+      ? Boolean(resolvedWebClientId)
+      : platform === 'ios'
+        ? Boolean(resolvedIosClientId)
+        : platform === 'android'
+          ? Boolean(resolvedAndroidClientId)
+          : false;
+
+  const [request, response, promptAsync] = Google.useAuthRequest({
+    webClientId: resolvedWebClientId || undefined,
+    iosClientId: resolvedIosClientId || undefined,
+    androidClientId: resolvedAndroidClientId || undefined,
+    responseType: 'id_token',
+    scopes: ['profile', 'email'],
+  });
+
+  useEffect(() => {
+    if (response?.type !== 'success') return;
+    const idToken =
+      response?.authentication?.idToken ||
+      response?.params?.id_token ||
+      null;
+    if (!idToken) {
+      setLocalError(t('auth.login_failed'));
+      return;
+    }
+    const run = async () => {
+      const success = await googleLogin(idToken);
+      if (!success && error) {
+        setLocalError(error);
+        Alert.alert(t('auth.login_failed'), error);
+      }
+    };
+    run();
+  }, [response, googleLogin, error, t]);
 
   // Очищаємо локальну помилку при зміні полів вводу
   useEffect(() => {
@@ -102,6 +156,16 @@ export default function LoginScreen() {
           >
             {loading && <ActivityIndicator color="#fff" />}
           </CustomButton>
+
+          {hasGoogleClient && (
+            <CustomButton
+              title={t('auth.google_login') || 'Увійти через Google'}
+              onPress={() => promptAsync()}
+              style={styles.googleButton}
+              textStyle={styles.googleButtonText}
+              disabled={!request}
+            />
+          )}
           
           {/* Посилання на реєстрацію */}
           <TouchableOpacity 
@@ -157,6 +221,18 @@ const styles = StyleSheet.create({
     backgroundColor: '#1976d2',
     borderRadius: 8,
     marginTop: 10
+  },
+  googleButton: {
+    width: '100%',
+    height: 50,
+    backgroundColor: '#ffffff',
+    borderRadius: 8,
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: '#dadce0'
+  },
+  googleButtonText: {
+    color: '#1f1f1f'
   },
   errorContainer: {
     width: '100%',

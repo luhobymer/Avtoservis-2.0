@@ -22,7 +22,7 @@ async function resolveCurrentMechanic(user, options = {}) {
   let phone = user?.phone ? String(user.phone).trim() : '';
   let displayName = user?.name ? String(user.name).trim() : '';
 
-  if ((!email && !phone) && userId) {
+  if (!email && !phone && userId) {
     const row = await db
       .prepare('SELECT email, phone, name FROM users WHERE id = ? LIMIT 1')
       .get(userId);
@@ -81,9 +81,7 @@ async function resolveCurrentMechanic(user, options = {}) {
     .run(...insertValues);
 
   if (options.enableAllServices) {
-    const rows = await db
-      .prepare('SELECT id FROM services WHERE COALESCE(is_active, 1) = 1')
-      .all();
+    const rows = await db.prepare('SELECT id FROM services WHERE COALESCE(is_active, 1) = 1').all();
     const serviceIds = (rows || []).map((r) => r.id).filter(Boolean);
     for (const sid of serviceIds) {
       await db
@@ -103,4 +101,3 @@ async function resolveCurrentMechanic(user, options = {}) {
 }
 
 module.exports = { resolveCurrentMechanic };
-
