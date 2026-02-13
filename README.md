@@ -20,13 +20,13 @@ npm run dev:full
 
 Клієнт: `http://127.0.0.1:5173`
 
-## Деплой на Cloudflare (план)
+## Деплой (поточний підхід)
 
 ### 1) Підготовка інфраструктури
 
 - Створити акаунт Cloudflare та під’єднати домен.
 - Створити D1 базу для продакшну.
-- Підготувати окремий API токен з доступом до D1.
+- Підготувати API токен з доступом до Pages, Workers, D1, R2 та DNS (якщо домен в Cloudflare).
 
 ### 2) Фронтенд (Cloudflare Pages)
 
@@ -35,6 +35,12 @@ npm run dev:full
 - Build output: `dist`
 - Environment variables:
   - `VITE_API_BASE_URL=https://api.<ваш-домен>` (URL бекенда)
+
+#### Деплой через Wrangler
+```bash
+npx wrangler pages project list
+npx wrangler pages deploy client/dist --project-name <pages-project>
+```
 
 ### 3) Бекенд (Express)
 
@@ -63,6 +69,24 @@ npm run dev:full
 **Статус:**
 - Вже додано R2-завантаження в бекенд.
 - Додано захищений ендпоінт `/api/reminders/run-check` під Cron.
+
+### 4) Cron для нагадувань (Workers)
+У папці `cloudflare/` є worker для запуску `/api/reminders/run-check`.
+
+1) Заповнити змінні в `cloudflare/wrangler.toml`:
+- `API_BASE_URL=https://api.<ваш-домен>`
+- `SERVER_API_KEY=<ваш-ключ>`
+
+2) Деплой:
+```bash
+cd cloudflare
+npx wrangler deploy
+```
+
+### 5) План міграції на Render
+Детальний чекліст: [docs/DEPLOY_RENDER_PLAN.md](./docs/DEPLOY_RENDER_PLAN.md)
+Blueprint для Render: [render.yaml](./render.yaml)
+Поточний статус: бекенд вже на Render, бот буде розгорнуто пізніше на іншому хостингу.
 
 ## Прайс послуг
 

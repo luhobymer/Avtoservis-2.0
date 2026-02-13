@@ -60,10 +60,9 @@ if (!config.telegramToken) {
   process.exit(1);
 }
 
-// Якщо режим не polling — не запускаємо цей процес, щоб не дублювати відповіді з webhook-сервером
+// Якщо режим не polling — не запускаємо polling, але залишаємо ініціалізацію бота для webhook
 if (BOT_MODE !== 'polling') {
-  console.warn(`BOT_MODE='${BOT_MODE}' — bot.js не запускає polling. Використовуйте webhook.js для режиму webhook.`);
-  process.exit(0);
+  console.warn(`BOT_MODE='${BOT_MODE}' — polling вимкнено. Використовуйте webhook.js для режиму webhook.`);
 }
 
 // Ініціалізація бота (без миттєвого старту polling)
@@ -77,19 +76,21 @@ const bot = new TelegramBot(config.telegramToken, {
 });
 
 // Видаляємо вебхук та явно запускаємо polling
-(async () => {
-  try {
-    await bot.deleteWebHook({ drop_pending_updates: true });
-    await bot.startPolling({
-      timeout: 30,
-      params: { timeout: 30 }
-    });
-    logger.info('✅ Webhook видалено. Polling запущено.');
-  } catch (e) {
-    logger.error('❌ Не вдалося запустити polling після видалення вебхука:', e);
-    process.exit(1);
-  }
-})();
+if (BOT_MODE === 'polling') {
+  (async () => {
+    try {
+      await bot.deleteWebHook({ drop_pending_updates: true });
+      await bot.startPolling({
+        timeout: 30,
+        params: { timeout: 30 }
+      });
+      logger.info('✅ Webhook видалено. Polling запущено.');
+    } catch (e) {
+      logger.error('❌ Не вдалося запустити polling після видалення вебхука:', e);
+      process.exit(1);
+    }
+  })();
+}
 
 // Ініціалізація API клієнта
 const apiClient = axios.create({
@@ -2133,3 +2134,5 @@ function normalizePhone(phone) {
   
   return clean;
 }
+
+module.exports = { bot, config, logger };

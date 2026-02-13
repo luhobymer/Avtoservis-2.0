@@ -1,0 +1,63 @@
+services:
+  - type: web
+    name: avtoservis-server
+    env: node
+    rootDir: server
+    buildCommand: npm install
+    startCommand: npm start
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "5001"
+      - key: JWT_SECRET
+        sync: false
+      - key: JWT_EXPIRES_IN
+        sync: false
+      - key: SERVER_API_KEY
+        sync: false
+      - key: APP_BASE_URL
+        sync: false
+      - key: CORS_ORIGIN
+        sync: false
+      - key: CLOUDFLARE_ACCOUNT_ID
+        sync: false
+      - key: CLOUDFLARE_API_TOKEN
+        sync: false
+      - key: CLOUDFLARE_D1_DATABASE_ID
+        sync: false
+      - key: CLOUDFLARE_D1_DATABASE_ID_REGISTRY
+        sync: false
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: R2_BUCKET
+        sync: false
+      - key: R2_ENDPOINT
+        sync: false
+      - key: R2_PUBLIC_BASE_URL
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+  - type: web
+    name: avtoservis-telegram-bot
+    env: node
+    rootDir: telegram-bot
+    buildCommand: npm install
+    startCommand: npm run start:webhook
+    autoDeploy: true
+    envVars:
+      - key: BOT_MODE
+        value: webhook
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: SERVER_API_URL
+        sync: false
+      - key: SERVER_API_KEY
+        sync: false
+      - key: WEBHOOK_URL
+        sync: false
+      - key: WEBHOOK_SECRET
+        sync: false

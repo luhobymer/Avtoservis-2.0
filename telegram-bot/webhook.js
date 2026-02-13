@@ -1,9 +1,9 @@
 const express = require('express');
-const TelegramBot = require('node-telegram-bot-api');
 const path = require('path');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 require('dotenv').config();
+const { bot } = require('./bot');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -24,16 +24,9 @@ if (BOT_MODE !== 'webhook') {
 }
 
 // Налаштування бота з вебхуком (тільки в режимі webhook)
-let bot = null;
 const WEBHOOK_URL = process.env.WEBHOOK_URL || `https://your-domain.com/telegram`;
 const webhookPath = `/webhook/${WEBHOOK_SECRET}`;
 if (BOT_MODE === 'webhook') {
-  const token = process.env.TELEGRAM_BOT_TOKEN;
-  // Валідaція налаштувань вебхука
-  if (!token) {
-    console.error('❌ TELEGRAM_BOT_TOKEN не задано. Завершення роботи.');
-    process.exit(1);
-  }
   if (!WEBHOOK_URL || !/^https:\/\//i.test(WEBHOOK_URL)) {
     console.error('❌ WEBHOOK_URL має бути публічним HTTPS-URL. Напр.: https://bot.example.com/telegram');
     process.exit(1);
@@ -42,10 +35,10 @@ if (BOT_MODE === 'webhook') {
     console.error('❌ WEBHOOK_SECRET має бути нестандартним та складним. Задайте змінну середовища.');
     process.exit(1);
   }
-
-  bot = new TelegramBot(token, {
-    webHook: { port: PORT }
-  });
+  if (!bot) {
+    console.error('❌ Bot не ініціалізовано. Перевірте TELEGRAM_BOT_TOKEN і конфігурацію.');
+    process.exit(1);
+  }
   bot.setWebHook(`${WEBHOOK_URL}${webhookPath}`, { drop_pending_updates: true });
 }
 
