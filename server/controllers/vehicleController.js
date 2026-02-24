@@ -1,5 +1,5 @@
 const crypto = require('crypto');
-const { getDb } = require('../db/d1');
+const { getDb, getExistingColumn } = require('../db/d1');
 const defaultMaintenanceTasks = require('../utils/defaultMaintenance');
 
 const normalizeLicensePlate = (input) => {
@@ -274,7 +274,6 @@ exports.getVehicleByVin = async (req, res) => {
     if (!userId) {
       return res.status(401).json({ msg: 'Unauthorized' });
     }
-
     const role = String(req.user?.role || '').toLowerCase();
     const isMaster = ['master', 'mechanic', 'admin'].includes(role);
 
@@ -376,6 +375,9 @@ exports.addVehicle = async (req, res) => {
       return res.status(401).json({ msg: 'Unauthorized' });
     }
 
+    const role = String(req.user?.role || '').toLowerCase();
+    const canAssignOwner = ['master', 'mechanic', 'admin'].includes(role);
+
     const {
       vin,
       make,
@@ -388,6 +390,7 @@ exports.addVehicle = async (req, res) => {
       licensePlate,
       registration_number,
       photoUrl,
+      user_id,
     } = req.body || {};
 
     const normalizedPlate = normalizeLicensePlate(
@@ -397,9 +400,11 @@ exports.addVehicle = async (req, res) => {
     const db = await getDb();
     const { columnNames, makeColumn, licenseColumn } = await getVehicleColumnInfo(db);
 
+    const ownerId = canAssignOwner && user_id ? user_id : userId;
+
     const exists = await db
       .prepare('SELECT id FROM vehicles WHERE vin = ? AND user_id = ? LIMIT 1')
-      .get(vin, userId);
+      .get(vin, ownerId);
 
     if (exists) {
       return res.status(400).json({ message: 'Автомобіль з таким VIN вже існує' });
@@ -410,7 +415,7 @@ exports.addVehicle = async (req, res) => {
 
     const row = {
       id: vehicleId,
-      user_id: userId,
+      user_id: ownerId,
       vin,
       [makeColumn]: make || brand || null,
       model: model || null,
@@ -467,9 +472,98 @@ exports.addVehicle = async (req, res) => {
       // Не перериваємо створення авто, якщо не вдалося створити регламент
     }
 
+  // Якщо авто додає майстер/механік — автоматично:
+  // 1) створюємо зв'язок майстер↔клієнт (accepted) якщо його немає
+  // 2) додаємо авто до обслуговуваних цього майстра
+  if (canAssignOwner && ownerId && ownerId !== userId) {
+    try {
+      // client_mechanics: accepted
+      const existingRel = await db
+        .prepare(
+          'SELECT id, status FROM client_mechanics WHERE client_id = ? AND mechanic_id = ?'
+        )
+        .get(ownerId, userId);
+      if (existingRel) {
+        if (existingRel.status !== 'accepted') {
+          await db
+            .prepare(
+              "UPDATE client_mechanics SET status = 'accepted', updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+            )
+            .run(existingRel.id);
+        }
+      } else {
+        await db
+          .prepare(
+            "INSERT INTO client_mechanics (id, client_id, mechanic_id, status, created_at, updated_at) VALUES (?, ?, ?, 'accepted', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+          )
+          .run(crypto.randomUUID(), ownerId, userId);
+      }
+
+      // mechanic_serviced_vehicles: attach
+      const existingSvc = await db
+        .prepare(
+          'SELECT id FROM mechanic_serviced_vehicles WHERE mechanic_id = ? AND vehicle_id = ?'
+        )
+        .get(userId, vehicleId);
+      if (existingSvc?.id) {
+        await db
+          .prepare('UPDATE mechanic_serviced_vehicles SET updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+          .run(existingSvc.id);
+      } else {
+        await db
+          .prepare(
+            'INSERT INTO mechanic_serviced_vehicles (id, mechanic_id, vehicle_id, client_id, created_at, updated_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)'
+          )
+          .run(crypto.randomUUID(), userId, vehicleId, ownerId);
+      }
+
+      // notifications: inform both parties
+      try {
+        const readCol = await getExistingColumn('notifications', ['is_read', 'read']);
+        const nowIso = new Date().toISOString();
+        await db
+          .prepare(
+            `INSERT INTO notifications (id, user_id, title, message, type, status, scheduled_for, data, ${readCol}, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          )
+          .run(
+            crypto.randomUUID(),
+            ownerId,
+            'Додано авто',
+            `Ваше авто додано: ${make || brand || ''} ${model || ''} (${normalizedPlate || vin})`,
+            'vehicle',
+            'info',
+            null,
+            JSON.stringify({ vehicle_id: vehicleId, vin, license_plate: normalizedPlate }),
+            0,
+            nowIso
+          );
+        await db
+          .prepare(
+            `INSERT INTO notifications (id, user_id, title, message, type, status, scheduled_for, data, ${readCol}, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          )
+          .run(
+            crypto.randomUUID(),
+            userId,
+            'Новий обслуговуваний автомобіль',
+            `Додано обслуговуваний: ${make || brand || ''} ${model || ''} (${normalizedPlate || vin})`,
+            'vehicle',
+            'info',
+            null,
+            JSON.stringify({ vehicle_id: vehicleId, vin, license_plate: normalizedPlate, client_id: ownerId }),
+            0,
+            nowIso
+          );
+      } catch (_) {}
+    } catch (linkErr) {
+      console.error('Авто-створення зв’язків майстер↔клієнт/авто:', linkErr);
+    }
+  }
+
     const created = await db
       .prepare('SELECT * FROM vehicles WHERE vin = ? AND user_id = ?')
-      .get(vin, userId);
+      .get(vin, ownerId);
 
     const createdPhoto = await db
       .prepare(

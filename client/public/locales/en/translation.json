@@ -36,6 +36,15 @@
     "saved": "Saved",
     "complete": "Complete"
   },
+  "relationships": {
+    "client_connected": "Client has been added to your clients",
+    "client_already_connected": "Client is already connected"
+  },
+  "vehicles": {
+    "serviced": "Serviced",
+    "owned": "My vehicles",
+    "add_success": "Vehicle added successfully"
+  },
   "auth": {
     "login": "Login",
     "register": "Register",
@@ -126,6 +135,7 @@
     "invalid_license_plate": "Invalid license plate format",
     "invalid_engine_volume": "Invalid engine volume",
     "invalid_mileage": "Invalid mileage",
+    "mileage_lower_than_current": "Mileage cannot be lower than the current value",
     "vin_format": "Enter 17 characters",
     "license_plate_format": "Example: AA1234AA",
     "engine_volume_format": "Example: 2.0",
@@ -171,6 +181,7 @@
     "title": "My Vehicles",
     "add": "Add Vehicle",
     "uploadPhoto": "Upload Photo",
+    "photoUploadFailed": "Failed to upload photo",
     "make": "Make",
     "model": "Model",
     "year": "Year",

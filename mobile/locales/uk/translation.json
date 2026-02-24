@@ -40,7 +40,17 @@
     "select_option": "Оберіть опцію...",
     "view_all": "Дивитись все",
     "hours": "год",
-    "minutes": "хв"
+    "minutes": "хв",
+    "actions": "Дії",
+    "name": "Ім'я",
+    "email": "Email",
+    "phone": "Телефон",
+    "all_masters": "Всі майстри",
+    "my_masters": "Мої майстри",
+    "reject": "Відхилити",
+    "accept": "Прийняти",
+    "all": "Всі",
+    "saving": "Збереження..."
   },
   "dashboard": {
     "title": "Панель керування",
@@ -112,11 +122,13 @@
     "invalid_email": "Невірний формат email",
     "invalid_email_or_phone": "Невірний email або телефон",
     "invalid_phone": "Невірний формат телефону",
+    "password_min_length": "Пароль має містити щонайменше 6 символів",
     "required_field": "Це поле обов'язкове",
     "invalid_vin": "Невірний формат VIN-коду",
     "invalid_license_plate": "Невірний формат державного номера",
     "invalid_engine_volume": "Об'єм двигуна має бути від 0.1 до 10.0 літрів",
     "invalid_mileage": "Пробіг має бути від 0 до 1 000 000 км",
+    "mileage_lower_than_current": "Пробіг не може бути меншим за поточний",
     "vin_format": "VIN повинен містити 17 символів (літери та цифри)",
     "license_plate_format": "Формат: АА1234ББ",
     "engine_volume_format": "Введіть об'єм в літрах (напр., 2.0)",
@@ -125,7 +137,8 @@
     "please_select_model": "Будь ласка, оберіть модель автомобіля",
     "please_select_year": "Будь ласка, оберіть рік випуску",
     "please_select_color": "Будь ласка, оберіть колір автомобіля",
-    "invalid_year": "Невірний рік випуску"
+    "invalid_year": "Невірний рік випуску",
+    "enter_license_plate": "Введіть номерний знак"
   },
   "vehicles": {
     "title": "Мої автомобілі",
@@ -146,6 +159,20 @@
     "license_plate_description": "Сфотографуйте номерний знак для автоматичного розпізнавання",
     "add_license_plate": "Додати фото номерного знаку",
     "color": "Колір",
+    "colors": {
+      "black": "Чорний",
+      "white": "Білий",
+      "gray": "Сірий",
+      "silver": "Сріблястий",
+      "red": "Червоний",
+      "blue": "Синій",
+      "green": "Зелений",
+      "yellow": "Жовтий",
+      "brown": "Коричневий",
+      "orange": "Помаранчевий",
+      "purple": "Фіолетовий",
+      "beige": "Бежевий"
+    },
     "engine_type": "Тип двигуна",
     "engine_capacity": "Об'єм двигуна",
     "power": "Потужність",
@@ -167,8 +194,18 @@
     "edit_success": "Автомобіль успішно оновлено",
     "delete_success": "Автомобіль успішно видалено",
     "delete_confirm": "Ви впевнені, що хочете видалити цей автомобіль?",
+    "delete_title": "Видалити автомобіль",
+    "delete_error": "Помилка видалення автомобіля",
     "no_vehicles": "У вас ще немає автомобілів",
     "add_first": "Додайте свій перший автомобіль",
+    "found_success": "Автомобіль знайдено",
+    "not_found": "Автомобіль не знайдено",
+    "lookup_error": "Помилка пошуку автомобіля",
+    "photo_error": "Помилка завантаження фото автомобіля",
+    "owner": "Власник",
+    "select_owner": "Оберіть власника",
+    "select_engine_type": "Оберіть тип двигуна",
+    "select_transmission": "Оберіть трансмісію",
     "scan_document": "Сканувати документ",
     "take_photo": "Зробити фото",
     "pick_from_gallery": "Вибрати з галереї",
@@ -240,7 +277,11 @@
     "export": "Експорт",
     "no_records": "Немає записів сервісу",
     "select_vehicle": "Оберіть автомобіль",
-    "add_record": "Додати запис до сервісної книги"
+    "add_record": "Додати запис до сервісної книги",
+    "fetch_error": "Помилка завантаження сервісної книги",
+    "export_error": "Помилка експорту сервісної книги",
+    "export_dialog_title": "Експорт сервісної книги",
+    "parts": "Запчастини"
   },
   "service_records": {
     "title": "Записи сервісу",
@@ -253,7 +294,25 @@
     "description": "Опис",
     "add_photo": "Додати фото",
     "mileage": "Пробіг",
-    "details": "Деталі запису сервісу"
+    "details": "Деталі запису сервісу",
+    "photo_error": "Помилка завантаження фото",
+    "invalid_vehicle": "Невірний автомобіль",
+    "required_fields": "Заповніть обов'язкові поля",
+    "invalid_mileage": "Невірний пробіг",
+    "invalid_cost": "Невірна вартість",
+    "create_success": "Запис сервісу успішно створено",
+    "create_error": "Помилка створення запису сервісу",
+    "select_date": "Оберіть дату",
+    "cost": "Вартість",
+    "update_error": "Помилка оновлення запису сервісу",
+    "performed_by": "Виконав",
+    "delete_title": "Видалити запис сервісу",
+    "delete_confirm": "Ви впевнені, що хочете видалити цей запис?",
+    "delete_error": "Помилка видалення запису сервісу",
+    "not_found": "Запис сервісу не знайдено",
+    "parts": "Запчастини",
+    "photos": "Фотографії",
+    "no_records": "Немає записів сервісу"
   },
   "notifications": {
     "title": "Сповіщення",
@@ -279,8 +338,21 @@
     "delete_success": "Сповіщення видалено",
     "delete_error": "Помилка видалення сповіщення",
     "fetch_error": "Помилка завантаження сповіщень",
-    "auth_error": "Помилка автентифікації. Будь ласка, увійдіть знову"
+    "auth_error": "Помилка автентифікації. Будь ласка, увійдіть знову",
+    "permission_required": "Потрібен дозвіл на сповіщення",
+    "load_error": "Помилка завантаження сповіщень",
+    "success": "Сповіщення оновлено",
+    "all_marked_read": "Всі сповіщення позначено як прочитані",
+    "mark_all_error": "Помилка позначення всіх сповіщень",
+    "delete_title": "Видалити сповіщення",
+    "delete_confirm": "Ви впевнені, що хочете видалити це сповіщення?",
+    "markAllRead": "Позначити всі як прочитані",
+    "deleteAll": "Видалити всі"
   },
+  "relationships": {
+    "client_connected": "Клієнта додано до ваших клієнтів",
+    "client_already_connected": "Клієнт вже підключений"
+  }
   "appointments": {
     "title": "Мої записи",
     "add_appointment": "Новий запис",
@@ -357,7 +429,30 @@
     "complete_title": "Завершити сервіс",
     "complete_message": "Ви впевнені, що хочете завершити сервіс?",
     "cancel_title": "Скасувати запис",
-    "cancel_message": "Ви впевнені, що хочете скасувати цей запис?"
+    "cancel_message": "Ви впевнені, що хочете скасувати цей запис?",
+    "complete_appointment": "Завершити запис",
+    "minutes_short": "хв",
+    "confirm_success": "Запис підтверджено",
+    "confirm_error": "Помилка підтвердження запису",
+    "start_success": "Сервіс розпочато",
+    "start_error": "Помилка запуску сервісу",
+    "cancel_success": "Запис скасовано",
+    "cancel_error": "Помилка скасування запису",
+    "service_price": "Вартість сервісу",
+    "complete_success": "Сервіс завершено",
+    "complete_error": "Помилка завершення сервісу",
+    "confirm_completion": "Підтвердити завершення",
+    "no_master_error": "Оберіть майстра",
+    "no_date_time_error": "Оберіть дату та час",
+    "no_service_selected_error": "Оберіть сервіс",
+    "success_title": "Запис створено",
+    "success_message": "Ваш запис на сервіс успішно створено",
+    "no_services": "Немає доступних сервісів",
+    "service_duration": "Тривалість сервісу",
+    "selected_count": "Обрано: {{count}}",
+    "total_price": "Загальна вартість",
+    "total_duration": "Загальна тривалість",
+    "mileage": "Пробіг"
   },
   "profile": {
     "title": "Профіль",
@@ -446,6 +541,14 @@
     "ocr_no_data": "Не вдалося розпізнати дані з фото",
     "recognizing": "Розпізнавання...",
     "ocr_demo_mode": "Демо-режим OCR. Справжнє розпізнавання недоступне на мобільних пристроях. Використовуються тестові дані",
+    "photo_error": "Помилка завантаження фото",
+    "name_required": "Вкажіть назву запчастини",
+    "unnamed_part": "Запчастина без назви",
+    "usedParts": "Використані запчастини",
+    "no_parts_added": "Запчастини не додано",
+    "add_manual": "Додати вручну",
+    "scan_from_photo": "Сканувати з фото",
+    "qty": "К-сть",
     "categories": {
       "engine": "Двигун",
       "transmission": "Трансмісія",
@@ -473,7 +576,22 @@
     "maintenance": {
       "title": "Планове обслуговування",
       "message": "Час обслуговувати ваш автомобіль"
-    }
+    },
+    "permissions_title": "Потрібні дозволи",
+    "permissions_message": "Надайте дозвіл на сповіщення",
+    "required_fields": "Заповніть обов'язкові поля",
+    "create_error": "Помилка створення нагадування",
+    "vehicle": "Автомобіль",
+    "service_type": "Тип сервісу",
+    "due_date": "Дата виконання",
+    "notify_days_before": "Повідомити за",
+    "days": "днів",
+    "notes": "Нотатки",
+    "notes_placeholder": "Додайте нотатки",
+    "load_error": "Помилка завантаження нагадувань",
+    "update_error": "Помилка оновлення нагадування",
+    "notification_title": "Нагадування про сервіс",
+    "notify_before": "Повідомити за {{count}} днів"
   },
   "days": {
     "monday": "Понеділок",
@@ -519,7 +637,16 @@
     "working_hours_save_error": "Помилка при збереженні робочих годин",
     "service_history": "Історія обслуговування",
     "quick_actions": "Швидкі дії",
-    "min_busy_time_error": "Час зайнятості має бути не менше {{minutes}} хвилин від поточного часу"
+    "min_busy_time_error": "Час зайнятості має бути не менше {{minutes}} хвилин від поточного часу",
+    "available_status": "Статус доступності",
+    "change_busy_status": "Змінити статус зайнятості",
+    "busy_until_time": "Зайнятий до {{time}}",
+    "busy_status_set": "Статус зайнятості встановлено",
+    "busy_status_cleared": "Статус зайнятості скасовано",
+    "busy_status_error": "Помилка зміни статусу зайнятості",
+    "pending_appointments": "Записи в очікуванні",
+    "confirmed_appointments": "Підтверджені записи",
+    "in_progress_appointments": "Записи в процесі"
   },
   "interactions": {
     "title": "Взаємодії",
@@ -548,7 +675,183 @@
     "send_success": "Повідомлення надіслано",
     "send_error": "Помилка надсилання повідомлення",
     "select_recipient": "Оберіть отримувача",
-    "enter_message": "Введіть повідомлення"
+    "enter_message": "Введіть повідомлення",
+    "chat_about": "Чат про {{entity}}"
+  },
+  "chat": {
+    "sending": "Надсилання...",
+    "error": "Помилка надсилання повідомлення",
+    "no_messages": "Немає повідомлень",
+    "message_placeholder": "Введіть повідомлення..."
+  },
+  "clients": {
+    "title": "Клієнти",
+    "add": "Додати клієнта",
+    "empty": "Немає клієнтів"
+  },
+  "services": {
+    "oil_change": "Заміна масла",
+    "tire_rotation": "Ротація шин",
+    "brake_service": "Обслуговування гальм",
+    "general_inspection": "Загальний огляд",
+    "fetch_error": "Помилка завантаження сервісів",
+    "cost": "Вартість",
+    "mileage": "Пробіг",
+    "next_due": "Наступне обслуговування",
+    "no_history": "Немає історії сервісів"
+  },
+  "settings": {
+    "fetch_error": "Помилка завантаження налаштувань",
+    "update_error": "Помилка оновлення налаштувань",
+    "notifications": "Сповіщення",
+    "push_notifications": "Push-сповіщення",
+    "push_notifications_desc": "Отримуйте push-сповіщення про записи та сервіс",
+    "email_notifications": "Email-сповіщення",
+    "email_notifications_desc": "Отримуйте сповіщення на email",
+    "security": "Безпека",
+    "two_factor_auth": "Двофакторна автентифікація",
+    "two_factor_auth_desc": "Додатковий рівень захисту для вашого облікового запису",
+    "appearance": "Зовнішній вигляд",
+    "dark_mode": "Темна тема",
+    "dark_mode_desc": "Використовувати темну тему додатку"
+  },
+  "statistics": {
+    "fetch_error": "Помилка завантаження статистики",
+    "year": "Рік",
+    "month": "Місяць",
+    "week": "Тиждень",
+    "total_spent": "Всього витрачено",
+    "services_count": "Кількість сервісів",
+    "times": "разів",
+    "total_mileage": "Загальний пробіг",
+    "expenses_over_time": "Витрати за період",
+    "services_by_type": "Сервіси за типом"
+  },
+  "status": {
+    "pending": "В очікуванні",
+    "active": "Активний"
+  },
+  "errors": {
+    "required_field": "Це поле обов'язкове"
+  },
+  "greetings": {
+    "morning": "Доброго ранку",
+    "afternoon": "Добрий день",
+    "evening": "Добрий вечір"
+  },
+  "admin": {
+    "dashboard": "Адмін-панель",
+    "statistics": "Статистика",
+    "users_management": "Керування користувачами",
+    "services_management": "Керування сервісами",
+    "parts_management": "Керування запчастинами",
+    "vehicles_management": "Керування автомобілями",
+    "appointments_management": "Керування записами",
+    "users_management_desc": "Перегляд, редагування ролей і статусів користувачів",
+    "services_management_desc": "Керування переліком сервісів та їх параметрами",
+    "parts_management_desc": "Керування складом і запчастинами",
+    "vehicles_management_desc": "Перегляд і керування автомобілями",
+    "appointments_management_desc": "Перегляд і керування записами",
+    "statistics_desc": "Огляд ключових показників сервісу",
+    "welcome": "Ласкаво просимо до адмін-панелі",
+    "statistics_section": {
+      "overview": "Огляд",
+      "total_revenue": "Загальний дохід",
+      "pending_appointments": "Записи в очікуванні",
+      "completed_services": "Завершені сервіси",
+      "revenue_chart": "Динаміка доходу",
+      "popular_services": "Популярні сервіси"
+    },
+    "appointments": {
+      "title": "Записи",
+      "fetch_error": "Помилка завантаження записів",
+      "no_appointments": "Записів немає"
+    },
+    "parts": {
+      "title": "Запчастини",
+      "fetch_error": "Помилка завантаження запчастин",
+      "required_fields": "Заповніть обов'язкові поля",
+      "add_error": "Помилка додавання запчастини",
+      "update_error": "Помилка оновлення запчастини",
+      "delete_title": "Видалити запчастину",
+      "delete_confirm": "Ви впевнені, що хочете видалити цю запчастину?",
+      "delete_error": "Помилка видалення запчастини",
+      "stock": "Залишок",
+      "edit_part": "Редагувати запчастину",
+      "add_part": "Додати запчастину",
+      "name": "Назва",
+      "description": "Опис",
+      "price": "Ціна",
+      "quantity": "Кількість",
+      "no_parts": "Запчастин немає"
+    },
+    "services": {
+      "title": "Сервіси",
+      "fetch_error": "Помилка завантаження сервісів",
+      "required_fields": "Заповніть обов'язкові поля",
+      "invalid_price": "Невірна ціна",
+      "invalid_duration": "Невірна тривалість",
+      "add_error": "Помилка додавання сервісу",
+      "update_error": "Помилка оновлення сервісу",
+      "delete_title": "Видалити сервіс",
+      "delete_confirm": "Ви впевнені, що хочете видалити цей сервіс?",
+      "delete_error": "Помилка видалення сервісу",
+      "edit_service": "Редагувати сервіс",
+      "add_service": "Додати сервіс",
+      "name": "Назва",
+      "description": "Опис",
+      "price": "Ціна",
+      "duration": "Тривалість",
+      "no_services": "Сервісів немає"
+    },
+    "users": {
+      "title": "Користувачі",
+      "fetch_error": "Помилка завантаження користувачів",
+      "toggle_status_title": "Змінити статус",
+      "toggle_status_confirm_deactivate": "Ви впевнені, що хочете деактивувати користувача?",
+      "toggle_status_confirm_activate": "Ви впевнені, що хочете активувати користувача?",
+      "update_error": "Помилка оновлення користувача",
+      "change_role": "Змінити роль",
+      "change_role_confirm": "Ви впевнені, що хочете змінити роль користувача?",
+      "roles": {
+        "master": "Майстер",
+        "client": "Клієнт"
+      },
+      "active": "Активний",
+      "inactive": "Неактивний",
+      "deactivate": "Деактивувати",
+      "activate": "Активувати",
+      "no_users": "Користувачів немає"
+    },
+    "vehicles": {
+      "fetch_error": "Помилка завантаження автомобілів",
+      "no_vehicles": "Автомобілів немає"
+    },
+    "sort": {
+      "date_desc": "Дата (спочатку нові)",
+      "date_asc": "Дата (спочатку старі)",
+      "status_asc": "Статус (A-Z)",
+      "status_desc": "Статус (Z-A)",
+      "name_asc": "Назва (A-Z)",
+      "name_desc": "Назва (Z-A)",
+      "price_asc": "Ціна (спочатку дешеві)",
+      "price_desc": "Ціна (спочатку дорогі)",
+      "stock_asc": "Залишок (зростання)",
+      "stock_desc": "Залишок (спадання)",
+      "duration_asc": "Тривалість (зростання)",
+      "duration_desc": "Тривалість (спадання)",
+      "year_asc": "Рік (зростання)",
+      "year_desc": "Рік (спадання)",
+      "role_asc": "Роль (A-Z)",
+      "role_desc": "Роль (Z-A)",
+      "status_active_first": "Активні спочатку",
+      "status_inactive_first": "Неактивні спочатку"
+    },
+    "filters": {
+      "status": "Статус",
+      "all": "Всі",
+      "role": "Роль"
+    }
   },
 
   "2fa": {
@@ -564,5 +867,9 @@
     "setup_error": "Помилка налаштування 2FA",
     "enter_code": "Введіть код",
     "verification_error": "Помилка верифікації 2FA"
-  }
+  },
+  "currency": "₴",
+  "success": "Успішно",
+  "registration_failed": "Помилка реєстрації",
+  "email_confirmation_required": "Підтвердіть email для продовження"
 }

@@ -1,5 +1,5 @@
 const crypto = require('crypto');
-const { getDb } = require('../db/d1');
+const { getDb, getExistingColumn } = require('../db/d1');
 
 // Запросити механіка (клієнт -> майстер)
 exports.inviteMechanic = async (req, res) => {
@@ -129,6 +129,133 @@ exports.updateStatus = async (req, res) => {
     res.json({ message: `Request ${status}` });
   } catch (err) {
     console.error('Update status error:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+exports.addClientForMechanic = async (req, res) => {
+  try {
+    const { client_id } = req.body;
+    const mechanic_id = req.user.id;
+
+    if (!client_id) {
+      return res.status(400).json({ message: 'Client ID is required' });
+    }
+
+    const db = await getDb();
+    const mechanic = await db.prepare('SELECT id, role FROM users WHERE id = ?').get(mechanic_id);
+    if (!mechanic || mechanic.role !== 'master') {
+      return res.status(403).json({ message: 'Access denied. Master privileges required.' });
+    }
+    const client = await db.prepare('SELECT id, role FROM users WHERE id = ?').get(client_id);
+    if (!client || client.role !== 'client') {
+      return res.status(404).json({ message: 'Client not found' });
+    }
+
+    const existing = await db
+      .prepare('SELECT id, status FROM client_mechanics WHERE client_id = ? AND mechanic_id = ?')
+      .get(client_id, mechanic_id);
+
+    if (existing) {
+      if (existing.status !== 'accepted') {
+        await db
+          .prepare(
+            "UPDATE client_mechanics SET status = 'accepted', updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+          )
+          .run(existing.id);
+      }
+      // Створюємо сповіщення обом сторонам
+      try {
+        const readCol = await getExistingColumn('notifications', ['is_read', 'read']);
+        const nowIso = new Date().toISOString();
+        await db
+          .prepare(
+            `INSERT INTO notifications (id, user_id, title, message, type, status, scheduled_for, data, ${readCol}, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          )
+          .run(
+            crypto.randomUUID(),
+            client_id,
+            'Додано механіка',
+            'Механік підключив вас як клієнта',
+            'relationship',
+            'info',
+            null,
+            JSON.stringify({ mechanic_id }),
+            0,
+            nowIso
+          );
+        await db
+          .prepare(
+            `INSERT INTO notifications (id, user_id, title, message, type, status, scheduled_for, data, ${readCol}, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          )
+          .run(
+            crypto.randomUUID(),
+            mechanic_id,
+            'Додано клієнта',
+            'Клієнта підключено до ваших обслуговувань',
+            'relationship',
+            'info',
+            null,
+            JSON.stringify({ client_id }),
+            0,
+            nowIso
+          );
+      } catch (_) {}
+      return res.json({ message: 'Client connected' });
+    }
+
+    const id = crypto.randomUUID();
+    await db
+      .prepare(
+        "INSERT INTO client_mechanics (id, client_id, mechanic_id, status) VALUES (?, ?, ?, 'accepted')"
+      )
+      .run(id, client_id, mechanic_id);
+
+    // Створюємо сповіщення обом сторонам
+    try {
+      const readCol = await getExistingColumn('notifications', ['is_read', 'read']);
+      const nowIso = new Date().toISOString();
+      await db
+        .prepare(
+          `INSERT INTO notifications (id, user_id, title, message, type, status, scheduled_for, data, ${readCol}, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        )
+        .run(
+          crypto.randomUUID(),
+          client_id,
+          'Додано механіка',
+          'Механік підключив вас як клієнта',
+          'relationship',
+          'info',
+          null,
+          JSON.stringify({ mechanic_id }),
+          0,
+          nowIso
+        );
+      await db
+        .prepare(
+          `INSERT INTO notifications (id, user_id, title, message, type, status, scheduled_for, data, ${readCol}, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        )
+        .run(
+          crypto.randomUUID(),
+          mechanic_id,
+          'Додано клієнта',
+          'Клієнта підключено до ваших обслуговувань',
+          'relationship',
+          'info',
+          null,
+          JSON.stringify({ client_id }),
+          0,
+          nowIso
+        );
+    } catch (_) {}
+
+    res.status(201).json({ message: 'Client connected' });
+  } catch (err) {
+    console.error('Add client error:', err);
     res.status(500).json({ message: 'Server error' });
   }
 };

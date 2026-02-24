@@ -40,7 +40,17 @@
     "select_option": "Выберите опцию...",
     "view_all": "Смотреть все",
     "hours": "ч",
-    "minutes": "мин"
+    "minutes": "мин",
+    "actions": "Действия",
+    "name": "Имя",
+    "email": "Email",
+    "phone": "Телефон",
+    "all_masters": "Все мастера",
+    "my_masters": "Мои мастера",
+    "reject": "Отклонить",
+    "accept": "Принять",
+    "all": "Все",
+    "saving": "Сохранение..."
   },
   "dashboard": {
     "title": "Панель управления",
@@ -112,11 +122,13 @@
     "invalid_email": "Неверный формат email",
     "invalid_email_or_phone": "Неверный email или телефон",
     "invalid_phone": "Неверный формат телефона",
+    "password_min_length": "Пароль должен быть не короче 6 символов",
     "required_field": "Это поле обязательное",
     "invalid_vin": "Неверный формат VIN-кода",
     "invalid_license_plate": "Неверный формат государственного номера",
     "invalid_engine_volume": "Объем двигателя должен быть от 0.1 до 10.0 литров",
     "invalid_mileage": "Пробег должен быть от 0 до 1 000 000 км",
+    "mileage_lower_than_current": "Пробег не может быть меньше текущего",
     "vin_format": "VIN должен содержать 17 символов (буквы и цифры)",
     "license_plate_format": "Формат: АА1234ББ",
     "engine_volume_format": "Введите объем в литрах (напр., 2.0)",
@@ -125,7 +137,8 @@
     "please_select_model": "Пожалуйста, выберите модель автомобиля",
     "please_select_year": "Пожалуйста, выберите год выпуска",
     "please_select_color": "Пожалуйста, выберите цвет автомобиля",
-    "invalid_year": "Неверный год выпуска"
+    "invalid_year": "Неверный год выпуска",
+    "enter_license_plate": "Введите номерной знак"
   },
   "vehicles": {
     "title": "Мои автомобили",
@@ -145,6 +158,20 @@
     "license_plate_description": "Сфотографируйте номерной знак для автоматического распознавания",
     "add_license_plate": "Добавить фото номерного знака",
     "color": "Цвет",
+    "colors": {
+      "black": "Черный",
+      "white": "Белый",
+      "gray": "Серый",
+      "silver": "Серебристый",
+      "red": "Красный",
+      "blue": "Синий",
+      "green": "Зеленый",
+      "yellow": "Желтый",
+      "brown": "Коричневый",
+      "orange": "Оранжевый",
+      "purple": "Фиолетовый",
+      "beige": "Бежевый"
+    },
     "engine_type": "Тип двигателя",
     "engine_capacity": "Объем двигателя",
     "power": "Мощность",
@@ -165,8 +192,18 @@
     "edit_success": "Автомобиль успешно обновлен",
     "delete_success": "Автомобиль успешно удален",
     "delete_confirm": "Вы уверены, что хотите удалить этот автомобиль?",
+    "delete_title": "Удалить автомобиль",
+    "delete_error": "Ошибка удаления автомобиля",
     "no_vehicles": "У вас еще нет автомобилей",
     "add_first": "Добавьте свой первый автомобиль",
+    "found_success": "Автомобиль найден",
+    "not_found": "Автомобиль не найден",
+    "lookup_error": "Ошибка поиска автомобиля",
+    "photo_error": "Ошибка загрузки фото автомобиля",
+    "owner": "Владелец",
+    "select_owner": "Выберите владельца",
+    "select_engine_type": "Выберите тип двигателя",
+    "select_transmission": "Выберите трансмиссию",
     "scan_document": "Сканировать документ",
     "take_photo": "Сделать фото",
     "pick_from_gallery": "Выбрать из галереи",
@@ -240,7 +277,11 @@
     "export": "Экспорт",
     "no_records": "Нет записей сервиса",
     "select_vehicle": "Выберите автомобиль",
-    "add_record": "Добавить запись"
+    "add_record": "Добавить запись",
+    "fetch_error": "Ошибка загрузки сервисной книги",
+    "export_error": "Ошибка экспорта сервисной книги",
+    "export_dialog_title": "Экспорт сервисной книги",
+    "parts": "Запчасти"
   },
   "service_records": {
     "title": "Записи сервиса",
@@ -253,8 +294,30 @@
     "service_type": "Тип сервиса",
     "description": "Описание",
     "add_photo": "Добавить фото",
-    "mileage": "Пробег"
+    "mileage": "Пробег",
+    "photo_error": "Ошибка загрузки фото",
+    "invalid_vehicle": "Неверный автомобиль",
+    "required_fields": "Заполните обязательные поля",
+    "invalid_mileage": "Неверный пробег",
+    "invalid_cost": "Неверная стоимость",
+    "create_success": "Запись сервиса успешно создана",
+    "create_error": "Ошибка создания записи сервиса",
+    "select_date": "Выберите дату",
+    "cost": "Стоимость",
+    "update_error": "Ошибка обновления записи сервиса",
+    "performed_by": "Выполнил",
+    "delete_title": "Удалить запись сервиса",
+    "delete_confirm": "Вы уверены, что хотите удалить эту запись?",
+    "delete_error": "Ошибка удаления записи сервиса",
+    "not_found": "Запись сервиса не найдена",
+    "parts": "Запчасти",
+    "photos": "Фотографии",
+    "no_records": "Нет записей сервиса"
   },
+  "relationships": {
+    "client_connected": "Клиент добавлен в ваши клиенты",
+    "client_already_connected": "Клиент уже подключен"
+  }
   "notifications": {
     "title": "Уведомления",
     "mark_read": "Отметить как прочитанное",
@@ -279,7 +342,16 @@
     "delete_success": "Уведомление удалено",
     "delete_error": "Ошибка удаления уведомления",
     "fetch_error": "Ошибка загрузки уведомлений",
-    "auth_error": "Ошибка аутентификации. Пожалуйста, войдите снова"
+    "auth_error": "Ошибка аутентификации. Пожалуйста, войдите снова",
+    "permission_required": "Нужно разрешение на уведомления",
+    "load_error": "Ошибка загрузки уведомлений",
+    "success": "Уведомления обновлены",
+    "all_marked_read": "Все уведомления отмечены как прочитанные",
+    "mark_all_error": "Ошибка отметки всех уведомлений",
+    "delete_title": "Удалить уведомление",
+    "delete_confirm": "Вы уверены, что хотите удалить это уведомление?",
+    "markAllRead": "Отметить все как прочитанные",
+    "deleteAll": "Удалить все"
   },
 
   "2fa": {
@@ -370,7 +442,30 @@
     "complete_title": "Завершить сервис",
     "complete_message": "Вы уверены, что хотите завершить сервис?",
     "cancel_title": "Отменить запись",
-    "cancel_message": "Вы уверены, что хотите отменить эту запись?"
+    "cancel_message": "Вы уверены, что хотите отменить эту запись?",
+    "complete_appointment": "Завершить запись",
+    "minutes_short": "мин",
+    "confirm_success": "Запись подтверждена",
+    "confirm_error": "Ошибка подтверждения записи",
+    "start_success": "Сервис начат",
+    "start_error": "Ошибка запуска сервиса",
+    "cancel_success": "Запись отменена",
+    "cancel_error": "Ошибка отмены записи",
+    "service_price": "Стоимость сервиса",
+    "complete_success": "Сервис завершен",
+    "complete_error": "Ошибка завершения сервиса",
+    "confirm_completion": "Подтвердить завершение",
+    "no_master_error": "Выберите мастера",
+    "no_date_time_error": "Выберите дату и время",
+    "no_service_selected_error": "Выберите сервис",
+    "success_title": "Запись создана",
+    "success_message": "Ваша запись на сервис успешно создана",
+    "no_services": "Нет доступных сервисов",
+    "service_duration": "Длительность сервиса",
+    "selected_count": "Выбрано: {{count}}",
+    "total_price": "Итоговая стоимость",
+    "total_duration": "Итоговая длительность",
+    "mileage": "Пробег"
   },
   "profile": {
     "title": "Профиль",
@@ -459,6 +554,14 @@
     "ocr_no_data": "Не удалось распознать данные с фото",
     "recognizing": "Распознавание...",
     "ocr_demo_mode": "Демо-режим OCR. Настоящее распознавание недоступно на мобильных устройствах. Используются тестовые данные",
+    "photo_error": "Ошибка загрузки фото",
+    "name_required": "Укажите название запчасти",
+    "unnamed_part": "Запчасть без названия",
+    "usedParts": "Использованные запчасти",
+    "no_parts_added": "Запчасти не добавлены",
+    "add_manual": "Добавить вручную",
+    "scan_from_photo": "Сканировать с фото",
+    "qty": "Кол-во",
     "categories": {
       "engine": "Двигатель",
       "transmission": "Трансмиссия",
@@ -486,7 +589,22 @@
     "maintenance": {
       "title": "Плановое обслуживание",
       "message": "Время обслуживать ваш автомобиль"
-    }
+    },
+    "permissions_title": "Нужны разрешения",
+    "permissions_message": "Предоставьте разрешение на уведомления",
+    "required_fields": "Заполните обязательные поля",
+    "create_error": "Ошибка создания напоминания",
+    "vehicle": "Автомобиль",
+    "service_type": "Тип сервиса",
+    "due_date": "Дата выполнения",
+    "notify_days_before": "Уведомить за",
+    "days": "дней",
+    "notes": "Заметки",
+    "notes_placeholder": "Добавьте заметки",
+    "load_error": "Ошибка загрузки напоминаний",
+    "update_error": "Ошибка обновления напоминания",
+    "notification_title": "Напоминание о сервисе",
+    "notify_before": "Уведомить за {{count}} дней"
   },
   "days": {
     "monday": "Понедельник",
@@ -532,7 +650,16 @@
     "working_hours_save_error": "Ошибка при сохранении рабочих часов",
     "service_history": "История обслуживания",
     "quick_actions": "Быстрые действия",
-    "min_busy_time_error": "Время занятости должно быть не менее {{minutes}} минут от текущего времени"
+    "min_busy_time_error": "Время занятости должно быть не менее {{minutes}} минут от текущего времени",
+    "available_status": "Статус доступности",
+    "change_busy_status": "Изменить статус занятости",
+    "busy_until_time": "Занят до {{time}}",
+    "busy_status_set": "Статус занятости установлен",
+    "busy_status_cleared": "Статус занятости снят",
+    "busy_status_error": "Ошибка изменения статуса занятости",
+    "pending_appointments": "Записи в ожидании",
+    "confirmed_appointments": "Подтвержденные записи",
+    "in_progress_appointments": "Записи в процессе"
   }
 ,"interactions": {
     "title": "Взаимодействия",
@@ -561,6 +688,186 @@
     "send_success": "Сообщение отправлено",
     "send_error": "Ошибка отправки сообщения",
     "select_recipient": "Выберите получателя",
-    "enter_message": "Введите сообщение"
+    "enter_message": "Введите сообщение",
+    "chat_about": "Чат о {{entity}}"
   }
+  ,"chat": {
+    "sending": "Отправка...",
+    "error": "Ошибка отправки сообщения",
+    "no_messages": "Нет сообщений",
+    "message_placeholder": "Введите сообщение..."
+  },
+  "clients": {
+    "title": "Клиенты",
+    "add": "Добавить клиента",
+    "empty": "Нет клиентов"
+  },
+  "services": {
+    "oil_change": "Замена масла",
+    "tire_rotation": "Ротация шин",
+    "brake_service": "Обслуживание тормозов",
+    "general_inspection": "Общий осмотр",
+    "fetch_error": "Ошибка загрузки сервисов",
+    "cost": "Стоимость",
+    "mileage": "Пробег",
+    "next_due": "Следующее обслуживание",
+    "no_history": "Нет истории сервисов"
+  },
+  "settings": {
+    "fetch_error": "Ошибка загрузки настроек",
+    "update_error": "Ошибка обновления настроек",
+    "notifications": "Уведомления",
+    "push_notifications": "Push-уведомления",
+    "push_notifications_desc": "Получайте push-уведомления о записях и сервисе",
+    "email_notifications": "Email-уведомления",
+    "email_notifications_desc": "Получайте уведомления на email",
+    "security": "Безопасность",
+    "two_factor_auth": "Двухфакторная аутентификация",
+    "two_factor_auth_desc": "Дополнительный уровень защиты для вашего аккаунта",
+    "appearance": "Внешний вид",
+    "dark_mode": "Темная тема",
+    "dark_mode_desc": "Использовать темную тему приложения"
+  },
+  "statistics": {
+    "fetch_error": "Ошибка загрузки статистики",
+    "year": "Год",
+    "month": "Месяц",
+    "week": "Неделя",
+    "total_spent": "Всего потрачено",
+    "services_count": "Количество сервисов",
+    "times": "раз",
+    "total_mileage": "Общий пробег",
+    "expenses_over_time": "Расходы за период",
+    "services_by_type": "Сервисы по типу"
+  },
+  "status": {
+    "pending": "В ожидании",
+    "active": "Активный"
+  },
+  "errors": {
+    "required_field": "Это поле обязательное"
+  },
+  "greetings": {
+    "morning": "Доброе утро",
+    "afternoon": "Добрый день",
+    "evening": "Добрый вечер"
+  },
+  "admin": {
+    "dashboard": "Админ-панель",
+    "statistics": "Статистика",
+    "users_management": "Управление пользователями",
+    "services_management": "Управление сервисами",
+    "parts_management": "Управление запчастями",
+    "vehicles_management": "Управление автомобилями",
+    "appointments_management": "Управление записями",
+    "users_management_desc": "Просмотр, редактирование ролей и статусов пользователей",
+    "services_management_desc": "Управление перечнем сервисов и их параметрами",
+    "parts_management_desc": "Управление складом и запчастями",
+    "vehicles_management_desc": "Просмотр и управление автомобилями",
+    "appointments_management_desc": "Просмотр и управление записями",
+    "statistics_desc": "Обзор ключевых показателей сервиса",
+    "welcome": "Добро пожаловать в админ-панель",
+    "statistics_section": {
+      "overview": "Обзор",
+      "total_revenue": "Общий доход",
+      "pending_appointments": "Записи в ожидании",
+      "completed_services": "Завершенные сервисы",
+      "revenue_chart": "Динамика дохода",
+      "popular_services": "Популярные сервисы"
+    },
+    "appointments": {
+      "title": "Записи",
+      "fetch_error": "Ошибка загрузки записей",
+      "no_appointments": "Записей нет"
+    },
+    "parts": {
+      "title": "Запчасти",
+      "fetch_error": "Ошибка загрузки запчастей",
+      "required_fields": "Заполните обязательные поля",
+      "add_error": "Ошибка добавления запчасти",
+      "update_error": "Ошибка обновления запчасти",
+      "delete_title": "Удалить запчасть",
+      "delete_confirm": "Вы уверены, что хотите удалить эту запчасть?",
+      "delete_error": "Ошибка удаления запчасти",
+      "stock": "Остаток",
+      "edit_part": "Редактировать запчасть",
+      "add_part": "Добавить запчасть",
+      "name": "Название",
+      "description": "Описание",
+      "price": "Цена",
+      "quantity": "Количество",
+      "no_parts": "Запчастей нет"
+    },
+    "services": {
+      "title": "Сервисы",
+      "fetch_error": "Ошибка загрузки сервисов",
+      "required_fields": "Заполните обязательные поля",
+      "invalid_price": "Неверная цена",
+      "invalid_duration": "Неверная длительность",
+      "add_error": "Ошибка добавления сервиса",
+      "update_error": "Ошибка обновления сервиса",
+      "delete_title": "Удалить сервис",
+      "delete_confirm": "Вы уверены, что хотите удалить этот сервис?",
+      "delete_error": "Ошибка удаления сервиса",
+      "edit_service": "Редактировать сервис",
+      "add_service": "Добавить сервис",
+      "name": "Название",
+      "description": "Описание",
+      "price": "Цена",
+      "duration": "Длительность",
+      "no_services": "Сервисов нет"
+    },
+    "users": {
+      "title": "Пользователи",
+      "fetch_error": "Ошибка загрузки пользователей",
+      "toggle_status_title": "Изменить статус",
+      "toggle_status_confirm_deactivate": "Вы уверены, что хотите деактивировать пользователя?",
+      "toggle_status_confirm_activate": "Вы уверены, что хотите активировать пользователя?",
+      "update_error": "Ошибка обновления пользователя",
+      "change_role": "Изменить роль",
+      "change_role_confirm": "Вы уверены, что хотите изменить роль пользователя?",
+      "roles": {
+        "master": "Мастер",
+        "client": "Клиент"
+      },
+      "active": "Активный",
+      "inactive": "Неактивный",
+      "deactivate": "Деактивировать",
+      "activate": "Активировать",
+      "no_users": "Пользователей нет"
+    },
+    "vehicles": {
+      "fetch_error": "Ошибка загрузки автомобилей",
+      "no_vehicles": "Автомобилей нет"
+    },
+    "sort": {
+      "date_desc": "Дата (сначала новые)",
+      "date_asc": "Дата (сначала старые)",
+      "status_asc": "Статус (A-Z)",
+      "status_desc": "Статус (Z-A)",
+      "name_asc": "Название (A-Z)",
+      "name_desc": "Название (Z-A)",
+      "price_asc": "Цена (сначала дешевле)",
+      "price_desc": "Цена (сначала дороже)",
+      "stock_asc": "Остаток (возрастание)",
+      "stock_desc": "Остаток (убывание)",
+      "duration_asc": "Длительность (возрастание)",
+      "duration_desc": "Длительность (убывание)",
+      "year_asc": "Год (возрастание)",
+      "year_desc": "Год (убывание)",
+      "role_asc": "Роль (A-Z)",
+      "role_desc": "Роль (Z-A)",
+      "status_active_first": "Активные сначала",
+      "status_inactive_first": "Неактивные сначала"
+    },
+    "filters": {
+      "status": "Статус",
+      "all": "Все",
+      "role": "Роль"
+    }
+  },
+  "currency": "₽",
+  "success": "Успешно",
+  "registration_failed": "Ошибка регистрации",
+  "email_confirmation_required": "Подтвердите email для продолжения"
 }

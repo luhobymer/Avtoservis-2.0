@@ -391,7 +391,26 @@ const VehicleDetailsContent = () => {
           photoUrl: uploadedPhotoUrl
         };
         const targetUserId = isMasterUser ? ownerId : user?.id || null;
+        try {
+          if (isMasterUser && targetUserId) {
+            const token = localStorage.getItem('auth_token');
+            const resp = await fetch(resolveUrl('/api/relationships/clients'), {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                ...(token ? { Authorization: `Bearer ${token}` } : {})
+              },
+              body: JSON.stringify({ client_id: targetUserId })
+            }).catch(() => null);
+            if (resp && resp.ok) {
+              setSnackbar({ open: true, message: t('relationships.client_connected', 'Клієнта додано до ваших клієнтів') });
+            }
+          }
+        } catch (e) {
+          void e;
+        }
         await createVehicle(payload, targetUserId);
+        setSnackbar({ open: true, message: t('vehicles.add_success', 'Авто успішно додано') });
       } else {
         const payload = {
           make: formData.brand,

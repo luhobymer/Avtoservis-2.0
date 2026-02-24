@@ -40,7 +40,17 @@
     "select_option": "Select option...",
     "view_all": "View all",
     "hours": "h",
-    "minutes": "min"
+    "minutes": "min",
+    "actions": "Actions",
+    "name": "Name",
+    "email": "Email",
+    "phone": "Phone",
+    "all_masters": "All masters",
+    "my_masters": "My masters",
+    "reject": "Reject",
+    "accept": "Accept",
+    "all": "All",
+    "saving": "Saving..."
   },
   "auth": {
     "login": "Login",
@@ -85,11 +95,13 @@
     "invalid_email": "Invalid email format",
     "invalid_email_or_phone": "Invalid email or phone",
     "invalid_phone": "Invalid phone format",
+    "password_min_length": "Password must be at least 6 characters",
     "required_field": "This field is required",
     "invalid_vin": "Invalid VIN format",
     "invalid_license_plate": "Invalid license plate format",
     "invalid_engine_volume": "Engine volume must be between 0.1 and 10.0 liters",
     "invalid_mileage": "Mileage must be between 0 and 1,000,000 km",
+    "mileage_lower_than_current": "Mileage cannot be lower than the current value",
     "vin_format": "VIN must contain 17 characters (letters and numbers)",
     "license_plate_format": "Format: AA1234BB",
     "engine_volume_format": "Enter volume in liters (e.g., 2.0)",
@@ -98,7 +110,8 @@
     "please_select_model": "Please select a vehicle model",
     "please_select_year": "Please select a year",
     "please_select_color": "Please select a color",
-    "invalid_year": "Invalid year"
+    "invalid_year": "Invalid year",
+    "enter_license_plate": "Enter license plate"
   },
   "vehicles": {
     "title": "My Vehicles",
@@ -119,6 +132,20 @@
     "license_plate_description": "Take a photo of the license plate for automatic recognition",
     "add_license_plate": "Add license plate photo",
     "color": "Color",
+    "colors": {
+      "black": "Black",
+      "white": "White",
+      "gray": "Gray",
+      "silver": "Silver",
+      "red": "Red",
+      "blue": "Blue",
+      "green": "Green",
+      "yellow": "Yellow",
+      "brown": "Brown",
+      "orange": "Orange",
+      "purple": "Purple",
+      "beige": "Beige"
+    },
     "engine_type": "Engine Type",
     "engine_capacity": "Engine Capacity",
     "transmission": "Transmission",
@@ -140,8 +167,18 @@
     "edit_success": "Vehicle updated successfully",
     "delete_success": "Vehicle deleted successfully",
     "delete_confirm": "Are you sure you want to delete this vehicle?",
+    "delete_title": "Delete vehicle",
+    "delete_error": "Error deleting vehicle",
     "no_vehicles": "You don't have any vehicles yet",
     "add_first": "Add your first vehicle",
+    "found_success": "Vehicle found",
+    "not_found": "Vehicle not found",
+    "lookup_error": "Error looking up vehicle",
+    "photo_error": "Error uploading vehicle photo",
+    "owner": "Owner",
+    "select_owner": "Select owner",
+    "select_engine_type": "Select engine type",
+    "select_transmission": "Select transmission",
     "scan_document": "Scan Document",
     "take_photo": "Take Photo",
     "pick_from_gallery": "Pick from Gallery",
@@ -213,7 +250,11 @@
     "export": "Export",
     "no_records": "No service records",
     "select_vehicle": "Select vehicle",
-    "add_record": "Add record"
+    "add_record": "Add record",
+    "fetch_error": "Error loading service book",
+    "export_error": "Error exporting service book",
+    "export_dialog_title": "Service book export",
+    "parts": "Parts"
   },
   "service_records": {
     "title": "Service Records",
@@ -226,8 +267,30 @@
     "service_type": "Service Type",
     "description": "Description",
     "add_photo": "Add Photo",
-    "mileage": "Mileage"
+    "mileage": "Mileage",
+    "photo_error": "Error uploading photo",
+    "invalid_vehicle": "Invalid vehicle",
+    "required_fields": "Fill in required fields",
+    "invalid_mileage": "Invalid mileage",
+    "invalid_cost": "Invalid cost",
+    "create_success": "Service record created successfully",
+    "create_error": "Error creating service record",
+    "select_date": "Select date",
+    "cost": "Cost",
+    "update_error": "Error updating service record",
+    "performed_by": "Performed by",
+    "delete_title": "Delete service record",
+    "delete_confirm": "Are you sure you want to delete this record?",
+    "delete_error": "Error deleting service record",
+    "not_found": "Service record not found",
+    "parts": "Parts",
+    "photos": "Photos",
+    "no_records": "No service records"
   },
+  "relationships": {
+    "client_connected": "Client has been added to your clients",
+    "client_already_connected": "Client is already connected"
+  }
   "notifications": {
     "title": "Notifications",
     "mark_read": "Mark as read",
@@ -252,7 +315,16 @@
     "delete_success": "Notification deleted",
     "delete_error": "Error deleting notification",
     "fetch_error": "Error fetching notifications",
-    "auth_error": "Authentication error. Please login again"
+    "auth_error": "Authentication error. Please log in again",
+    "permission_required": "Notifications permission required",
+    "load_error": "Error loading notifications",
+    "success": "Notifications updated",
+    "all_marked_read": "All notifications marked as read",
+    "mark_all_error": "Error marking all notifications",
+    "delete_title": "Delete notification",
+    "delete_confirm": "Are you sure you want to delete this notification?",
+    "markAllRead": "Mark all as read",
+    "deleteAll": "Delete all"
   },
 
   "2fa": {
@@ -343,7 +415,30 @@
     "complete_title": "Complete Service",
     "complete_message": "Are you sure you want to complete the service?",
     "cancel_title": "Cancel Appointment",
-    "cancel_message": "Are you sure you want to cancel this appointment?"
+    "cancel_message": "Are you sure you want to cancel this appointment?",
+    "complete_appointment": "Complete appointment",
+    "minutes_short": "min",
+    "confirm_success": "Appointment confirmed",
+    "confirm_error": "Error confirming appointment",
+    "start_success": "Service started",
+    "start_error": "Error starting service",
+    "cancel_success": "Appointment cancelled",
+    "cancel_error": "Error cancelling appointment",
+    "service_price": "Service price",
+    "complete_success": "Service completed",
+    "complete_error": "Error completing service",
+    "confirm_completion": "Confirm completion",
+    "no_master_error": "Select a master",
+    "no_date_time_error": "Select date and time",
+    "no_service_selected_error": "Select a service",
+    "success_title": "Appointment created",
+    "success_message": "Your service appointment has been created",
+    "no_services": "No available services",
+    "service_duration": "Service duration",
+    "selected_count": "Selected: {{count}}",
+    "total_price": "Total price",
+    "total_duration": "Total duration",
+    "mileage": "Mileage"
   },
   "profile": {
     "title": "Profile",
@@ -459,6 +554,14 @@
     "ocr_no_data": "Could not recognize data from photo",
     "recognizing": "Recognizing...",
     "ocr_demo_mode": "OCR Demo Mode. Real recognition is not available on mobile devices. Test data is being used",
+    "photo_error": "Error uploading photo",
+    "name_required": "Enter part name",
+    "unnamed_part": "Unnamed part",
+    "usedParts": "Used parts",
+    "no_parts_added": "No parts added",
+    "add_manual": "Add manually",
+    "scan_from_photo": "Scan from photo",
+    "qty": "Qty",
     "categories": {
       "engine": "Engine",
       "transmission": "Transmission",
@@ -486,7 +589,22 @@
     "maintenance": {
       "title": "Scheduled Maintenance",
       "message": "Time to service your vehicle"
-    }
+    },
+    "permissions_title": "Permissions required",
+    "permissions_message": "Please grant notification permissions",
+    "required_fields": "Fill in required fields",
+    "create_error": "Error creating reminder",
+    "vehicle": "Vehicle",
+    "service_type": "Service type",
+    "due_date": "Due date",
+    "notify_days_before": "Notify before",
+    "days": "days",
+    "notes": "Notes",
+    "notes_placeholder": "Add notes",
+    "load_error": "Error loading reminders",
+    "update_error": "Error updating reminder",
+    "notification_title": "Service reminder",
+    "notify_before": "Notify {{count}} days before"
   },
   "master": {
     "title": "Master Dashboard",
@@ -523,7 +641,16 @@
     "working_hours_save_error": "Error saving working hours",
     "service_history": "Service History",
     "quick_actions": "Quick Actions",
-    "min_busy_time_error": "Busy time must be at least {{minutes}} minutes from the current time"
+    "min_busy_time_error": "Busy time must be at least {{minutes}} minutes from the current time",
+    "available_status": "Availability status",
+    "change_busy_status": "Change busy status",
+    "busy_until_time": "Busy until {{time}}",
+    "busy_status_set": "Busy status set",
+    "busy_status_cleared": "Busy status cleared",
+    "busy_status_error": "Error updating busy status",
+    "pending_appointments": "Pending appointments",
+    "confirmed_appointments": "Confirmed appointments",
+    "in_progress_appointments": "In-progress appointments"
   },
   "interactions": {
     "title": "Interactions",
@@ -552,8 +679,188 @@
     "send_success": "Message sent",
     "send_error": "Error sending message",
     "select_recipient": "Select recipient",
-    "enter_message": "Enter message"
+    "enter_message": "Enter message",
+    "chat_about": "Chat about {{entity}}"
   },
+  "chat": {
+    "sending": "Sending...",
+    "error": "Error sending message",
+    "no_messages": "No messages",
+    "message_placeholder": "Enter message..."
+  },
+  "clients": {
+    "title": "Clients",
+    "add": "Add client",
+    "empty": "No clients"
+  },
+  "services": {
+    "oil_change": "Oil change",
+    "tire_rotation": "Tire rotation",
+    "brake_service": "Brake service",
+    "general_inspection": "General inspection",
+    "fetch_error": "Error fetching services",
+    "cost": "Cost",
+    "mileage": "Mileage",
+    "next_due": "Next due",
+    "no_history": "No service history"
+  },
+  "settings": {
+    "fetch_error": "Error loading settings",
+    "update_error": "Error updating settings",
+    "notifications": "Notifications",
+    "push_notifications": "Push notifications",
+    "push_notifications_desc": "Receive push notifications about appointments and service",
+    "email_notifications": "Email notifications",
+    "email_notifications_desc": "Receive notifications via email",
+    "security": "Security",
+    "two_factor_auth": "Two-factor authentication",
+    "two_factor_auth_desc": "Additional level of protection for your account",
+    "appearance": "Appearance",
+    "dark_mode": "Dark mode",
+    "dark_mode_desc": "Use the app dark theme"
+  },
+  "statistics": {
+    "fetch_error": "Error loading statistics",
+    "year": "Year",
+    "month": "Month",
+    "week": "Week",
+    "total_spent": "Total spent",
+    "services_count": "Services count",
+    "times": "times",
+    "total_mileage": "Total mileage",
+    "expenses_over_time": "Expenses over time",
+    "services_by_type": "Services by type"
+  },
+  "status": {
+    "pending": "Pending",
+    "active": "Active"
+  },
+  "errors": {
+    "required_field": "This field is required"
+  },
+  "greetings": {
+    "morning": "Good morning",
+    "afternoon": "Good afternoon",
+    "evening": "Good evening"
+  },
+  "admin": {
+    "dashboard": "Admin panel",
+    "statistics": "Statistics",
+    "users_management": "User management",
+    "services_management": "Service management",
+    "parts_management": "Parts management",
+    "vehicles_management": "Vehicle management",
+    "appointments_management": "Appointments management",
+    "users_management_desc": "View, edit roles and user statuses",
+    "services_management_desc": "Manage the list of services and their parameters",
+    "parts_management_desc": "Manage inventory and parts",
+    "vehicles_management_desc": "View and manage vehicles",
+    "appointments_management_desc": "View and manage appointments",
+    "statistics_desc": "Overview of key service metrics",
+    "welcome": "Welcome to the admin panel",
+    "statistics_section": {
+      "overview": "Overview",
+      "total_revenue": "Total revenue",
+      "pending_appointments": "Pending appointments",
+      "completed_services": "Completed services",
+      "revenue_chart": "Revenue trend",
+      "popular_services": "Popular services"
+    },
+    "appointments": {
+      "title": "Appointments",
+      "fetch_error": "Error loading appointments",
+      "no_appointments": "No appointments"
+    },
+    "parts": {
+      "title": "Parts",
+      "fetch_error": "Error loading parts",
+      "required_fields": "Fill in required fields",
+      "add_error": "Error adding part",
+      "update_error": "Error updating part",
+      "delete_title": "Delete part",
+      "delete_confirm": "Are you sure you want to delete this part?",
+      "delete_error": "Error deleting part",
+      "stock": "Stock",
+      "edit_part": "Edit part",
+      "add_part": "Add part",
+      "name": "Name",
+      "description": "Description",
+      "price": "Price",
+      "quantity": "Quantity",
+      "no_parts": "No parts"
+    },
+    "services": {
+      "title": "Services",
+      "fetch_error": "Error loading services",
+      "required_fields": "Fill in required fields",
+      "invalid_price": "Invalid price",
+      "invalid_duration": "Invalid duration",
+      "add_error": "Error adding service",
+      "update_error": "Error updating service",
+      "delete_title": "Delete service",
+      "delete_confirm": "Are you sure you want to delete this service?",
+      "delete_error": "Error deleting service",
+      "edit_service": "Edit service",
+      "add_service": "Add service",
+      "name": "Name",
+      "description": "Description",
+      "price": "Price",
+      "duration": "Duration",
+      "no_services": "No services"
+    },
+    "users": {
+      "title": "Users",
+      "fetch_error": "Error loading users",
+      "toggle_status_title": "Change status",
+      "toggle_status_confirm_deactivate": "Are you sure you want to deactivate the user?",
+      "toggle_status_confirm_activate": "Are you sure you want to activate the user?",
+      "update_error": "Error updating user",
+      "change_role": "Change role",
+      "change_role_confirm": "Are you sure you want to change the user's role?",
+      "roles": {
+        "master": "Master",
+        "client": "Client"
+      },
+      "active": "Active",
+      "inactive": "Inactive",
+      "deactivate": "Deactivate",
+      "activate": "Activate",
+      "no_users": "No users"
+    },
+    "vehicles": {
+      "fetch_error": "Error loading vehicles",
+      "no_vehicles": "No vehicles"
+    },
+    "sort": {
+      "date_desc": "Date (newest first)",
+      "date_asc": "Date (oldest first)",
+      "status_asc": "Status (A-Z)",
+      "status_desc": "Status (Z-A)",
+      "name_asc": "Name (A-Z)",
+      "name_desc": "Name (Z-A)",
+      "price_asc": "Price (low to high)",
+      "price_desc": "Price (high to low)",
+      "stock_asc": "Stock (ascending)",
+      "stock_desc": "Stock (descending)",
+      "duration_asc": "Duration (ascending)",
+      "duration_desc": "Duration (descending)",
+      "year_asc": "Year (ascending)",
+      "year_desc": "Year (descending)",
+      "role_asc": "Role (A-Z)",
+      "role_desc": "Role (Z-A)",
+      "status_active_first": "Active first",
+      "status_inactive_first": "Inactive first"
+    },
+    "filters": {
+      "status": "Status",
+      "all": "All",
+      "role": "Role"
+    }
+  },
+  "currency": "$",
+  "success": "Success",
+  "registration_failed": "Registration failed",
+  "email_confirmation_required": "Confirm your email to continue",
   "days": {
     "monday": "Monday",
     "tuesday": "Tuesday",

@@ -1,26 +1,39 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Alert, Image, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Alert, Image, KeyboardAvoidingView, Platform, ActivityIndicator, Modal } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
-import { Ionicons } from '@expo/vector-icons';
-import * as ImagePicker from 'expo-image-picker';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 import CustomButton from '../components/CustomButton';
-import { pickImage, checkGalleryPermissions, checkCameraPermissions, optimizeImage } from '../utils/imageUtils';
+import { pickImage, checkGalleryPermissions, checkCameraPermissions, optimizeImage, takePhoto } from '../utils/imageUtils';
 import { ocrManager } from '../utils/ocrUtils';
 import { Picker } from '@react-native-picker/picker';
 import * as vehiclesDao from '../api/dao/vehiclesDao';
+import * as usersDao from '../api/dao/usersDao';
 import { brandModelYears, getVehicleSpecs } from '../data/vehicleData';
 import axiosAuth from '../api/axiosConfig';
 
 export default function AddVehicle({ navigation }) {
   const { t, i18n } = useTranslation();
   const { user } = useAuth();
+  const isMaster = user?.role === 'master';
   const [loading, setLoading] = useState(false);
   const [recognizing, setRecognizing] = useState(false);
   const [lookupLoading, setLookupLoading] = useState(false);
+  const [vinLookupLoading, setVinLookupLoading] = useState(false);
   const [photo, setPhoto] = useState(null);
   const [documentPhoto, setDocumentPhoto] = useState(null);
   const [licensePlatePhoto, setLicensePlatePhoto] = useState(null);
+  const [owners, setOwners] = useState([]);
+  const [ownersLoading, setOwnersLoading] = useState(false);
+  const [selectedOwnerId, setSelectedOwnerId] = useState('');
+  const [ownerModalVisible, setOwnerModalVisible] = useState(false);
+  const [ownerSaving, setOwnerSaving] = useState(false);
+  const [ownerForm, setOwnerForm] = useState({
+    name: '',
+    email: '',
+    phone: '',
+    password: '',
+  });
   
   // Дані для випадаючих списків
   const [makes, setMakes] = useState([]);
@@ -67,6 +80,72 @@ export default function AddVehicle({ navigation }) {
     const sortedMakes = Object.keys(brandModelYears).sort((a, b) => a.localeCompare(b));
     setMakes(sortedMakes);
   }, []);
+
+  useEffect(() => {
+    if (!isMaster) return;
+    const loadOwners = async () => {
+      setOwnersLoading(true);
+      try {
+        const response = await axiosAuth.get('/api/relationships/clients');
+        const rows = Array.isArray(response.data) ? response.data : [];
+        const accepted = rows
+          .filter((row) => String(row.status || '').toLowerCase() === 'accepted')
+          .map((row) => {
+            const id = row.client_id || row.clientId || row.user_id || row.userId;
+            if (!id) return null;
+            return {
+              id,
+              name: row.name || row.email,
+              email: row.email,
+              role: 'client',
+            };
+          })
+          .filter(Boolean);
+        const ownersMap = new Map();
+        accepted.forEach((owner) => ownersMap.set(String(owner.id), owner));
+        const sortedClients = Array.from(ownersMap.values()).sort((a, b) =>
+          (a.name || '').localeCompare(b.name || '')
+        );
+        const selfOption = user?.id
+          ? { id: String(user.id), name: 'Я', email: user.email, role: 'client' }
+          : null;
+        const combined = selfOption
+          ? [selfOption, ...sortedClients].filter(
+              (o, idx, arr) => arr.findIndex((x) => String(x.id) === String(o.id)) === idx
+            )
+          : sortedClients;
+        setOwners(combined);
+        if (!selectedOwnerId && user?.id) {
+          setSelectedOwnerId(String(user.id));
+        }
+      } catch (error) {
+        try {
+          const users = await usersDao.listAll();
+          const clients = users.filter((u) => u.role === 'client' && u.status === 'active');
+          const sortedClients = clients.sort((a, b) =>
+            (a.name || '').localeCompare(b.name || '')
+          );
+          const selfOption = user?.id
+            ? { id: String(user.id), name: 'Я', email: user.email, role: 'client' }
+            : null;
+          const combined = selfOption
+            ? [selfOption, ...sortedClients].filter(
+                (o, idx, arr) => arr.findIndex((x) => String(x.id) === String(o.id)) === idx
+              )
+            : sortedClients;
+          setOwners(combined);
+          if (!selectedOwnerId && user?.id) {
+            setSelectedOwnerId(String(user.id));
+          }
+        } catch (fallbackError) {
+          console.error('Failed to load owners:', fallbackError);
+        }
+      } finally {
+        setOwnersLoading(false);
+      }
+    };
+    loadOwners();
+  }, [isMaster]);
 
   // Оновлення моделей при зміні марки
   useEffect(() => {
@@ -137,7 +216,7 @@ export default function AddVehicle({ navigation }) {
     try {
         const normalizeLicensePlate = (plate) => {
             if (!plate) return null;
-            return plate.replace(/[\s-]/g, '').toUpperCase();
+            return plate.replace(/[\s\-_.]/g, '').toUpperCase();
         };
 
         const normalizedPlate = normalizeLicensePlate(formData.licensePlate);
@@ -173,7 +252,7 @@ export default function AddVehicle({ navigation }) {
                 color: color || prev.color,
                 engineType: engineType || prev.engineType,
                 engineCapacity: data.engine_volume ? String(data.engine_volume) : prev.engineCapacity,
-                licensePlate: data.n_reg_new || data.license_plate || normalizedPlate
+                licensePlate: data.license_plate || normalizedPlate
             }));
             
             Alert.alert(t('common.success'), t('vehicles.found_success'));
@@ -181,10 +260,143 @@ export default function AddVehicle({ navigation }) {
             Alert.alert(t('common.info'), t('vehicles.not_found'));
         }
     } catch (error) {
-        console.error('Lookup error:', error);
-        Alert.alert(t('common.error'), t('vehicles.lookup_error'));
+        const status = error?.response?.status;
+        if (status === 404) {
+          Alert.alert(t('common.info'), t('vehicles.not_found'));
+        } else if (status === 400) {
+          Alert.alert(t('common.error'), t('validation.enter_license_plate'));
+        } else {
+          console.error('Lookup error:', error);
+          Alert.alert(t('common.error'), t('vehicles.lookup_error'));
+        }
     } finally {
         setLookupLoading(false);
+    }
+  };
+
+  const handleLookupByVin = async () => {
+    if (!formData.vin) {
+        Alert.alert(t('common.error'), t('validation.invalid_vin'));
+        return;
+    }
+
+    setVinLookupLoading(true);
+    try {
+        const normalizedVin = String(formData.vin || '').replace(/\s+/g, '').toUpperCase();
+        const response = await axiosAuth.get('/api/vehicle-registry', {
+            params: { vin: normalizedVin }
+        });
+
+        if (response.data) {
+            const data = response.data;
+            let engineType = '';
+            const fuelRaw = String(data.fuel_type || '').toUpperCase();
+            if (fuelRaw.includes('BENZINE') || fuelRaw.includes('PETROL')) engineType = 'petrol';
+            else if (fuelRaw.includes('DIESEL')) engineType = 'diesel';
+            else if (fuelRaw.includes('GAS')) engineType = 'gas';
+            else if (fuelRaw.includes('ELECTRO') || fuelRaw.includes('ELECTRIC')) engineType = 'electric';
+            else if (fuelRaw.includes('HYBRID')) engineType = 'hybrid';
+
+            let color = '';
+            const colorRaw = String(data.color || '').toLowerCase();
+            const foundColor = colors.find(c => c.id === colorRaw || c.name.toLowerCase() === colorRaw);
+            if (foundColor) color = foundColor.id;
+
+            setFormData(prev => ({
+                ...prev,
+                make: data.brand || prev.make,
+                model: data.model || prev.model,
+                year: data.make_year ? String(data.make_year) : prev.year,
+                vin: data.vin || normalizedVin,
+                color: color || prev.color,
+                engineType: engineType || prev.engineType,
+                engineCapacity: data.engine_volume ? String(data.engine_volume) : prev.engineCapacity,
+                licensePlate: data.n_reg_new || data.license_plate || prev.licensePlate
+            }));
+
+            Alert.alert(t('common.success'), t('vehicles.found_success'));
+        } else {
+            Alert.alert(t('common.info'), t('vehicles.not_found'));
+        }
+    } catch (error) {
+        console.error('VIN lookup error:', error);
+        Alert.alert(t('common.error'), t('vehicles.lookup_error'));
+    } finally {
+        setVinLookupLoading(false);
+    }
+  };
+
+  const normalizeOwnerPhone = (phone) => {
+    let normalizedPhone = String(phone || '').trim().replace(/\s+/g, '');
+    if (normalizedPhone.startsWith('0')) {
+      normalizedPhone = `+380${normalizedPhone.slice(1)}`;
+    } else if (normalizedPhone.startsWith('380')) {
+      normalizedPhone = `+${normalizedPhone}`;
+    }
+    return normalizedPhone;
+  };
+
+  const handleCreateOwner = async () => {
+    const name = String(ownerForm.name || '').trim();
+    const email = String(ownerForm.email || '').trim();
+    const phone = String(ownerForm.phone || '').trim();
+    const password = String(ownerForm.password || '').trim();
+
+    if (!name || !password || (!email && !phone)) {
+      Alert.alert(t('common.error', 'Помилка'), t('validation.please_fill_all_fields'));
+      return;
+    }
+    if (password.length < 6) {
+      Alert.alert(t('common.error', 'Помилка'), t('validation.password_min_length'));
+      return;
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const phoneRegex = /^(\+?380|0)\d{9}$/;
+    if (email && !emailRegex.test(email)) {
+      Alert.alert(t('common.error', 'Помилка'), t('validation.invalid_email'));
+      return;
+    }
+    if (phone && !phoneRegex.test(phone)) {
+      Alert.alert(t('common.error', 'Помилка'), t('validation.invalid_phone'));
+      return;
+    }
+
+    const normalizedPhone = phone ? normalizeOwnerPhone(phone) : '';
+    setOwnerSaving(true);
+    try {
+      const created = await usersDao.createUser({
+        name,
+        email,
+        phone: normalizedPhone,
+        password,
+        role: 'client',
+      });
+      if (created?.id) {
+        try {
+          await axiosAuth.post('/api/relationships/clients', { client_id: created.id });
+        } catch (error) {}
+        const newOwner = {
+          id: created.id,
+          name: created.name || name,
+          email: created.email || email,
+          role: 'client',
+        };
+        setOwners((prev) => {
+          const ownersMap = new Map();
+          [newOwner, ...prev].forEach((owner) => ownersMap.set(String(owner.id), owner));
+          return Array.from(ownersMap.values()).sort((a, b) =>
+            (a.name || '').localeCompare(b.name || '')
+          );
+        });
+        setSelectedOwnerId(String(created.id));
+        setOwnerModalVisible(false);
+        setOwnerForm({ name: '', email: '', phone: '', password: '' });
+      }
+    } catch (error) {
+      const message = error?.response?.data?.message || error?.message || t('common.error', 'Помилка');
+      Alert.alert(t('common.error', 'Помилка'), message);
+    } finally {
+      setOwnerSaving(false);
     }
   };
 
@@ -252,22 +464,20 @@ export default function AddVehicle({ navigation }) {
       // Similar to pickVehicleImage but with camera
       const hasPermission = await checkCameraPermissions();
       if (!hasPermission) return;
-      const result = await ImagePicker.launchCameraAsync({ allowsEditing: true, quality: 0.8 });
+      const result = await takePhoto();
       if (!result.canceled) {
-          const optimizedUri = await optimizeImage(result.assets[0].uri);
-          setPhoto(optimizedUri);
+          setPhoto(result.uri);
       }
   };
 
   const takeDocumentPhoto = async () => {
       const hasPermission = await checkCameraPermissions();
       if (!hasPermission) return;
-      const result = await ImagePicker.launchCameraAsync({ allowsEditing: true, quality: 0.8 });
+      const result = await takePhoto();
       if (!result.canceled) {
           setRecognizing(true);
-          const optimizedUri = await optimizeImage(result.assets[0].uri);
-          setDocumentPhoto(optimizedUri);
-          const data = await ocrManager.recognizeVehicleDocument(optimizedUri);
+          setDocumentPhoto(result.uri);
+          const data = await ocrManager.recognizeVehicleDocument(result.uri);
           if (data) updateFormWithOCRData(data);
           setRecognizing(false);
       }
@@ -276,12 +486,11 @@ export default function AddVehicle({ navigation }) {
   const takeLicensePlatePhoto = async () => {
       const hasPermission = await checkCameraPermissions();
       if (!hasPermission) return;
-      const result = await ImagePicker.launchCameraAsync({ allowsEditing: true, quality: 0.8 });
+      const result = await takePhoto();
       if (!result.canceled) {
           setRecognizing(true);
-          const optimizedUri = await optimizeImage(result.assets[0].uri);
-          setLicensePlatePhoto(optimizedUri);
-          const data = await ocrManager.recognizeLicensePlateAndGetVehicleData(optimizedUri);
+          setLicensePlatePhoto(result.uri);
+          const data = await ocrManager.recognizeLicensePlateAndGetVehicleData(result.uri);
           if (data) updateFormWithOCRData(data);
           setRecognizing(false);
       }
@@ -307,6 +516,7 @@ export default function AddVehicle({ navigation }) {
     if (!formData.model) { Alert.alert(t('common.error'), t('validation.please_select_model')); return false; }
     if (!formData.year) { Alert.alert(t('common.error'), t('validation.please_select_year')); return false; }
     if (formData.vin && formData.vin.length !== 17) { Alert.alert(t('common.error'), t('validation.invalid_vin')); return false; }
+    if (isMaster && !selectedOwnerId) { Alert.alert(t('common.error'), t('validation.please_fill_all_fields')); return false; }
     return true;
   };
 
@@ -314,6 +524,11 @@ export default function AddVehicle({ navigation }) {
     if (!validateForm()) return;
     setLoading(true);
     try {
+      let uploadedPhotoUrl = null;
+      if (photo) {
+        const uploadResult = await vehiclesDao.uploadPhoto(photo);
+        uploadedPhotoUrl = uploadResult?.url || null;
+      }
       const vehicleData = {
         make: formData.make,
         model: formData.model,
@@ -325,10 +540,28 @@ export default function AddVehicle({ navigation }) {
         engine_type: formData.engineType,
         transmission: formData.transmission,
         engine_capacity: formData.engineCapacity ? parseFloat(formData.engineCapacity) : null,
-        power: formData.power ? parseInt(formData.power, 10) : null
+        power: formData.power ? parseInt(formData.power, 10) : null,
+        photoUrl: uploadedPhotoUrl,
       };
       
-      await vehiclesDao.create(vehicleData, user?.id);
+      const ownerId = isMaster ? selectedOwnerId : user?.id;
+      try {
+        if (isMaster && ownerId) {
+          const resp = await axiosAuth.post('/api/relationships/clients', { client_id: ownerId });
+          if (resp && (resp.status === 200 || resp.status === 201)) {
+            Alert.alert(t('common.success'), t('relationships.client_connected', 'Клієнта додано до ваших клієнтів'));
+          }
+        }
+      } catch (relErr) {
+        // ігноруємо, якщо зв'язок вже існує
+        try {
+          Alert.alert(t('common.info'), t('relationships.client_already_connected', 'Клієнт вже підключений'));
+        } catch (_) {}
+      }
+      await vehiclesDao.create(vehicleData, ownerId);
+      try {
+        Alert.alert(t('common.success'), t('vehicles.add_success', 'Авто успішно додано'));
+      } catch (_) {}
       Alert.alert(t('common.success'), t('vehicles.add_success'), [{ text: t('common.ok'), onPress: () => navigation.goBack() }]);
     } catch (error) {
       console.error('Error adding vehicle:', error);
@@ -383,6 +616,38 @@ export default function AddVehicle({ navigation }) {
         
         <View style={styles.form}>
           <Text style={styles.sectionTitle}>{t('vehicles.details')}</Text>
+
+          {isMaster && (
+            <View style={styles.inputContainer}>
+              <Text style={styles.inputLabel}>{t('vehicles.owner', 'Власник')}</Text>
+              <View style={styles.ownerRow}>
+                <View style={styles.ownerPicker}>
+                  {ownersLoading ? (
+                    <View style={styles.ownerLoading}>
+                      <ActivityIndicator size="small" color="#1976d2" />
+                    </View>
+                  ) : (
+                    <Picker
+                      selectedValue={selectedOwnerId}
+                      onValueChange={(value) => setSelectedOwnerId(value)}
+                      style={styles.picker}
+                    >
+                      <Picker.Item label={t('vehicles.select_owner', 'Оберіть власника')} value="" />
+                      {owners.map((owner) => (
+                        <Picker.Item key={owner.id} label={owner.name || owner.email} value={String(owner.id)} />
+                      ))}
+                    </Picker>
+                  )}
+                </View>
+                <TouchableOpacity
+                  style={styles.ownerAddButton}
+                  onPress={() => setOwnerModalVisible(true)}
+                >
+                  <Ionicons name="person-add-outline" size={20} color="#fff" />
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
           
           <View style={styles.inputContainer}>
             <Text style={styles.inputLabel}>{t('vehicles.license_plate')}</Text>
@@ -448,14 +713,26 @@ export default function AddVehicle({ navigation }) {
             </Picker>
           </View>
           
-          <TextInput
-            style={styles.input}
-            placeholder={t('vehicles.vin')}
-            value={formData.vin}
-            onChangeText={(text) => setFormData(prev => ({ ...prev, vin: text.toUpperCase() }))}
-            autoCapitalize="characters"
-            maxLength={17}
-          />
+          <View style={styles.inputContainer}>
+            <Text style={styles.inputLabel}>{t('vehicles.vin')}</Text>
+            <View style={{flexDirection: 'row', alignItems: 'center'}}>
+              <TextInput
+                style={[styles.input, {flex: 1, marginBottom: 0}]}
+                placeholder={t('vehicles.vin')}
+                value={formData.vin}
+                onChangeText={(text) => setFormData(prev => ({ ...prev, vin: text.toUpperCase() }))}
+                autoCapitalize="characters"
+                maxLength={17}
+              />
+              <TouchableOpacity
+                style={[styles.searchButton, (!formData.vin || vinLookupLoading) && styles.disabledButton]}
+                onPress={handleLookupByVin}
+                disabled={!formData.vin || vinLookupLoading}
+              >
+                {vinLookupLoading ? <ActivityIndicator size="small" color="#fff" /> : <Ionicons name="search" size={20} color="#fff" />}
+              </TouchableOpacity>
+            </View>
+          </View>
           
           <View style={styles.pickerContainer}>
             <Text style={styles.inputLabel}>{t('vehicles.engine_type')}</Text>
@@ -526,6 +803,62 @@ export default function AddVehicle({ navigation }) {
           />
         </View>
       </ScrollView>
+      <Modal
+        visible={ownerModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setOwnerModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>{t('clients.add', 'Додати клієнта')}</Text>
+            <TextInput
+              style={styles.modalInput}
+              placeholder={t('common.name', 'Імʼя')}
+              value={ownerForm.name}
+              onChangeText={(value) => setOwnerForm((prev) => ({ ...prev, name: value }))}
+            />
+            <TextInput
+              style={styles.modalInput}
+              placeholder={t('common.email', 'Email')}
+              value={ownerForm.email}
+              onChangeText={(value) => setOwnerForm((prev) => ({ ...prev, email: value }))}
+              autoCapitalize="none"
+              keyboardType="email-address"
+            />
+            <TextInput
+              style={styles.modalInput}
+              placeholder={t('common.phone', 'Телефон')}
+              value={ownerForm.phone}
+              onChangeText={(value) => setOwnerForm((prev) => ({ ...prev, phone: value }))}
+              keyboardType="phone-pad"
+            />
+            <TextInput
+              style={styles.modalInput}
+              placeholder={t('auth.password_placeholder', 'Пароль')}
+              value={ownerForm.password}
+              onChangeText={(value) => setOwnerForm((prev) => ({ ...prev, password: value }))}
+              secureTextEntry
+            />
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalCancel]}
+                onPress={() => setOwnerModalVisible(false)}
+                disabled={ownerSaving}
+              >
+                <Text style={styles.modalCancelText}>{t('common.cancel', 'Скасувати')}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalConfirm]}
+                onPress={handleCreateOwner}
+                disabled={ownerSaving}
+              >
+                {ownerSaving ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.modalConfirmText}>{t('common.save', 'Зберегти')}</Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -546,14 +879,28 @@ const styles = StyleSheet.create({
   recognizingText: { color: '#fff', marginTop: 10, fontSize: 16 },
   form: { padding: 16 },
   inputContainer: { marginBottom: 12 },
-  input: { backgroundColor: '#fff', borderRadius: 8, padding: 12, marginBottom: 12, fontSize: 16 },
+  input: { backgroundColor: '#fff', borderRadius: 8, padding: 12, marginBottom: 12, fontSize: 16, color: '#000' },
   disabledInput: { backgroundColor: '#e0e0e0', color: '#999' },
   inputLabel: { fontSize: 16, marginBottom: 5, color: '#555' },
   pickerContainer: { marginBottom: 12 },
   picker: { backgroundColor: '#fff', borderRadius: 8 },
+  ownerRow: { flexDirection: 'row', alignItems: 'center' },
+  ownerPicker: { flex: 1, backgroundColor: '#fff', borderRadius: 8 },
+  ownerAddButton: { backgroundColor: '#1976d2', padding: 12, borderRadius: 8, marginLeft: 10, alignItems: 'center', justifyContent: 'center', width: 50 },
+  ownerLoading: { height: 50, alignItems: 'center', justifyContent: 'center' },
   submitButton: { marginTop: 16, backgroundColor: '#1976d2' },
   searchButton: { backgroundColor: '#0066cc', padding: 12, borderRadius: 8, marginLeft: 10, alignItems: 'center', justifyContent: 'center', width: 50 },
   disabledButton: { backgroundColor: '#ccc' },
   loadingContainer: { alignItems: 'center', justifyContent: 'center', padding: 20 },
   loadingText: { marginTop: 10, fontSize: 16, color: '#666' },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center', padding: 16 },
+  modalContent: { width: '100%', backgroundColor: '#fff', borderRadius: 12, padding: 16 },
+  modalTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 12, color: '#333' },
+  modalInput: { backgroundColor: '#f5f5f7', borderRadius: 8, padding: 12, marginBottom: 12, fontSize: 16, color: '#000' },
+  modalActions: { flexDirection: 'row', justifyContent: 'flex-end' },
+  modalButton: { paddingVertical: 10, paddingHorizontal: 16, borderRadius: 8, marginLeft: 8 },
+  modalCancel: { backgroundColor: '#e0e0e0' },
+  modalConfirm: { backgroundColor: '#1976d2' },
+  modalCancelText: { color: '#333', fontSize: 14 },
+  modalConfirmText: { color: '#fff', fontSize: 14 },
 });

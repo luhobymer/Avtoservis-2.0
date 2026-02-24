@@ -106,6 +106,7 @@
     "invalid_license_plate": "Невірний формат номерного знаку",
     "invalid_engine_volume": "Невірний об'єм двигуна",
     "invalid_mileage": "Невірний пробіг",
+    "mileage_lower_than_current": "Пробіг не може бути меншим за поточний",
     "vin_format": "Введіть 17 символів",
     "license_plate_format": "Наприклад: AA1234AA",
     "engine_volume_format": "Наприклад: 2.0",
@@ -151,6 +152,7 @@
     "title": "Мої автомобілі",
     "add": "Додати автомобіль",
     "uploadPhoto": "Завантажити фото",
+    "photoUploadFailed": "Не вдалося завантажити фото",
     "make": "Марка",
     "model": "Модель",
     "year": "Рік",
@@ -335,6 +337,15 @@
     "markAllRead": "Позначити всі як прочитані",
     "deleteAll": "Видалити всі",
     "viewAll": "Переглянути всі"
+  },
+  "relationships": {
+    "client_connected": "Клієнта додано до ваших клієнтів",
+    "client_already_connected": "Клієнт вже підключений"
+  },
+  "vehicles": {
+    "serviced": "Обслуговувані",
+    "owned": "Мої",
+    "add_success": "Авто успішно додано"
   },
   "navigation": {
     "dashboard": "Головна",

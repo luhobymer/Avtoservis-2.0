@@ -36,6 +36,15 @@
     "saved": "Сохранено",
     "complete": "Завершить"
   },
+  "relationships": {
+    "client_connected": "Клиент добавлен в ваши клиенты",
+    "client_already_connected": "Клиент уже подключен"
+  },
+  "vehicles": {
+    "serviced": "Обслуживаемые",
+    "owned": "Мои",
+    "add_success": "Авто успешно добавлено"
+  },
   "auth": {
     "login": "Войти",
     "register": "Зарегистрироваться",
@@ -106,6 +115,7 @@
     "invalid_license_plate": "Неверный формат номерного знака",
     "invalid_engine_volume": "Неверный объем двигателя",
     "invalid_mileage": "Неверный пробег",
+    "mileage_lower_than_current": "Пробег не может быть меньше текущего",
     "vin_format": "Введите 17 символов",
     "license_plate_format": "Например: AA1234AA",
     "engine_volume_format": "Например: 2.0",
@@ -151,6 +161,7 @@
     "title": "Мои автомобили",
     "add": "Добавить автомобиль",
     "uploadPhoto": "Загрузить фото",
+    "photoUploadFailed": "Не удалось загрузить фото",
     "make": "Марка",
     "model": "Модель",
     "year": "Год",

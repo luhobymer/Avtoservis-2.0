@@ -101,28 +101,23 @@ function mapNotification(n) {
   }
 }
 
-export async function listForUser(userId, { limit = 50, offset = 0 } = {}) {
+export async function listForUser(userId) {
   if (!userId) return []
-  const payload = await requestJson(
-    `/api/notifications?user_id=${encodeURIComponent(
-      userId
-    )}&limit=${limit}&offset=${offset}`
-  )
+  const payload = await requestJson(`/api/notifications`)
   const rows = normalizeListPayload(payload)
   return rows.map(mapNotification)
 }
 
 export async function markAsRead(id) {
   await requestJson(`/api/notifications/${id}/read`, {
-    method: 'POST'
+    method: 'PUT'
   })
 }
 
 export async function markAllRead(userId) {
   if (!userId) return
-  await requestJson('/api/notifications/mark-all-read', {
-    method: 'POST',
-    body: { user_id: userId }
+  await requestJson('/api/notifications/read-all', {
+    method: 'PUT'
   })
 }
 
@@ -134,8 +129,5 @@ export async function deleteById(id) {
 
 export async function deleteAllForUser(userId) {
   if (!userId) return
-  await requestJson('/api/notifications/delete-all', {
-    method: 'POST',
-    body: { user_id: userId }
-  })
+  await requestJson('/api/notifications', { method: 'DELETE' })
 }
