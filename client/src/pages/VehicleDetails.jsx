@@ -96,6 +96,7 @@ const VehicleDetailsContent = () => {
   const [photoFile, setPhotoFile] = useState(null);
   const [photoPreview, setPhotoPreview] = useState(null);
   const [vehicleMeta, setVehicleMeta] = useState({ id: null, userId: null, vin: '' });
+  const [initialMileage, setInitialMileage] = useState(null);
 
   const [loading, setLoading] = useState(!isNewVehicle);
   const [saving, setSaving] = useState(false);
@@ -135,6 +136,9 @@ const VehicleDetailsContent = () => {
         userId: v.UserId || v.user_id || null,
         vin: v.vin || ''
       });
+      setInitialMileage(
+        v.mileage !== undefined && v.mileage !== null && v.mileage !== '' ? Number(v.mileage) : null
+      );
       if (v.photoUrl) {
         setPhotoPreview(v.photoUrl);
       }
@@ -180,7 +184,19 @@ const VehicleDetailsContent = () => {
           .filter((u) => String(u?.role || '').toLowerCase() === 'client')
           .filter((u) => Number(u?.email_verified || 0) === 1 || allowedByRelationship.has(String(u?.id)));
 
-        setOwners(clients);
+        const selfOption =
+          user?.id
+            ? { id: user.id, name: 'Я', email: user.email, role: 'client' }
+            : null;
+        const combined = selfOption
+          ? [selfOption, ...clients].filter(
+              (o, idx, arr) => arr.findIndex((x) => String(x.id) === String(o.id)) === idx
+            )
+          : clients;
+        setOwners(combined);
+        if (!ownerId && user?.id) {
+          setOwnerId(user.id);
+        }
       } catch (err) {
         void err;
         setOwners([]);
@@ -189,7 +205,7 @@ const VehicleDetailsContent = () => {
       }
     };
     run();
-  }, [isNewVehicle, isMasterUser]);
+  }, [isNewVehicle, isMasterUser, ownerId, user?.id, user?.email]);
 
   const handleOwnerChange = async (e) => {
     const nextOwnerId = e.target.value;
@@ -228,11 +244,24 @@ const VehicleDetailsContent = () => {
       setAddClientError(t('errors.required_field', 'Обов\'язкове поле'));
       return;
     }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const phoneRegex = /^(\+?380|0)\d{9}$/;
+    if (!emailRegex.test(email) || !phoneRegex.test(phone)) {
+      setAddClientError(t('validation.invalid_email_or_phone', 'Невірний email або телефон'));
+      return;
+    }
+
+    let normalizedPhone = phone.trim().replace(/\s+/g, '');
+    if (normalizedPhone.startsWith('0')) {
+      normalizedPhone = `+380${normalizedPhone.slice(1)}`;
+    } else if (normalizedPhone.startsWith('380')) {
+      normalizedPhone = `+${normalizedPhone}`;
+    }
 
     setAddClientSaving(true);
     setAddClientError('');
     try {
-      const created = await createUser({ name, email, phone, password, role: 'client' });
+      const created = await createUser({ name, email, phone: normalizedPhone, password, role: 'client' });
       if (created?.id) {
         setOwners((prev) => [{ ...created, email_verified: 1 }, ...(prev || [])]);
         setOwnerId(created.id);
@@ -306,14 +335,44 @@ const VehicleDetailsContent = () => {
         return;
       }
 
+      const mileageValue =
+        formData.mileage !== undefined && formData.mileage !== null && formData.mileage !== ''
+          ? Number(formData.mileage)
+          : null;
+      const currentMileage =
+        initialMileage !== undefined && initialMileage !== null && initialMileage !== ''
+          ? Number(initialMileage)
+          : null;
+      if (
+        !isNewVehicle &&
+        mileageValue !== null &&
+        !Number.isNaN(mileageValue) &&
+        currentMileage !== null &&
+        !Number.isNaN(currentMileage) &&
+        mileageValue < currentMileage
+      ) {
+        setError(
+          t('validation.mileage_lower_than_current', 'Пробіг не може бути меншим за поточний')
+        );
+        setSaving(false);
+        return;
+      }
+
       let uploadedPhotoUrl = formData.photoUrl;
       
       if (photoFile) {
         try {
           const uploadResult = await uploadPhoto(photoFile);
+          if (!uploadResult?.url) {
+            setError(t('vehicle.photoUploadFailed', 'Не вдалося завантажити фото'));
+            setSaving(false);
+            return;
+          }
           uploadedPhotoUrl = uploadResult.url;
         } catch (uploadErr) {
-          console.error('Photo upload error:', uploadErr);
+          setError(t('vehicle.photoUploadFailed', 'Не вдалося завантажити фото'));
+          setSaving(false);
+          return;
         }
       }
 

@@ -36,6 +36,51 @@ async function requestJson(url, options = {}) {
   return null;
 }
 
+const normalizeColorId = (value) => {
+  if (!value) return '';
+  const raw = String(value).trim().toLowerCase();
+  const map = {
+    black: 'black',
+    'чорний': 'black',
+    'черный': 'black',
+    white: 'white',
+    'білий': 'white',
+    'белый': 'white',
+    gray: 'gray',
+    grey: 'gray',
+    'сірий': 'gray',
+    'серый': 'gray',
+    silver: 'silver',
+    'сріблястий': 'silver',
+    'серебристый': 'silver',
+    red: 'red',
+    'червоний': 'red',
+    'красный': 'red',
+    blue: 'blue',
+    'синій': 'blue',
+    'синий': 'blue',
+    green: 'green',
+    'зелений': 'green',
+    'зеленый': 'green',
+    yellow: 'yellow',
+    'жовтий': 'yellow',
+    'желтый': 'yellow',
+    brown: 'brown',
+    'коричневий': 'brown',
+    'коричневый': 'brown',
+    orange: 'orange',
+    'помаранчевий': 'orange',
+    'оранжевый': 'orange',
+    purple: 'purple',
+    'фіолетовий': 'purple',
+    'фиолетовый': 'purple',
+    beige: 'beige',
+    'бежевий': 'beige',
+    'бежевый': 'beige'
+  };
+  return map[raw] || raw;
+};
+
 const mapVehicle = (v) => ({
   id: v.id,
   vin: v.vin,
@@ -49,11 +94,11 @@ const mapVehicle = (v) => ({
     v.registration_number ||
     '',
   mileage: v.mileage != null ? v.mileage : 0,
-  color: v.color || '',
+  color: normalizeColorId(v.color),
   engineType: v.engine_type || '',
   transmission: v.transmission || '',
   engineVolume: v.engine_capacity || '',
-  photoUrl: v.photo_url || '',
+  photoUrl: v.photo_url || v.photoUrl || '',
   UserId: v.user_id || v.UserId || null
 });
 

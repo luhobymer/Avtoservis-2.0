@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { list as listVehicles } from '../api/dao/vehiclesDao';
+import { list as listVehicles, listForUser as listVehiclesForUser } from '../api/dao/vehiclesDao';
 import useAuth from '../context/useAuth';
 import {
   Container,
@@ -17,9 +17,12 @@ import {
 } from '@mui/material';
 import { format } from 'date-fns';
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+const resolveUrl = (url) => (url.startsWith('http') ? url : `${API_BASE_URL}${url}`);
+
 const Vehicles = () => {
   const { t } = useTranslation();
-  const { isAdmin, isMaster } = useAuth();
+  const { isAdmin, isMaster, user } = useAuth();
   const navigate = useNavigate();
 
   const isMasterUser =
@@ -31,13 +34,22 @@ const Vehicles = () => {
   const [vehicles, setVehicles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [mode, setMode] = useState(isMasterUser ? 'serviced' : 'owned'); // 'serviced' | 'owned'
 
   useEffect(() => {
     const fetchVehicles = async () => {
       setLoading(true);
       setError(null);
       try {
-        const rows = await listVehicles(isMasterUser ? { serviced: true } : undefined);
+        let rows = [];
+        if (isMasterUser) {
+          rows =
+            mode === 'serviced'
+              ? await listVehicles({ serviced: true })
+              : await listVehiclesForUser(user?.id || '');
+        } else {
+          rows = await listVehiclesForUser(user?.id || '');
+        }
         setVehicles(rows);
         console.log('[Vehicles] Дані про автомобілі (Supabase):', rows);
       } catch (error) {
@@ -54,7 +66,7 @@ const Vehicles = () => {
     };
 
     fetchVehicles();
-  }, [t, isMasterUser]);
+  }, [t, isMasterUser, mode, user]);
 
   if (loading) {
     return (
@@ -78,6 +90,22 @@ const Vehicles = () => {
         <Typography variant="h4">
           {t('vehicle.title')}
         </Typography>
+        {isMasterUser && (
+          <Box sx={{ display: 'flex', gap: 1, mr: 2 }}>
+            <Button
+              variant={mode === 'serviced' ? 'contained' : 'outlined'}
+              onClick={() => setMode('serviced')}
+            >
+              {t('vehicles.serviced') || 'Обслуговувані'}
+            </Button>
+            <Button
+              variant={mode === 'owned' ? 'contained' : 'outlined'}
+              onClick={() => setMode('owned')}
+            >
+              {t('vehicles.owned') || 'Мої'}
+            </Button>
+          </Box>
+        )}
         <Button 
           component={Link} 
           to="/vehicles/add" 
@@ -107,7 +135,7 @@ const Vehicles = () => {
                       backgroundSize: 'cover',
                       backgroundPosition: 'center'
                     }}
-                    image={vehicle.photoUrl || "/placeholder-car.svg"}
+                    image={vehicle.photoUrl ? resolveUrl(vehicle.photoUrl) : "/placeholder-car.svg"}
                   />
                   <CardContent sx={{ flexGrow: 1 }}>
                     <Typography gutterBottom variant="h5" component="h2">
