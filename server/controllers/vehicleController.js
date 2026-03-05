@@ -364,7 +364,10 @@ exports.getVehicleByVin = async (req, res) => {
       photo_url: mainPhoto?.url || null,
     });
   } catch (err) {
-    res.status(500).json({ message: 'Помилка сервера' });
+    const includeDetails = true;
+    res
+      .status(500)
+      .json({ message: 'Помилка сервера', ...(includeDetails ? { details: err?.message } : {}) });
   }
 };
 
@@ -398,12 +401,12 @@ exports.addVehicle = async (req, res) => {
     );
 
     const db = await getDb();
-    const { columnNames, makeColumn, licenseColumn } = await getVehicleColumnInfo(db);
+    const { columnNames, makeColumn, licenseColumn, ownerColumn } = await getVehicleColumnInfo(db);
 
     const ownerId = canAssignOwner && user_id ? user_id : userId;
 
     const exists = await db
-      .prepare('SELECT id FROM vehicles WHERE vin = ? AND user_id = ? LIMIT 1')
+      .prepare(`SELECT id FROM vehicles WHERE vin = ? AND ${ownerColumn} = ? LIMIT 1`)
       .get(vin, ownerId);
 
     if (exists) {
@@ -415,7 +418,7 @@ exports.addVehicle = async (req, res) => {
 
     const row = {
       id: vehicleId,
-      user_id: ownerId,
+      [ownerColumn]: ownerId,
       vin,
       [makeColumn]: make || brand || null,
       model: model || null,
@@ -562,7 +565,7 @@ exports.addVehicle = async (req, res) => {
   }
 
     const created = await db
-      .prepare('SELECT * FROM vehicles WHERE vin = ? AND user_id = ?')
+      .prepare(`SELECT * FROM vehicles WHERE vin = ? AND ${ownerColumn} = ?`)
       .get(vin, ownerId);
 
     const createdPhoto = await db
@@ -579,7 +582,11 @@ exports.addVehicle = async (req, res) => {
       photo_url: createdPhoto?.url || null,
     });
   } catch (err) {
-    res.status(500).json({ message: 'Помилка сервера' });
+    console.error('[addVehicle] error:', err);
+    res.status(500).json({
+      message: 'Помилка сервера',
+      details: err && err.message ? err.message : String(err),
+    });
   }
 };
 
