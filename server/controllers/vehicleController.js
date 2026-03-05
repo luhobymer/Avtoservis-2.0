@@ -406,11 +406,16 @@ exports.addVehicle = async (req, res) => {
     const ownerId = canAssignOwner && user_id ? user_id : userId;
 
     const exists = await db
-      .prepare(`SELECT id FROM vehicles WHERE vin = ? AND ${ownerColumn} = ? LIMIT 1`)
-      .get(vin, ownerId);
+      .prepare(`SELECT id, ${ownerColumn} AS owner_id FROM vehicles WHERE vin = ? LIMIT 1`)
+      .get(vin);
 
     if (exists) {
-      return res.status(400).json({ message: 'Автомобіль з таким VIN вже існує' });
+      const sameOwner =
+        exists.owner_id != null && ownerId != null && String(exists.owner_id) === String(ownerId);
+      const message = sameOwner
+        ? 'Автомобіль з таким VIN вже існує у вашому гаражі'
+        : 'Автомобіль з таким VIN вже зареєстрований в системі';
+      return res.status(400).json({ message });
     }
 
     const vehicleId = crypto.randomUUID();
@@ -582,10 +587,17 @@ exports.addVehicle = async (req, res) => {
       photo_url: createdPhoto?.url || null,
     });
   } catch (err) {
+    const message = err && err.message ? String(err.message) : String(err);
+    if (
+      message.includes('UNIQUE constraint failed') &&
+      message.toLowerCase().includes('vehicles.vin')
+    ) {
+      return res.status(400).json({ message: 'Автомобіль з таким VIN вже зареєстрований' });
+    }
     console.error('[addVehicle] error:', err);
     res.status(500).json({
       message: 'Помилка сервера',
-      details: err && err.message ? err.message : String(err),
+      details: message,
     });
   }
 };
