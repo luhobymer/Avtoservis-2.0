@@ -73,7 +73,9 @@ const ChangePassword = () => {
             if (logout) {
               await logout();
             }
-          } catch {}
+          } catch (e) {
+            console.error('Logout error:', e);
+          }
           window.location.href = '/auth/login';
         }, 2000);
       } else {
