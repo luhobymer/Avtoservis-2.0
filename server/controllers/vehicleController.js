@@ -790,7 +790,6 @@ exports.getVehicleByLicensePlateForBot = async (req, res) => {
     res.status(500).json({ message: 'Помилка сервера' });
   }
 };
-=======
 const crypto = require('crypto');
 const { getDb, getExistingColumn } = require('../db/d1');
 const defaultMaintenanceTasks = require('../utils/defaultMaintenance');
