@@ -2,14 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TextInput, ScrollView, Alert, TouchableOpacity, ActivityIndicator, Image } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 import CustomButton from '../components/CustomButton';
 import { Button, Dialog, Portal, Provider as PaperProvider } from 'react-native-paper';
 import { createServiceRecord } from '../api/serviceRecordsService';
 import { getAllVehicles } from '../api/vehiclesService';
-import { compressImage } from '../utils/imageUtils';
-
-import * as ImagePicker from 'expo-image-picker';
+import { compressImage, pickImage as pickImageFromLibrary } from '../utils/imageUtils';
 
 export default function CreateServiceRecord({ navigation }) {
   const { t } = useTranslation();
@@ -36,15 +34,10 @@ export default function CreateServiceRecord({ navigation }) {
 
   const pickImage = async () => {
     try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [4, 3],
-        quality: 1,
-      });
+      const result = await pickImageFromLibrary();
 
       if (!result.canceled) {
-        const compressedImage = await compressImage(result.assets[0].uri);
+        const compressedImage = await compressImage(result.uri);
         setFormData(prev => ({
           ...prev,
           photos: [...prev.photos, compressedImage]

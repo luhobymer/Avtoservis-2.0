@@ -58,25 +58,6 @@ jest.mock('axios', () => ({
   post: jest.fn()
 }));
 
-// Мок для expo-constants
-jest.mock('expo-constants', () => ({
-  default: {
-    manifest: {
-      extra: {
-        apiUrl: 'http://localhost:3000'
-      }
-    }
-  }
-}));
-
-// Мок для expo-secure-store
-jest.mock('expo-secure-store', () => ({
-  getItemAsync: jest.fn(() => Promise.resolve(null)),
-  setItemAsync: jest.fn(() => Promise.resolve()),
-  deleteItemAsync: jest.fn(() => Promise.resolve()),
-  isAvailableAsync: jest.fn(() => Promise.resolve(true))
-}));
-
 // Мок для axiosConfig
 jest.mock('../api/axiosConfig', () => {
   const isTokenValidMock = (token) => {
@@ -120,29 +101,6 @@ jest.mock('../api/axiosConfig', () => {
     default: axiosInstanceMock
   };
 });
-
-// Мок для Expo Notifications
-jest.mock('expo-notifications', () => ({
-  getPermissionsAsync: jest.fn(() => Promise.resolve({ status: 'granted' })),
-  requestPermissionsAsync: jest.fn(() => Promise.resolve({ status: 'granted' })),
-  getExpoPushTokenAsync: jest.fn(() => Promise.resolve({ data: 'ExponentPushToken[mock-token]' })),
-  setNotificationHandler: jest.fn(() => {}),
-  setNotificationChannelAsync: jest.fn(() => Promise.resolve()),
-  scheduleNotificationAsync: jest.fn(() => Promise.resolve('notification-id')),
-  addNotificationReceivedListener: jest.fn(() => jest.fn()),
-  addNotificationResponseReceivedListener: jest.fn(() => jest.fn()),
-  cancelScheduledNotificationAsync: jest.fn(() => Promise.resolve()),
-  cancelAllScheduledNotificationsAsync: jest.fn(() => Promise.resolve()),
-  getAllScheduledNotificationsAsync: jest.fn(() => Promise.resolve([])),
-}));
-
-// Мок для Expo Device
-jest.mock('expo-device', () => ({ isDevice: true }));
-
-// Мок для Expo Constants
-jest.mock('expo-constants', () => ({
-  expoConfig: { extra: { eas: { projectId: 'mock-project-id' } }, version: '1.0.0' }
-}));
 
 // Глобальні налаштування
 global.fetch = jest.fn();

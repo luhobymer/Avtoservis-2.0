@@ -2,10 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Alert, Image, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 import CustomButton from '../components/CustomButton';
-import { pickImage, checkGalleryPermissions, checkCameraPermissions, optimizeImage } from '../utils/imageUtils';
-import * as ImagePicker from 'expo-image-picker';
+import { pickImage, checkGalleryPermissions, checkCameraPermissions, optimizeImage, takePhoto } from '../utils/imageUtils';
 import { Picker } from '@react-native-picker/picker';
 import { ocrManager } from '../utils/ocrUtils';
 import * as vehiclesService from '../api/vehiclesService';
@@ -87,14 +86,10 @@ export default function EditVehicle({ route, navigation }) {
         return;
       }
 
-      const result = await ImagePicker.launchCameraAsync({
-        allowsEditing: true,
-        aspect: [4, 3],
-        quality: 0.8,
-      });
+      const result = await takePhoto();
 
       if (!result.canceled) {
-        const optimizedUri = await optimizeImage(result.assets[0].uri);
+        const optimizedUri = await optimizeImage(result.uri);
         setPhoto(optimizedUri);
       }
     } catch (error) {
@@ -112,15 +107,11 @@ export default function EditVehicle({ route, navigation }) {
         return;
       }
 
-      const result = await ImagePicker.launchCameraAsync({
-        allowsEditing: true,
-        aspect: [4, 3],
-        quality: 0.8,
-      });
+      const result = await takePhoto();
 
       if (!result.canceled) {
         setRecognizing(true);
-        const optimizedUri = await optimizeImage(result.assets[0].uri);
+        const optimizedUri = await optimizeImage(result.uri);
         setDocumentPhoto(optimizedUri);
         await recognizeDocumentData(optimizedUri);
         setRecognizing(false);

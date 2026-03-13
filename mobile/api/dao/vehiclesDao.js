@@ -3,17 +3,32 @@ import { axiosAuth } from '../axiosConfig';
 const mapVehicle = (v) => ({
   id: v.id || v.vin,
   vin: v.vin || v.id,
-  brand: v.make,
+  brand: v.make || v.brand,
   model: v.model,
   year: v.year,
-  licensePlate: v.license_plate,
+  licensePlate: v.license_plate || v.licensePlate,
   mileage: v.mileage,
   color: v.color,
 });
 
+const mapVehicleDetails = (v) => ({
+  id: v.id || v.vin,
+  make: v.make || v.brand || '',
+  model: v.model || '',
+  year: v.year || v.make_year || null,
+  vin: v.vin || '',
+  licensePlate: v.license_plate || v.licensePlate || '',
+  color: v.color || '',
+  mileage: v.mileage != null ? Number(v.mileage) : null,
+  engineType: v.engine_type || v.engineType || '',
+  engineCapacity: v.engine_capacity || v.engineVolume || null,
+  transmission: v.transmission || '',
+  photoUrl: v.photo_url || v.photoUrl || null,
+});
+
 export async function listByUser(userId) {
   const response = await axiosAuth.get('/api/vehicles', {
-    params: { user_id: userId },
+    params: userId ? { user_id: userId } : undefined,
   });
   const data = Array.isArray(response.data) ? response.data : [];
   return data.map(mapVehicle);
@@ -82,11 +97,59 @@ export async function listAllAdmin() {
   const data = Array.isArray(response.data) ? response.data : [];
   return data.map((v) => ({
     id: v.id || v.vin,
-    make: v.make,
+    make: v.make || v.brand,
     model: v.model,
     year: v.year,
-    licensePlate: v.license_plate,
+    licensePlate: v.license_plate || v.licensePlate,
     status: 'active',
     ownerName: v.owner_name || '—',
   }));
+}
+
+export async function listServicedByCurrentMechanic() {
+  const response = await axiosAuth.get('/api/vehicles', {
+    params: { serviced: '1' },
+  });
+  const data = Array.isArray(response.data) ? response.data : [];
+  return data.map(mapVehicle);
+}
+
+export async function uploadPhoto(uri) {
+  if (!uri) return null;
+  const filename = uri.split(/[\\/]/).pop() || 'photo.jpg';
+  const ext = filename.includes('.') ? filename.split('.').pop().toLowerCase() : 'jpg';
+  const type = ext === 'png' ? 'image/png' : 'image/jpeg';
+
+  const formData = new FormData();
+  formData.append('photo', {
+    uri,
+    name: filename,
+    type,
+  });
+
+  const response = await axiosAuth.post('/api/upload', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  });
+
+  return response?.data || null;
+}
+
+export async function getDetailsByLicensePlate(licensePlate) {
+  if (!licensePlate) return null;
+  const normalized = String(licensePlate).trim();
+  const response = await axiosAuth.get(
+    `/api/vehicles/license/${encodeURIComponent(normalized)}`
+  );
+  if (!response?.data) return null;
+  return mapVehicleDetails(response.data);
+}
+
+export async function getDetailsByVin(vin) {
+  if (!vin) return null;
+  const normalized = String(vin).trim().toUpperCase();
+  const response = await axiosAuth.get(`/api/vehicles/${encodeURIComponent(normalized)}`);
+  if (!response?.data) return null;
+  return mapVehicleDetails(response.data);
 }

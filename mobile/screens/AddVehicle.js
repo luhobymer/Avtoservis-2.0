@@ -10,6 +10,7 @@ import { Picker } from '@react-native-picker/picker';
 import * as vehiclesDao from '../api/dao/vehiclesDao';
 import * as usersDao from '../api/dao/usersDao';
 import { brandModelYears, getVehicleSpecs } from '../data/vehicleData';
+import { getPhoneContacts } from '../utils/contactsUtils';
 import axiosAuth from '../api/axiosConfig';
 
 export default function AddVehicle({ navigation }) {
@@ -29,11 +30,12 @@ export default function AddVehicle({ navigation }) {
   const [ownerModalVisible, setOwnerModalVisible] = useState(false);
   const [ownerSaving, setOwnerSaving] = useState(false);
   const [ownerForm, setOwnerForm] = useState({
-    name: '',
-    email: '',
+    firstName: '',
+    lastName: '',
     phone: '',
-    password: '',
   });
+  const [ownerContacts, setOwnerContacts] = useState([]);
+  const [contactsModalVisible, setContactsModalVisible] = useState(false);
   
   // Дані для випадаючих списків
   const [makes, setMakes] = useState([]);
@@ -220,7 +222,32 @@ export default function AddVehicle({ navigation }) {
         };
 
         const normalizedPlate = normalizeLicensePlate(formData.licensePlate);
-        
+
+        try {
+          const dbVehicle = await vehiclesDao.getDetailsByLicensePlate(normalizedPlate);
+          if (dbVehicle) {
+            setFormData(prev => ({
+              ...prev,
+              make: dbVehicle.make || prev.make,
+              model: dbVehicle.model || prev.model,
+              year: dbVehicle.year ? String(dbVehicle.year) : prev.year,
+              vin: dbVehicle.vin || prev.vin,
+              licensePlate: dbVehicle.licensePlate || normalizedPlate,
+              color: dbVehicle.color || prev.color,
+              mileage: dbVehicle.mileage != null ? String(dbVehicle.mileage) : prev.mileage,
+              engineType: dbVehicle.engineType || prev.engineType,
+              engineCapacity: dbVehicle.engineCapacity
+                ? String(dbVehicle.engineCapacity)
+                : prev.engineCapacity,
+              transmission: dbVehicle.transmission || prev.transmission,
+            }));
+            Alert.alert(t('common.success'), t('vehicles.found_success'));
+            return;
+          }
+        } catch (dbErr) {
+          console.warn('Vehicle DB lookup by plate failed:', dbErr);
+        }
+
         const response = await axiosAuth.get('/api/vehicle-registry', {
             params: { license_plate: normalizedPlate }
         });
@@ -228,7 +255,6 @@ export default function AddVehicle({ navigation }) {
         if (response.data) {
             const data = response.data;
             
-            // Маппінг типу палива
             let engineType = '';
             const fuelRaw = String(data.fuel_type || '').toUpperCase();
             if (fuelRaw.includes('BENZINE') || fuelRaw.includes('PETROL')) engineType = 'petrol';
@@ -237,7 +263,6 @@ export default function AddVehicle({ navigation }) {
             else if (fuelRaw.includes('ELECTRO') || fuelRaw.includes('ELECTRIC')) engineType = 'electric';
             else if (fuelRaw.includes('HYBRID')) engineType = 'hybrid';
 
-            // Маппінг кольору (спрощений, можна покращити)
             let color = '';
             const colorRaw = String(data.color || '').toLowerCase();
             const foundColor = colors.find(c => c.id === colorRaw || c.name.toLowerCase() === colorRaw);
@@ -283,6 +308,32 @@ export default function AddVehicle({ navigation }) {
     setVinLookupLoading(true);
     try {
         const normalizedVin = String(formData.vin || '').replace(/\s+/g, '').toUpperCase();
+
+        try {
+          const dbVehicle = await vehiclesDao.getDetailsByVin(normalizedVin);
+          if (dbVehicle) {
+            setFormData(prev => ({
+              ...prev,
+              make: dbVehicle.make || prev.make,
+              model: dbVehicle.model || prev.model,
+              year: dbVehicle.year ? String(dbVehicle.year) : prev.year,
+              vin: dbVehicle.vin || normalizedVin,
+              licensePlate: dbVehicle.licensePlate || prev.licensePlate,
+              color: dbVehicle.color || prev.color,
+              mileage: dbVehicle.mileage != null ? String(dbVehicle.mileage) : prev.mileage,
+              engineType: dbVehicle.engineType || prev.engineType,
+              engineCapacity: dbVehicle.engineCapacity
+                ? String(dbVehicle.engineCapacity)
+                : prev.engineCapacity,
+              transmission: dbVehicle.transmission || prev.transmission,
+            }));
+            Alert.alert(t('common.success'), t('vehicles.found_success'));
+            return;
+          }
+        } catch (dbErr) {
+          console.warn('Vehicle DB lookup by VIN failed:', dbErr);
+        }
+
         const response = await axiosAuth.get('/api/vehicle-registry', {
             params: { vin: normalizedVin }
         });
@@ -337,25 +388,16 @@ export default function AddVehicle({ navigation }) {
   };
 
   const handleCreateOwner = async () => {
-    const name = String(ownerForm.name || '').trim();
-    const email = String(ownerForm.email || '').trim();
+    const firstName = String(ownerForm.firstName || '').trim();
+    const lastName = String(ownerForm.lastName || '').trim();
     const phone = String(ownerForm.phone || '').trim();
-    const password = String(ownerForm.password || '').trim();
+    const password = '12345678';
 
-    if (!name || !password || (!email && !phone)) {
+    if (!firstName || !lastName || !phone) {
       Alert.alert(t('common.error', 'Помилка'), t('validation.please_fill_all_fields'));
       return;
     }
-    if (password.length < 6) {
-      Alert.alert(t('common.error', 'Помилка'), t('validation.password_min_length'));
-      return;
-    }
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     const phoneRegex = /^(\+?380|0)\d{9}$/;
-    if (email && !emailRegex.test(email)) {
-      Alert.alert(t('common.error', 'Помилка'), t('validation.invalid_email'));
-      return;
-    }
     if (phone && !phoneRegex.test(phone)) {
       Alert.alert(t('common.error', 'Помилка'), t('validation.invalid_phone'));
       return;
@@ -365,8 +407,9 @@ export default function AddVehicle({ navigation }) {
     setOwnerSaving(true);
     try {
       const created = await usersDao.createUser({
-        name,
-        email,
+        name: `${firstName} ${lastName}`.trim(),
+        firstName,
+        lastName,
         phone: normalizedPhone,
         password,
         role: 'client',
@@ -377,8 +420,8 @@ export default function AddVehicle({ navigation }) {
         } catch (error) {}
         const newOwner = {
           id: created.id,
-          name: created.name || name,
-          email: created.email || email,
+          name: created.name || `${firstName} ${lastName}`.trim(),
+          email: created.email || created.email,
           role: 'client',
         };
         setOwners((prev) => {
@@ -390,7 +433,7 @@ export default function AddVehicle({ navigation }) {
         });
         setSelectedOwnerId(String(created.id));
         setOwnerModalVisible(false);
-        setOwnerForm({ name: '', email: '', phone: '', password: '' });
+        setOwnerForm({ firstName: '', lastName: '', phone: '' });
       }
     } catch (error) {
       const message = error?.response?.data?.message || error?.message || t('common.error', 'Помилка');
@@ -398,6 +441,61 @@ export default function AddVehicle({ navigation }) {
     } finally {
       setOwnerSaving(false);
     }
+  };
+
+  const runSmartPhotoRecognition = async (uri) => {
+    if (!uri) return;
+    setRecognizing(true);
+    try {
+      let data = null;
+      try {
+        data = await ocrManager.recognizeLicensePlateAndGetVehicleData(uri);
+      } catch (e) {
+        console.warn('License plate OCR failed:', e);
+      }
+
+      if (!data) {
+        try {
+          data = await ocrManager.recognizeVehicleDocument(uri);
+        } catch (e) {
+          console.warn('Document OCR failed:', e);
+        }
+      }
+
+      if (data) {
+        updateFormWithOCRData(data);
+      }
+    } finally {
+      setRecognizing(false);
+    }
+  };
+
+  const openOwnerContacts = async () => {
+    try {
+      const contacts = await getPhoneContacts();
+      setOwnerContacts(contacts);
+      if (contacts.length) {
+        setContactsModalVisible(true);
+      } else {
+        Alert.alert(t('common.info', 'Інформація'), t('contacts.no_contacts', 'Не знайдено контактів з телефонами'));
+      }
+    } catch (e) {
+      console.error('Failed to load contacts:', e);
+      Alert.alert(t('common.error', 'Помилка'), t('contacts.load_error', 'Не вдалося завантажити контакти'));
+    }
+  };
+
+  const handleSelectOwnerContact = (contact) => {
+    if (!contact) return;
+    const parts = String(contact.name || '').trim().split(/\s+/);
+    const firstName = parts[0] || '';
+    const lastName = parts.slice(1).join(' ');
+    setOwnerForm({
+      firstName,
+      lastName,
+      phone: contact.phone || '',
+    });
+    setContactsModalVisible(false);
   };
 
   const pickVehicleImage = async () => {
@@ -411,6 +509,7 @@ export default function AddVehicle({ navigation }) {
       if (!result.canceled) {
         const optimizedUri = await optimizeImage(result.uri);
         setPhoto(optimizedUri);
+        await runSmartPhotoRecognition(optimizedUri);
       }
     } catch (error) {
       console.error('Error picking image:', error);
@@ -467,6 +566,7 @@ export default function AddVehicle({ navigation }) {
       const result = await takePhoto();
       if (!result.canceled) {
           setPhoto(result.uri);
+          await runSmartPhotoRecognition(result.uri);
       }
   };
 
@@ -815,16 +915,14 @@ export default function AddVehicle({ navigation }) {
             <TextInput
               style={styles.modalInput}
               placeholder={t('common.name', 'Імʼя')}
-              value={ownerForm.name}
-              onChangeText={(value) => setOwnerForm((prev) => ({ ...prev, name: value }))}
+              value={ownerForm.firstName}
+              onChangeText={(value) => setOwnerForm((prev) => ({ ...prev, firstName: value }))}
             />
             <TextInput
               style={styles.modalInput}
-              placeholder={t('common.email', 'Email')}
-              value={ownerForm.email}
-              onChangeText={(value) => setOwnerForm((prev) => ({ ...prev, email: value }))}
-              autoCapitalize="none"
-              keyboardType="email-address"
+              placeholder={t('common.last_name', 'Прізвище')}
+              value={ownerForm.lastName}
+              onChangeText={(value) => setOwnerForm((prev) => ({ ...prev, lastName: value }))}
             />
             <TextInput
               style={styles.modalInput}
@@ -832,13 +930,6 @@ export default function AddVehicle({ navigation }) {
               value={ownerForm.phone}
               onChangeText={(value) => setOwnerForm((prev) => ({ ...prev, phone: value }))}
               keyboardType="phone-pad"
-            />
-            <TextInput
-              style={styles.modalInput}
-              placeholder={t('auth.password_placeholder', 'Пароль')}
-              value={ownerForm.password}
-              onChangeText={(value) => setOwnerForm((prev) => ({ ...prev, password: value }))}
-              secureTextEntry
             />
             <View style={styles.modalActions}>
               <TouchableOpacity
@@ -849,11 +940,50 @@ export default function AddVehicle({ navigation }) {
                 <Text style={styles.modalCancelText}>{t('common.cancel', 'Скасувати')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
+                style={[styles.modalButton, styles.modalSecondary]}
+                onPress={openOwnerContacts}
+                disabled={ownerSaving}
+              >
+                <Text style={styles.modalSecondaryText}>{t('contacts.from_phone', 'З контактів')}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
                 style={[styles.modalButton, styles.modalConfirm]}
                 onPress={handleCreateOwner}
                 disabled={ownerSaving}
               >
                 {ownerSaving ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.modalConfirmText}>{t('common.save', 'Зберегти')}</Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+      <Modal
+        visible={contactsModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setContactsModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.contactsModalContent}>
+            <Text style={styles.modalTitle}>{t('contacts.select_owner', 'Оберіть контакт')}</Text>
+            <ScrollView style={{ maxHeight: 400 }}>
+              {ownerContacts.map((contact) => (
+                <TouchableOpacity
+                  key={contact.id}
+                  style={styles.contactItem}
+                  onPress={() => handleSelectOwnerContact(contact)}
+                >
+                  <Text style={styles.contactName}>{contact.name}</Text>
+                  <Text style={styles.contactPhone}>{contact.phone}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalCancel]}
+                onPress={() => setContactsModalVisible(false)}
+              >
+                <Text style={styles.modalCancelText}>{t('common.cancel', 'Скасувати')}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -903,4 +1033,10 @@ const styles = StyleSheet.create({
   modalConfirm: { backgroundColor: '#1976d2' },
   modalCancelText: { color: '#333', fontSize: 14 },
   modalConfirmText: { color: '#fff', fontSize: 14 },
+  modalSecondary: { backgroundColor: '#f0f0f0' },
+  modalSecondaryText: { color: '#1976d2', fontSize: 14 },
+  contactsModalContent: { width: '100%', maxHeight: 500, backgroundColor: '#fff', borderRadius: 12, padding: 16 },
+  contactItem: { paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#eee' },
+  contactName: { fontSize: 16, color: '#111' },
+  contactPhone: { fontSize: 14, color: '#555', marginTop: 2 },
 });

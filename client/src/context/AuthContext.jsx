@@ -179,11 +179,12 @@ export const AuthProvider = ({ children }) => {
     setError(null);
     try {
       const identifier = normalizeIdentifier(credentials?.identifier || credentials?.email);
+      const plainPassword = credentials.password;
       const response = await axiosInstance.post(
         '/api/auth/login',
         {
           identifier,
-          password: credentials.password,
+          password: plainPassword,
           token2fa: credentials?.token2fa
         },
         { withCredentials: true }
@@ -207,7 +208,7 @@ export const AuthProvider = ({ children }) => {
       setUser(apiUser);
       setIsAuthenticated(true);
       setNeedsProfileSetup(!isProfileComplete(apiUser));
-      return apiUser;
+      return { user: apiUser, usedDefaultPassword: plainPassword === '12345678' };
     } catch (err) {
       const status = err?.response?.status || null;
       const responseData = err?.response?.data;

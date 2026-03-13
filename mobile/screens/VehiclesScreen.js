@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, FlatList, RefreshControl, Alert, ActivityIndicator, SafeAreaView } from 'react-native';
 import { useTranslation } from 'react-i18next';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 import { Card, Button } from 'react-native-paper';
 import { getAllVehicles } from '../api/vehiclesService';
 import FloatingActionButton from '../components/FloatingActionButton';

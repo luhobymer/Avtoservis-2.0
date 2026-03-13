@@ -10,7 +10,7 @@ import {
   Alert
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 import { format } from 'date-fns';
 import { uk, ru, enUS } from 'date-fns/locale';
 import { useAuth } from '../context/AuthContext';

@@ -70,7 +70,10 @@
     "password": "Password",
     "roleClient": "Client",
     "roleMaster": "Master",
-    "roleAdmin": "Administrator"
+    "roleAdmin": "Administrator",
+    "google_login_failed": "Google sign-in failed",
+    "google_token_missing": "Could not get Google token. Please try again.",
+    "google_developer_error": "Google sign-in is misconfigured. Check app configuration in Google Cloud."
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -290,7 +293,7 @@
   "relationships": {
     "client_connected": "Client has been added to your clients",
     "client_already_connected": "Client is already connected"
-  }
+  },
   "notifications": {
     "title": "Notifications",
     "mark_read": "Mark as read",

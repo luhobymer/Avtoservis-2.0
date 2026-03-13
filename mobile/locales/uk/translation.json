@@ -97,7 +97,10 @@
     "password": "Пароль",
     "roleClient": "Клієнт",
     "roleMaster": "Майстер",
-    "roleAdmin": "Адміністратор"
+    "roleAdmin": "Адміністратор",
+    "google_login_failed": "Не вдалося виконати вхід через Google",
+    "google_token_missing": "Не вдалося отримати токен Google. Спробуйте ще раз.",
+    "google_developer_error": "Помилка налаштування Google входу. Перевірте Google-конфігурацію додатка."
   },
   "nav": {
     "dashboard": "Панель",
@@ -352,7 +355,7 @@
   "relationships": {
     "client_connected": "Клієнта додано до ваших клієнтів",
     "client_already_connected": "Клієнт вже підключений"
-  }
+  },
   "appointments": {
     "title": "Мої записи",
     "add_appointment": "Новий запис",

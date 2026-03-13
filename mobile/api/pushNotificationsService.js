@@ -1,72 +1,15 @@
-import * as Notifications from 'expo-notifications';
-import * as Device from 'expo-device';
-import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axiosAuth from './axiosConfig';
 import secureStorage, { SECURE_STORAGE_KEYS } from '../utils/secureStorage';
-
-// Налаштування обробки сповіщень
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-  }),
-});
 
 /**
  * Реєстрація пристрою для отримання push-сповіщень
  * @returns {Promise<string|null>} - токен пристрою або null, якщо реєстрація не вдалася
  */
 export const registerForPushNotifications = async () => {
-  let token;
-  
-  if (!Device.isDevice) {
-    console.log('[PushNotifications] Сповіщення не працюють на емуляторі');
-    return null;
-  }
-
-  // Перевіряємо дозволи
-  const { status: existingStatus } = await Notifications.getPermissionsAsync();
-  let finalStatus = existingStatus;
-  
-  if (existingStatus !== 'granted') {
-    const { status } = await Notifications.requestPermissionsAsync();
-    finalStatus = status;
-  }
-  
-  if (finalStatus !== 'granted') {
-    console.log('[PushNotifications] Дозвіл на сповіщення не надано');
-    return null;
-  }
-  
-  try {
-    // Отримуємо токен для push-сповіщень
-    token = (await Notifications.getExpoPushTokenAsync({
-      projectId: Constants.expoConfig?.extra?.eas?.projectId,
-    })).data;
-    
-    console.log('[PushNotifications] Токен пристрою:', token);
-    
-    // Зберігаємо токен локально
-    await AsyncStorage.setItem('pushToken', token);
-    
-    // Налаштування для Android
-    if (Platform.OS === 'android') {
-      Notifications.setNotificationChannelAsync('default', {
-        name: 'default',
-        importance: Notifications.AndroidImportance.MAX,
-        vibrationPattern: [0, 250, 250, 250],
-        lightColor: '#FF231F7C',
-      });
-    }
-    
-    return token;
-  } catch (error) {
-    console.error('[PushNotifications] Помилка при отриманні токена:', error);
-    return null;
-  }
+  console.warn('[PushNotifications] Push notifications are disabled without a native provider.');
+  return null;
 };
 
 /**
@@ -94,7 +37,7 @@ export const sendPushTokenToServer = async (pushToken, authToken) => {
       device_id: installationId,
       token: pushToken,
       platform: Platform.OS,
-      app_version: Constants.expoConfig?.version || '1.0.0',
+      app_version: '1.0.0',
       last_used_at: new Date().toISOString()
     };
     await axiosAuth.post('/api/push-tokens', payload);
@@ -112,31 +55,7 @@ export const sendPushTokenToServer = async (pushToken, authToken) => {
  * @returns {Function} - функція для видалення обробників
  */
 export const setupNotificationListeners = (onNotificationReceived, onNotificationResponse) => {
-  // Обробник для отримання сповіщення, коли додаток відкрито
-  const receivedSubscription = Notifications.addNotificationReceivedListener(
-    notification => {
-      console.log('[PushNotifications] Отримано сповіщення:', notification);
-      if (onNotificationReceived) {
-        onNotificationReceived(notification);
-      }
-    }
-  );
-
-  // Обробник для натискання на сповіщення
-  const responseSubscription = Notifications.addNotificationResponseReceivedListener(
-    response => {
-      console.log('[PushNotifications] Відповідь на сповіщення:', response);
-      if (onNotificationResponse) {
-        onNotificationResponse(response);
-      }
-    }
-  );
-
-  // Повертаємо функцію для видалення обробників
-  return () => {
-    Notifications.removeNotificationSubscription(receivedSubscription);
-    Notifications.removeNotificationSubscription(responseSubscription);
-  };
+  return () => {};
 };
 
 /**
@@ -149,23 +68,8 @@ export const setupNotificationListeners = (onNotificationReceived, onNotificatio
  * @returns {Promise<string>} - ідентифікатор сповіщення
  */
 export const scheduleLocalNotification = async ({ title, body, data = {}, seconds = 1 }) => {
-  try {
-    const id = await Notifications.scheduleNotificationAsync({
-      content: {
-        title,
-        body,
-        data,
-        sound: true,
-      },
-      trigger: seconds > 0 ? { seconds } : null,
-    });
-    
-    console.log(`[PushNotifications] Заплановано локальне сповіщення з ID: ${id}`);
-    return id;
-  } catch (error) {
-    console.error('[PushNotifications] Помилка при плануванні сповіщення:', error);
-    throw error;
-  }
+  console.warn('[PushNotifications] Local notifications are disabled without a native provider.');
+  return null;
 };
 
 /**
@@ -174,14 +78,7 @@ export const scheduleLocalNotification = async ({ title, body, data = {}, second
  * @returns {Promise<boolean>} - успішність операції
  */
 export const cancelScheduledNotification = async (notificationId) => {
-  try {
-    await Notifications.cancelScheduledNotificationAsync(notificationId);
-    console.log(`[PushNotifications] Скасовано сповіщення з ID: ${notificationId}`);
-    return true;
-  } catch (error) {
-    console.error('[PushNotifications] Помилка при скасуванні сповіщення:', error);
-    return false;
-  }
+  return false;
 };
 
 /**
@@ -189,14 +86,7 @@ export const cancelScheduledNotification = async (notificationId) => {
  * @returns {Promise<boolean>} - успішність операції
  */
 export const cancelAllScheduledNotifications = async () => {
-  try {
-    await Notifications.cancelAllScheduledNotificationsAsync();
-    console.log('[PushNotifications] Скасовано всі сповіщення');
-    return true;
-  } catch (error) {
-    console.error('[PushNotifications] Помилка при скасуванні всіх сповіщень:', error);
-    return false;
-  }
+  return false;
 };
 
 /**

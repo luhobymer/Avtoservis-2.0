@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Image, ActivityIndicator } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import * as vehiclesDao from '../api/dao/vehiclesDao';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 import CustomButton from '../components/CustomButton';
 
 export default function VehicleDetails({ route, navigation }) {
@@ -19,7 +19,7 @@ export default function VehicleDetails({ route, navigation }) {
   const fetchVehicleDetails = async () => {
     try {
       const v = await vehiclesDao.getById(vin);
-      setVehicle({ ...v, make: v.brand });
+      setVehicle({ ...v, make: v.brand, photoUrl: v.photoUrl });
     } catch (error) {
       console.error('Failed to fetch vehicle details:', error);
       Alert.alert(t('common.error'), t('vehicles.fetch_error'));

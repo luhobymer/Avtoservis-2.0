@@ -1,4 +1,4 @@
-import * as SecureStore from 'expo-secure-store';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Ключі для зберігання даних
 export const SECURE_STORAGE_KEYS = {
@@ -21,13 +21,13 @@ export const secureSet = async (key, value) => {
   try {
     if (value === null || value === undefined) {
       console.log(`[SecureStorage] Removing value for key: ${key}`);
-      await SecureStore.deleteItemAsync(key);
+      await AsyncStorage.removeItem(key);
       return;
     }
     
     // Перетворюємо об'єкти в JSON рядки
     const valueToStore = typeof value === 'object' ? JSON.stringify(value) : String(value);
-    await SecureStore.setItemAsync(key, valueToStore);
+    await AsyncStorage.setItem(key, valueToStore);
     console.log(`[SecureStorage] Value stored for key: ${key}`);
   } catch (error) {
     console.error(`[SecureStorage] Error storing value for key ${key}:`, error);
@@ -43,7 +43,7 @@ export const secureSet = async (key, value) => {
  */
 export const secureGet = async (key, parseJson = false) => {
   try {
-    const value = await SecureStore.getItemAsync(key);
+    const value = await AsyncStorage.getItem(key);
     
     if (value === null || value === undefined) {
       console.log(`[SecureStorage] No value found for key: ${key}`);
@@ -74,7 +74,7 @@ export const secureGet = async (key, parseJson = false) => {
  */
 export const secureRemove = async (key) => {
   try {
-    await SecureStore.deleteItemAsync(key);
+    await AsyncStorage.removeItem(key);
     console.log(`[SecureStorage] Value removed for key: ${key}`);
     return true;
   } catch (error) {
@@ -90,7 +90,7 @@ export const secureRemove = async (key) => {
  */
 export const secureExists = async (key) => {
   try {
-    const value = await SecureStore.getItemAsync(key);
+    const value = await AsyncStorage.getItem(key);
     return value !== null && value !== undefined;
   } catch (error) {
     console.error(`[SecureStorage] Error checking existence for key ${key}:`, error);

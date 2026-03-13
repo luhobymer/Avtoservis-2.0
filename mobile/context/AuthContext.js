@@ -115,13 +115,14 @@ export function AuthProvider({ children }) {
     try {
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       const phoneRegex = /^(\+?380|0)\d{9}$/;
-      if (!identifier || (!emailRegex.test(identifier) && !phoneRegex.test(identifier))) {
-        throw new Error('Невірний формат email або телефону');
+
+      if (!identifier || !password) {
+        throw new Error('Вкажіть логін і пароль');
       }
 
-      let loginValue = identifier.trim();
-      if (phoneRegex.test(identifier)) {
-        let cleanedPhone = identifier.trim().replace(/\s+/g, '');
+      let loginValue = String(identifier).trim();
+      if (phoneRegex.test(loginValue)) {
+        let cleanedPhone = loginValue.replace(/\s+/g, '');
         if (cleanedPhone.startsWith('0')) {
           loginValue = '+380' + cleanedPhone.slice(1);
         } else if (cleanedPhone.startsWith('380')) {
@@ -179,6 +180,15 @@ export function AuthProvider({ children }) {
         errorMessage = err.data.error_description;
       } else if (err.message) {
         errorMessage = err.message;
+      }
+      const status = err?.response?.status;
+      const cfg = err?.response?.config || {};
+      const urlInfo =
+        typeof cfg.baseURL === 'string' || typeof cfg.url === 'string'
+          ? ` [${(cfg.baseURL || '')}${cfg.url || ''}]`
+          : '';
+      if (status) {
+        errorMessage = `${errorMessage} (HTTP ${status})${urlInfo}`;
       }
       if (err?.message === 'Network request failed' || err?.name === 'AuthRetryableFetchError') {
         errorMessage = 'Проблеми з мережею. Перевірте інтернет-з\'єднання';
@@ -371,14 +381,14 @@ export function AuthProvider({ children }) {
     return user.role === requiredRole;
   };
 
-  // Функція для перевірки, чи є користувач майстром-механіком (адміністратор системи)
+  // Функція для перевірки, чи є користувач адміністратором
   const isAdmin = () => {
-    return hasRole('master');
+    return hasRole(['admin', 'master_admin']);
   };
 
   // Функція для перевірки, чи є користувач майстром
   const isMaster = () => {
-    return hasRole('master');
+    return hasRole(['master', 'master_admin']);
   };
 
   // Функція для перевірки, чи є користувач клієнтом
@@ -396,7 +406,7 @@ export function AuthProvider({ children }) {
       if (!response || !response.data) {
         throw new Error('User not found');
       }
-      return { user: response.data };
+      return response.data;
     } catch (error) {
       console.error('[Auth] Error fetching user data:', error);
       throw error;

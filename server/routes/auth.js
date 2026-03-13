@@ -41,6 +41,7 @@ router.post('/verify-email', loginLimiter, authController.verifyEmail);
 router.post('/refresh-token', refreshLimiter, authController.refreshToken);
 router.post('/forgot-password', passwordResetLimiter, authController.forgotPassword);
 router.post('/reset-password', passwordResetLimiter, authController.resetPassword);
+router.post('/change-password', auth, authController.changePassword);
 router.get('/me', auth, authController.getCurrentUser);
 router.post('/logout', refreshLimiter, authController.logout);
 router.put('/profile', auth, usersController.updateUserProfile);

@@ -37,3 +37,23 @@ Rubbish/
 test.txt
 telegram-bot/jest-results.json
 
+# Android SDK
+android-sdk/
+
+# Build artifacts
+*.apk
+*.aab
+*.bundle
+mobile/android/app/build/
+
+# Gradle
+.gradle/
+**/.gradle/
+local.properties
+mobile/android/local.properties
+
+# Tools
+tools/
+
+# Templates
+_rn_template/

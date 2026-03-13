@@ -3,11 +3,8 @@ import { View, Text, StyleSheet, ScrollView, Alert, ActivityIndicator, Touchable
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import CustomButton from '../components/CustomButton';
-import { Ionicons } from '@expo/vector-icons';
-import * as FileSystem from 'expo-file-system';
-import * as Sharing from 'expo-sharing';
-import { Buffer } from 'buffer';
-import { downloadServiceHistoryPdf, getAllServiceRecords } from '../api/serviceRecordsService';
+import Ionicons from 'react-native-vector-icons/Ionicons';
+import { getAllServiceRecords } from '../api/serviceRecordsService';
 import FloatingActionButton from '../components/FloatingActionButton';
 import { getAllVehicles } from '../api/vehiclesService';
 
@@ -80,22 +77,7 @@ export default function ServiceBookScreen({ navigation }) {
 
     setLoading(true);
     try {
-      const vehicleVin = selectedVehicle.vin || selectedVehicle.vehicle_vin || '';
-      if (!vehicleVin) {
-        Alert.alert(t('common.error'), t('service_book.export_error'));
-        return;
-      }
-      const { data, filename } = await downloadServiceHistoryPdf(vehicleVin);
-      const fileName = filename || `service-book-${vehicleVin}.pdf`;
-      const fileUri = `${FileSystem.cacheDirectory}${fileName}`;
-      const base64 = Buffer.from(data).toString('base64');
-      await FileSystem.writeAsStringAsync(fileUri, base64, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
-      await Sharing.shareAsync(fileUri, {
-        mimeType: 'application/pdf',
-        dialogTitle: t('service_book.export_dialog_title')
-      });
+      Alert.alert(t('common.error'), t('service_book.export_error'));
     } catch (error) {
       console.error('[ServiceBook] Помилка при експорті сервісної книги:', error);
       Alert.alert(t('common.error'), t('service_book.export_error'));

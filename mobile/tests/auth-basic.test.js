@@ -27,14 +27,6 @@ jest.mock('jwt-decode', () => ({
   })
 }));
 
-// Мок для expo-secure-store
-jest.mock('expo-secure-store', () => ({
-  setItemAsync: jest.fn(() => Promise.resolve()),
-  getItemAsync: jest.fn(() => Promise.resolve(null)),
-  deleteItemAsync: jest.fn(() => Promise.resolve()),
-  isAvailableAsync: jest.fn(() => Promise.resolve(true))
-}));
-
 // Глобальні функції для base64
 global.btoa = (str) => Buffer.from(str, 'binary').toString('base64');
 global.atob = (str) => Buffer.from(str, 'base64').toString('binary');
@@ -42,7 +34,6 @@ global.atob = (str) => Buffer.from(str, 'base64').toString('binary');
 // Імпорти після моків
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import jwtDecode from 'jwt-decode';
-import * as SecureStore from 'expo-secure-store';
 
 describe('Базове тестування автентифікації', () => {
   beforeEach(() => {
@@ -65,25 +56,6 @@ describe('Базове тестування автентифікації', () =>
     test('AsyncStorage.removeItem працює коректно', async () => {
       await AsyncStorage.removeItem('test-key');
       expect(AsyncStorage.removeItem).toHaveBeenCalledWith('test-key');
-    });
-  });
-
-  describe('SecureStore функціональність', () => {
-    test('SecureStore.setItemAsync працює коректно', async () => {
-      await SecureStore.setItemAsync('secure-key', 'secure-value');
-      expect(SecureStore.setItemAsync).toHaveBeenCalledWith('secure-key', 'secure-value');
-    });
-
-    test('SecureStore.getItemAsync працює коректно', async () => {
-      SecureStore.getItemAsync.mockResolvedValue('secure-value');
-      const result = await SecureStore.getItemAsync('secure-key');
-      expect(result).toBe('secure-value');
-      expect(SecureStore.getItemAsync).toHaveBeenCalledWith('secure-key');
-    });
-
-    test('SecureStore.deleteItemAsync працює коректно', async () => {
-      await SecureStore.deleteItemAsync('secure-key');
-      expect(SecureStore.deleteItemAsync).toHaveBeenCalledWith('secure-key');
     });
   });
 

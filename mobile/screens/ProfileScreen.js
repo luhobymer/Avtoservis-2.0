@@ -9,7 +9,7 @@ import {
   Switch,
   ActivityIndicator,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import { useLocalization } from '../components/TranslationProvider';
@@ -86,6 +86,8 @@ const ProfileScreen = ({ navigation }) => {
       if (token && user?.id) {
         const updatedUserData = await getUserData(token, user.id);
         if (updatedUserData) {
+          await secureStorage.secureSet(SECURE_STORAGE_KEYS.USER_DATA, updatedUserData);
+          await AsyncStorage.setItem('userData', JSON.stringify(updatedUserData));
           setUser(updatedUserData);
         }
       }

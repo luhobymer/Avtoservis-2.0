@@ -1,4 +1,3 @@
-import * as Notifications from 'expo-notifications';
 import { getUserSettings } from './userSettingsService';
 import axiosAuth from './axiosConfig';
 
@@ -208,17 +207,6 @@ export const createAppointmentReminder = async (appointment, userId, token) => {
       data: reminder.data,
     });
 
-    await Notifications.scheduleNotificationAsync({
-      content: {
-        title: reminder.title,
-        body: reminder.message,
-        data: { data: reminder }
-      },
-      trigger: {
-        date: reminderDate
-      }
-    });
-    
     return true;
   } catch (error) {
     console.error('[notificationsService] Помилка створення нагадування про запис:', error);

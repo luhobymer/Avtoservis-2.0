@@ -2,10 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TextInput, ScrollView, Alert, TouchableOpacity, ActivityIndicator, Image } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 import CustomButton from '../components/CustomButton';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import * as ImagePicker from 'expo-image-picker';
+import { pickImage as pickImageFromLibrary } from '../utils/imageUtils';
 import { updateServiceRecord } from '../api/serviceRecordsService';
 
 export default function EditServiceRecord({ route, navigation }) {
@@ -27,17 +27,12 @@ export default function EditServiceRecord({ route, navigation }) {
 
   const pickImage = async () => {
     try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [4, 3],
-        quality: 0.8,
-      });
+      const result = await pickImageFromLibrary();
 
       if (!result.canceled) {
         setFormData(prev => ({
           ...prev,
-          photos: [...prev.photos, result.assets[0].uri]
+          photos: [...prev.photos, result.uri]
         }));
       }
     } catch (error) {

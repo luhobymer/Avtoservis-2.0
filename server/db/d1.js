@@ -330,6 +330,23 @@ const ensureSchemaSqliteSync = (sqliteDb) => {
     }
   };
 
+  // Базова таблиця транспортних засобів
+  sqliteDb.exec(`
+    CREATE TABLE IF NOT EXISTS vehicles (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      vin TEXT,
+      make TEXT,
+      model TEXT,
+      year INTEGER,
+      color TEXT,
+      license_plate TEXT,
+      mileage INTEGER,
+      created_at TEXT,
+      updated_at TEXT
+    )
+  `);
+
   ensureColumnsSync('appointments', [
     { name: 'service_ids', def: 'TEXT' },
     { name: 'appointment_price', def: 'REAL' },
@@ -546,6 +563,23 @@ const ensureSchema = async (client) => {
     }
   }
   await ensureUserColumns(client);
+
+  // Базова таблиця транспортних засобів
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS vehicles (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      vin TEXT,
+      make TEXT,
+      model TEXT,
+      year INTEGER,
+      color TEXT,
+      license_plate TEXT,
+      mileage INTEGER,
+      created_at TEXT,
+      updated_at TEXT
+    )
+  `);
   await ensureTableColumns(client, 'appointments', [
     { name: 'service_ids', def: 'TEXT' },
     { name: 'appointment_price', def: 'REAL' },
@@ -640,10 +674,9 @@ const createDbAdapter = (client, readyPromise) => {
 
   return {
     prepare: (sql) => {
-      const d1Mode =
-        process.env.NODE_ENV === 'production'
-          ? 'strict'
-          : (getEnv('D1_MODE') || 'fallback').toLowerCase();
+      const d1Mode = (getEnv('D1_MODE') ||
+        (process.env.NODE_ENV === 'production' ? 'strict' : 'fallback')
+      ).toLowerCase();
 
       const shouldFallback = (err) => {
         if (d1Mode !== 'fallback') return false;

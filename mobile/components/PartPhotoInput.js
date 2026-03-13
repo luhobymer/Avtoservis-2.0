@@ -1,9 +1,8 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, Image, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { useTranslation } from 'react-i18next';
-import { Ionicons } from '@expo/vector-icons';
-import * as ImagePicker from 'expo-image-picker';
-import { pickImage, checkGalleryPermissions, checkCameraPermissions, optimizeImage } from '../utils/imageUtils';
+import Ionicons from 'react-native-vector-icons/Ionicons';
+import { pickImage, checkGalleryPermissions, checkCameraPermissions, optimizeImage, takePhoto } from '../utils/imageUtils';
 import { ocrManager } from '../utils/ocrUtils';
 import { getServiceRecordsByPart } from '../api/serviceRecordsApi';
 
@@ -42,14 +41,10 @@ export default function PartPhotoInput({ onPhotoSelect, onDetailsRecognized, veh
         return;
       }
 
-      const result = await ImagePicker.launchCameraAsync({
-        allowsEditing: true,
-        aspect: [4, 3],
-        quality: 0.8,
-      });
+      const result = await takePhoto();
 
       if (!result.canceled) {
-        const optimizedUri = await optimizeImage(result.assets[0].uri);
+        const optimizedUri = await optimizeImage(result.uri);
         setPhoto(optimizedUri);
         onPhotoSelect(optimizedUri);
         await recognizeDetails(optimizedUri);

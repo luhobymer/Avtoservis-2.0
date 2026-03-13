@@ -88,8 +88,12 @@ const Login = () => {
     setError(null);
 
     try {
-      await login(formData);
-      navigate('/');
+      const result = await login(formData);
+      if (result?.usedDefaultPassword) {
+        navigate('/auth/change-password');
+      } else {
+        navigate('/');
+      }
     } catch (err) {
       setError(err.message || 'Login failed');
     } finally {

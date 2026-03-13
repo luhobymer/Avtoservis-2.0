@@ -1,8 +1,7 @@
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
-import * as Localization from 'expo-localization';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Platform } from 'react-native';
+import { NativeModules, Platform } from 'react-native';
 
 // Завантажуємо файли локалізації
 import uk from './locales/uk/translation.json';
@@ -13,6 +12,26 @@ import en from './locales/en/translation.json';
 import enAdmin from './locales/en/admin.json';
 
 const supportedLanguages = ['uk', 'ru', 'en'];
+const resolveDeviceLanguage = () => {
+  try {
+    if (Platform.OS === 'ios') {
+      const locale =
+        NativeModules.SettingsManager?.settings?.AppleLocale ||
+        NativeModules.SettingsManager?.settings?.AppleLanguages?.[0];
+      return locale ? locale.split(/[-_]/)[0] : null;
+    }
+    if (Platform.OS === 'android') {
+      const locale = NativeModules.I18nManager?.localeIdentifier;
+      return locale ? locale.split(/[-_]/)[0] : null;
+    }
+    if (typeof navigator !== 'undefined') {
+      return navigator.language ? navigator.language.split(/[-_]/)[0] : null;
+    }
+  } catch (error) {
+    console.error('Помилка визначення мови пристрою:', error);
+  }
+  return null;
+};
 
 // Функція для завантаження збереженої мови
 const loadSavedLanguage = async () => {
@@ -25,11 +44,7 @@ const loadSavedLanguage = async () => {
     }
     
     // Якщо збереженої мови немає, використовуємо мову пристрою
-    const locales = typeof Localization.getLocales === 'function' ? Localization.getLocales() : [];
-    const primaryLocale = locales[0];
-    const deviceLang =
-      primaryLocale?.languageCode ||
-      (primaryLocale?.languageTag ? primaryLocale.languageTag.split('-')[0] : null);
+    const deviceLang = resolveDeviceLanguage();
     console.log('Мова пристрою:', deviceLang);
     
     // Перевіряємо, чи підтримується мова пристрою

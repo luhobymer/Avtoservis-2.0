@@ -1,7 +1,8 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useTranslation } from 'react-i18next';
+import HeaderMenu from '../components/HeaderMenu';
 
 // Screens
 import AdminDashboardScreen from '../screens/AdminDashboardScreen';
@@ -56,6 +57,7 @@ export default function AdminNavigator() {
         headerTitleStyle: {
           fontWeight: '500',
         },
+        headerLeft: () => <HeaderMenu />,
       })}
     >
       <Tab.Screen

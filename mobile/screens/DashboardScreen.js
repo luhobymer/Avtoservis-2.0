@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { useNavigation } from '@react-navigation/native';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../context/AuthContext';
 import FloatingActionButton from '../components/FloatingActionButton';
@@ -37,14 +37,11 @@ export default function DashboardScreen() {
     setError(null);
     
     try {
-      // Отримуємо токен користувача
-      const token = await AsyncStorage.getItem('token');
-      
       // Паралельно завантажуємо всі необхідні дані
       const [vehiclesData, appointmentsData, serviceRecordsData] = await Promise.all([
-        getUserVehicles(token),
-        getUserAppointments(token),
-        getAllServiceRecords(token)
+        getUserVehicles(),
+        getUserAppointments(),
+        getAllServiceRecords()
       ]);
       
       // Оновлюємо стани
@@ -54,6 +51,7 @@ export default function DashboardScreen() {
       
       // Перевіряємо та створюємо щомісячні запити пробігу
       await checkAndCreateMileageRequests();
+      const token = await AsyncStorage.getItem('token');
       if (user && token) {
         await processScheduledNotifications(user.id, token);
       }

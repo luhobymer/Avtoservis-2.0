@@ -25,11 +25,17 @@ import CompleteAppointmentScreen from '../screens/CompleteAppointmentScreen';
 import MasterWorkingHoursScreen from '../screens/MasterWorkingHoursScreen';
 import MasterDashboardScreen from '../screens/MasterDashboardScreen';
 import NotificationsScreen from '../screens/NotificationsScreen';
+import InteractionsScreen from '../screens/InteractionsScreen';
+import MyClientsScreen from '../screens/MyClientsScreen';
+import MyMechanicsScreen from '../screens/MyMechanicsScreen';
+import MyServicesScreen from '../screens/MyServicesScreen';
+import MyPartsScreen from '../screens/MyPartsScreen';
+import ChangePasswordScreen from '../screens/ChangePasswordScreen';
 
 const Stack = createStackNavigator();
 
 export default function AppNavigator() {
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const { t } = useTranslation();
 
   return (
@@ -56,7 +62,7 @@ export default function AppNavigator() {
         <>
           <Stack.Screen
             name="Main"
-            component={user.role === 'master' ? AdminNavigator : MainNavigator}
+            component={isAdmin() ? AdminNavigator : MainNavigator}
             options={{ headerShown: false }}
           />
           <Stack.Screen
@@ -155,6 +161,36 @@ export default function AppNavigator() {
             name="Notifications"
             component={NotificationsScreen}
             options={{ headerShown: true, title: t('nav.notifications') }}
+          />
+          <Stack.Screen
+            name="Interactions"
+            component={InteractionsScreen}
+            options={{ headerShown: true, title: t('nav.interactions', 'Мої чати') }}
+          />
+          <Stack.Screen
+            name="MyClients"
+            component={MyClientsScreen}
+            options={{ headerShown: true, title: t('nav.my_clients', 'Мої клієнти') }}
+          />
+          <Stack.Screen
+            name="MyMechanics"
+            component={MyMechanicsScreen}
+            options={{ headerShown: true, title: t('nav.my_mechanics', 'Мої майстри') }}
+          />
+          <Stack.Screen
+            name="MyServices"
+            component={MyServicesScreen}
+            options={{ headerShown: true, title: t('nav.my_services', 'Мої послуги') }}
+          />
+          <Stack.Screen
+            name="MyParts"
+            component={MyPartsScreen}
+            options={{ headerShown: true, title: t('nav.my_parts', 'Мої запчастини') }}
+          />
+          <Stack.Screen
+            name="ChangePassword"
+            component={ChangePasswordScreen}
+            options={{ headerShown: true, title: t('auth.change_password', 'Змінити пароль') }}
           />
         </>
       )}

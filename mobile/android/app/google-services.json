@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "734015197873",
+    "project_id": "s-t-o-garage-086tcf",
+    "storage_bucket": "s-t-o-garage-086tcf.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:734015197873:android:10e161f147d526093fc890",
+        "android_client_info": {
+          "package_name": "alex.avto.team"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDvioNgnll01LxVjZRotsXeBd4V465n7Ho"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:734015197873:android:f6b702e9b46327fa3fc890",
+        "android_client_info": {
+          "package_name": "com.avtoservis"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDvioNgnll01LxVjZRotsXeBd4V465n7Ho"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

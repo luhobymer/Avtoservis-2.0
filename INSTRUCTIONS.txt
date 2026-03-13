@@ -18,3 +18,24 @@
 
 ПРИМІТКА ЩОДО КОДУ:
 Код проекту використовує назву поля `license_plate`. Я залишив цю назву для сумісності з існуючим кодом (мобільний додаток, сервер, бот). Якщо ви планували змінити назву на `registration_number`, це потребуватиме значних змін у коді (frontend + backend).
+
+ІНДЕКС ПРОЄКТУ
+
+Корінь:
+- mobile/ — React Native застосунок (Android збірка в mobile/android)
+- client/ — веб-клієнт (Vite + React)
+- server/ — Node.js API сервер (Express)
+- telegram-bot/ — бот Telegram
+- cloudflare/ — воркери/cron
+- docs/ — внутрішні матеріали
+- tools/ — локальні інструменти (Gradle)
+
+Ключові точки входу:
+- mobile/App.js та mobile/index.js
+- client/src/main.jsx та client/src/App.jsx
+- server/index.js
+- telegram-bot/bot.js
+
+Android збірка:
+- mobile/android/build_release.bat — локальний скрипт релізної збірки
+- mobile/android/app/build.gradle — налаштування app та signing

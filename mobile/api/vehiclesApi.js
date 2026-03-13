@@ -1,15 +1,28 @@
 import * as vehiclesDao from './dao/vehiclesDao';
+import secureStorage, { SECURE_STORAGE_KEYS } from '../utils/secureStorage';
 
 // Функція для отримання списку автомобілів користувача
-export const getUserVehicles = async (userId) => {
-  const list = await vehiclesDao.listByUser(userId);
-  return list.map(v => ({
+export const getUserVehicles = async () => {
+  let role = 'client';
+  try {
+    const user = await secureStorage.secureGet(SECURE_STORAGE_KEYS.USER_DATA, true);
+    if (user && user.role) {
+      role = String(user.role).toLowerCase();
+    }
+  } catch (_) {}
+
+  const list =
+    role === 'master'
+      ? await vehiclesDao.listServicedByCurrentMechanic()
+      : await vehiclesDao.listByUser(null);
+
+  return list.map((v) => ({
     id: v.id,
     vin: v.vin,
     make: v.brand,
     model: v.model,
     year: v.year,
-    license_plate: v.licensePlate
+    license_plate: v.licensePlate,
   }));
 };
 

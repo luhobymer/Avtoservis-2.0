@@ -27,14 +27,6 @@ jest.mock('jwt-decode', () => ({
   })
 }));
 
-// Мок для expo-secure-store
-jest.mock('expo-secure-store', () => ({
-  setItemAsync: jest.fn(() => Promise.resolve()),
-  getItemAsync: jest.fn(() => Promise.resolve(null)),
-  deleteItemAsync: jest.fn(() => Promise.resolve()),
-  isAvailableAsync: jest.fn(() => Promise.resolve(true))
-}));
-
 // Глобальні функції для base64
 global.btoa = (str) => Buffer.from(str, 'binary').toString('base64');
 global.atob = (str) => Buffer.from(str, 'base64').toString('binary');
@@ -82,12 +74,11 @@ describe('Тестування автентифікації - базові фу�
 
   describe('Очищення даних автентифікації', () => {
     test('clearAuthData видаляє всі дані автентифікації', async () => {
-      const SecureStore = require('expo-secure-store');
       await clearAuthData();
-      expect(SecureStore.deleteItemAsync).toHaveBeenCalledWith('secure_token');
-      expect(SecureStore.deleteItemAsync).toHaveBeenCalledWith('secure_refresh_token');
-      expect(SecureStore.deleteItemAsync).toHaveBeenCalledWith('secure_user_id');
-      expect(SecureStore.deleteItemAsync).toHaveBeenCalledWith('secure_user_data');
+      expect(AsyncStorage.removeItem).toHaveBeenCalledWith('secure_token');
+      expect(AsyncStorage.removeItem).toHaveBeenCalledWith('secure_refresh_token');
+      expect(AsyncStorage.removeItem).toHaveBeenCalledWith('secure_user_id');
+      expect(AsyncStorage.removeItem).toHaveBeenCalledWith('secure_user_data');
     });
   });
 

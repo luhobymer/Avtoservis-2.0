@@ -5,9 +5,8 @@ import { useAuth } from '../context/AuthContext';
 import { createMaintenanceReminder } from '../api/reminderService';
 import { Picker } from '@react-native-picker/picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 import CustomButton from '../components/CustomButton';
-import * as Notifications from 'expo-notifications';
 
 export default function CreateReminderScreen({ navigation }) {
   const { t } = useTranslation();
@@ -46,16 +45,10 @@ export default function CreateReminderScreen({ navigation }) {
   };
 
   const checkNotificationPermissions = async () => {
-    const { status } = await Notifications.getPermissionsAsync();
-    if (status !== 'granted') {
-      const { status: newStatus } = await Notifications.requestPermissionsAsync();
-      if (newStatus !== 'granted') {
-        Alert.alert(
-          t('reminders.permissions_title'),
-          t('reminders.permissions_message')
-        );
-      }
-    }
+    Alert.alert(
+      t('reminders.permissions_title'),
+      t('reminders.permissions_message')
+    );
   };
 
   const handleSubmit = async () => {

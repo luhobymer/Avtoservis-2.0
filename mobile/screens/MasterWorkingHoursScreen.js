@@ -10,7 +10,7 @@ import {
   Alert
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useAuth } from '../context/AuthContext';
 import { getMasterWorkingHours, updateMasterWorkingHours } from '../api/scheduleService';
 import DateTimePicker from '@react-native-community/datetimepicker';

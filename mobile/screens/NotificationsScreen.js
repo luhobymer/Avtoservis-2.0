@@ -3,7 +3,7 @@ import { View, Text, FlatList, StyleSheet, TouchableOpacity, RefreshControl, Ale
 import { SwipeListView } from 'react-native-swipe-list-view';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 import { getUserNotifications, markNotificationAsRead, deleteNotification as removeNotification } from '../api/notificationsApi';
 import { getUserReminders, deleteReminder, REMINDER_TYPES } from '../api/reminderService';
 

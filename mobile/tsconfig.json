@@ -22,6 +22,5 @@
   "include": [
     "**/*.js",
     "**/*.jsx"
-  ],
-  "extends": "expo/tsconfig.base"
+  ]
 }

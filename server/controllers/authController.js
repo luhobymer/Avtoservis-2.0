@@ -1305,6 +1305,69 @@ exports.resetPassword = async (req, res) => {
   }
 };
 
+exports.changePassword = async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body || {};
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({
+        status: 'error',
+        code: 'MISSING_FIELDS',
+        message: 'Потрібно вказати поточний та новий пароль',
+      });
+    }
+
+    if (String(newPassword).length < 8) {
+      return res.status(400).json({
+        status: 'error',
+        code: 'WEAK_PASSWORD',
+        message: 'Пароль має бути мінімум 8 символів',
+      });
+    }
+
+    const db = await getDb();
+    const user = await db.prepare('SELECT id, password FROM users WHERE id = ?').get(req.user.id);
+
+    if (!user) {
+      return res.status(404).json({
+        status: 'error',
+        code: 'USER_NOT_FOUND',
+        message: 'Користувача не знайдено',
+      });
+    }
+
+    const isMatch = await bcrypt.compare(String(currentPassword), String(user.password || ''));
+    if (!isMatch) {
+      return res.status(400).json({
+        status: 'error',
+        code: 'INVALID_CURRENT_PASSWORD',
+        message: 'Невірний поточний пароль',
+      });
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(String(newPassword), salt);
+    const nowIso = new Date().toISOString();
+
+    await db
+      .prepare('UPDATE users SET password = ?, updated_at = ? WHERE id = ?')
+      .run(hashedPassword, nowIso, user.id);
+    await db.prepare('UPDATE refresh_tokens SET is_revoked = 1 WHERE user_id = ?').run(user.id);
+
+    return res.json({
+      status: 'success',
+      message: 'Пароль успішно змінено',
+    });
+  } catch (err) {
+    console.error('[Auth] Change password error:', err);
+    return res.status(500).json({
+      status: 'error',
+      code: 'SERVER_ERROR',
+      message: 'Помилка сервера',
+    });
+  }
+};
+
 // Контролер для генерації секрету 2FA
 exports.generateTwoFactorSecret = async (req, res) => {
   try {

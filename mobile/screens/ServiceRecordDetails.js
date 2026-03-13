@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ScrollView, Alert, Image, ActivityIndicator, To
 import { useTranslation } from 'react-i18next';
 import { deleteServiceRecord, getServiceRecordById } from '../api/serviceRecordsService';
 import * as vehiclesDao from '../api/dao/vehiclesDao';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 import CustomButton from '../components/CustomButton';
  
 

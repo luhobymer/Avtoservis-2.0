@@ -1,10 +1,22 @@
 import * as vehiclesDao from './dao/vehiclesDao';
 import axiosAuth from './axiosConfig';
+import secureStorage, { SECURE_STORAGE_KEYS } from '../utils/secureStorage';
 
 // Отримання всіх транспортних засобів користувача
 export const getAllVehicles = async () => {
   try {
-    // userId витягується всередині DAO через токен у axiosAuth (Workers)
+    let role = 'client';
+    try {
+      const user = await secureStorage.secureGet(SECURE_STORAGE_KEYS.USER_DATA, true);
+      if (user && user.role) {
+        role = String(user.role).toLowerCase();
+      }
+    } catch (_) {}
+
+    if (role === 'master') {
+      return await vehiclesDao.listServicedByCurrentMechanic();
+    }
+
     return await vehiclesDao.listByUser(null);
   } catch (error) {
     console.error('[VehiclesService] Error fetching vehicles:', error);

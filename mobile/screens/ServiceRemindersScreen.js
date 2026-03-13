@@ -4,9 +4,8 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import * as vehiclesDao from '../api/dao/vehiclesDao';
 import { getUserReminders } from '../api/reminderService';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as Notifications from 'expo-notifications';
 
 export default function ServiceRemindersScreen({ navigation }) {
   const { t } = useTranslation();
@@ -21,20 +20,15 @@ export default function ServiceRemindersScreen({ navigation }) {
   }, []);
 
   const checkNotificationPermissions = async () => {
-    const { status } = await Notifications.getPermissionsAsync();
-    setNotificationsEnabled(status === 'granted');
+    setNotificationsEnabled(false);
   };
 
   const requestNotificationPermissions = async () => {
-    const { status } = await Notifications.requestPermissionsAsync();
-    setNotificationsEnabled(status === 'granted');
-
-    if (status !== 'granted') {
-      Alert.alert(
-        t('reminders.permissions_title'),
-        t('reminders.permissions_message')
-      );
-    }
+    setNotificationsEnabled(false);
+    Alert.alert(
+      t('reminders.permissions_title'),
+      t('reminders.permissions_message')
+    );
   };
 
   const loadReminders = async () => {
@@ -87,8 +81,6 @@ export default function ServiceRemindersScreen({ navigation }) {
 
       if (enabled) {
         await scheduleReminder(reminderId);
-      } else {
-        await cancelReminder(reminderId);
       }
     } catch (error) {
       console.error('Failed to toggle reminder:', error);
@@ -97,30 +89,11 @@ export default function ServiceRemindersScreen({ navigation }) {
   };
 
   const scheduleReminder = async (reminderId) => {
-    const reminder = reminders.find(r => r.id === reminderId);
-    if (!reminder) return;
-
-    const trigger = new Date(reminder.dueDate);
-    trigger.setDate(trigger.getDate() - reminder.daysBeforeDue);
-
-    await Notifications.scheduleNotificationAsync({
-      content: {
-        title: t('reminders.notification_title'),
-        body: `${reminder.vehicleName}: ${reminder.serviceType}`,
-        data: { reminderId }
-      },
-      trigger
-    });
+    return;
   };
 
   const cancelReminder = async (reminderId) => {
-    const scheduledNotifications = await Notifications.getAllScheduledNotificationsAsync();
-    const notification = scheduledNotifications.find(
-      n => n.content.data?.reminderId === reminderId
-    );
-    if (notification) {
-      await Notifications.cancelScheduledNotificationAsync(notification.identifier);
-    }
+    return;
   };
 
   const renderReminderItem = ({ item }) => (

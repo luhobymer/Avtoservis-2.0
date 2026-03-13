@@ -28,3 +28,26 @@ export async function updateRole(userId, role) {
   await axiosAuth.put(`/api/users/${userId}`, { role })
   return true
 }
+
+export async function createUser(payload) {
+  const body = {
+    name: payload.name,
+    email: payload.email || undefined,
+    phone: payload.phone || undefined,
+    password: payload.password,
+    role: payload.role || 'client',
+    firstName: payload.firstName,
+    lastName: payload.lastName,
+  }
+
+  const response = await axiosAuth.post('/api/auth/register', body)
+  const data = response?.data?.user || {}
+
+  return {
+    id: data.id,
+    name: data.name || body.name,
+    email: data.email || body.email || null,
+    phone: data.phone || body.phone || null,
+    role: data.role || body.role || 'client',
+  }
+}

@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ScrollView, Switch, Alert, ActivityIndicator } 
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import CustomButton from '../components/CustomButton';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 import { getUserSettings, updateNotificationSettings, updateAppearanceSettings } from '../api/userSettingsService';
 
 export default function SettingsScreen({ navigation }) {

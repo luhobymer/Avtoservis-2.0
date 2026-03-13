@@ -1,14 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, Image, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
-import * as WebBrowser from 'expo-web-browser';
-import * as Google from 'expo-auth-session/providers/google';
-import Constants from 'expo-constants';
-
-WebBrowser.maybeCompleteAuthSession();
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import { useNavigation } from '@react-navigation/native';
 import CustomButton from '../components/CustomButton';
+import Ionicons from 'react-native-vector-icons/Ionicons';
+import { GoogleSignin, statusCodes } from '@react-native-google-signin/google-signin';
+import appConfig from '../app.json';
 
 export default function LoginScreen() {
   const { t } = useTranslation();
@@ -18,60 +16,21 @@ export default function LoginScreen() {
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [localError, setLocalError] = useState(null);
-
-  const googleConfig = Constants?.expoConfig?.extra || Constants?.manifest?.extra || {};
-  const googleClientId =
-    googleConfig.GOOGLE_WEB_CLIENT_ID ||
-    googleConfig.GOOGLE_CLIENT_ID ||
-    '';
-  const googleIosClientId = googleConfig.GOOGLE_IOS_CLIENT_ID || '';
-  const googleAndroidClientId = googleConfig.GOOGLE_ANDROID_CLIENT_ID || '';
-  const platform = Platform.OS;
-  const resolvedWebClientId = platform === 'web' ? googleClientId : '';
-  const resolvedIosClientId = platform === 'ios' ? googleIosClientId : '';
-  const resolvedAndroidClientId = platform === 'android' ? googleAndroidClientId : '';
-
-  const hasGoogleClient =
-    platform === 'web'
-      ? Boolean(resolvedWebClientId)
-      : platform === 'ios'
-        ? Boolean(resolvedIosClientId)
-        : platform === 'android'
-          ? Boolean(resolvedAndroidClientId)
-          : false;
-
-  const [request, response, promptAsync] = Google.useAuthRequest({
-    webClientId: resolvedWebClientId || undefined,
-    iosClientId: resolvedIosClientId || undefined,
-    androidClientId: resolvedAndroidClientId || undefined,
-    responseType: 'id_token',
-    scopes: ['profile', 'email'],
-  });
-
-  useEffect(() => {
-    if (response?.type !== 'success') return;
-    const idToken =
-      response?.authentication?.idToken ||
-      response?.params?.id_token ||
-      null;
-    if (!idToken) {
-      setLocalError(t('auth.login_failed'));
-      return;
-    }
-    const run = async () => {
-      const success = await googleLogin(idToken);
-      if (!success && error) {
-        setLocalError(error);
-        Alert.alert(t('auth.login_failed'), error);
-      }
-    };
-    run();
-  }, [response, googleLogin, error, t]);
+  const [showPassword, setShowPassword] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
 
   // Очищаємо локальну помилку при зміні полів вводу
   useEffect(() => {
     if (localError) setLocalError(null);
-  }, [email, password]);
+  }, [identifier, password]);
+
+  useEffect(() => {
+    GoogleSignin.configure({
+      webClientId: appConfig?.extra?.GOOGLE_WEB_CLIENT_ID,
+      offlineAccess: true,
+      scopes: ['profile', 'email'],
+    });
+  }, []);
 
   const handleLogin = async () => {
     if (!identifier || !password) {
@@ -103,10 +62,57 @@ export default function LoginScreen() {
     // Виклик функції входу з контексту автентифікації
     const success = await login(loginValue, password);
 
-    // Обробка помилок
     if (!success && error) {
       setLocalError(error);
       Alert.alert(t('auth.login_failed'), error);
+      return;
+    }
+
+    if (success && password === '12345678') {
+      Alert.alert(
+        t('common.info', 'Інформація'),
+        t('auth.default_password_change_prompt', 'Ви увійшли з типовим паролем 12345678. Рекомендуємо змінити його.')
+      );
+      navigation.navigate('ChangePassword');
+    }
+  };
+
+  const handleGoogleLogin = async () => {
+    if (googleLoading) return;
+    setGoogleLoading(true);
+    setLocalError(null);
+    try {
+      await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+      const userInfo = await GoogleSignin.signIn();
+      const idToken = userInfo?.idToken;
+      if (!idToken) {
+        throw new Error(t('auth.google_token_missing') || 'Не вдалося отримати токен Google');
+      }
+      const success = await googleLogin(idToken);
+      if (!success && error) {
+        setLocalError(error);
+        Alert.alert(t('auth.login_failed'), error);
+      }
+    } catch (err) {
+      if (err?.code === statusCodes.SIGN_IN_CANCELLED) {
+        setGoogleLoading(false);
+        return;
+      }
+      let message =
+        err?.message ||
+        t('auth.google_login_failed') ||
+        'Не вдалося виконати Google вхід';
+      if (err?.code === statusCodes.DEVELOPER_ERROR || message.includes('DEVELOPER_ERROR')) {
+        const base =
+          t('auth.google_developer_error') ||
+          'Помилка налаштування Google входу. Перевірте конфігурацію клієнта в Google Cloud Console.';
+        const codeInfo = err?.code ? ` (code: ${err.code})` : '';
+        message = `${base}${codeInfo}`;
+      }
+      setLocalError(message);
+      Alert.alert(t('auth.login_failed'), message);
+    } finally {
+      setGoogleLoading(false);
     }
   };
 
@@ -132,6 +138,7 @@ export default function LoginScreen() {
           <TextInput
             style={styles.input}
             placeholder={t('auth.email_or_phone_placeholder') || 'Email або телефон'}
+            placeholderTextColor="#9e9e9e"
             value={identifier}
             onChangeText={setIdentifier}
             autoCapitalize="none"
@@ -139,14 +146,27 @@ export default function LoginScreen() {
             autoComplete="username"
           />
           
-          <TextInput
-            style={styles.input}
-            placeholder={t('auth.password_placeholder') || 'Пароль'}
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-            autoComplete="password"
-          />
+          <View style={styles.passwordContainer}>
+            <TextInput
+              style={[styles.input, styles.passwordInput]}
+              placeholder={t('auth.password_placeholder') || 'Пароль'}
+              placeholderTextColor="#9e9e9e"
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry={!showPassword}
+              autoComplete="password"
+            />
+            <TouchableOpacity
+              style={styles.passwordToggle}
+              onPress={() => setShowPassword((prev) => !prev)}
+            >
+              <Ionicons
+                name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                size={20}
+                color="#666"
+              />
+            </TouchableOpacity>
+          </View>
           
           {/* Кнопка входу */}
           <CustomButton 
@@ -157,16 +177,18 @@ export default function LoginScreen() {
             {loading && <ActivityIndicator color="#fff" />}
           </CustomButton>
 
-          {hasGoogleClient && (
-            <CustomButton
-              title={t('auth.google_login') || 'Увійти через Google'}
-              onPress={() => promptAsync()}
-              style={styles.googleButton}
-              textStyle={styles.googleButtonText}
-              disabled={!request}
-            />
-          )}
-          
+          <CustomButton
+            title={
+              googleLoading ? '' : (t('auth.google_login') || 'Увійти через Google')
+            }
+            onPress={handleGoogleLogin}
+            style={styles.googleButton}
+            textStyle={styles.googleButtonText}
+            disabled={googleLoading}
+          >
+            {googleLoading && <ActivityIndicator color="#1f1f1f" />}
+          </CustomButton>
+
           {/* Посилання на реєстрацію */}
           <TouchableOpacity 
             style={styles.registerLink}
@@ -213,7 +235,25 @@ const styles = StyleSheet.create({
     marginBottom: 15,
     paddingHorizontal: 15,
     backgroundColor: '#fff',
-    fontSize: 16
+    fontSize: 16,
+    color: '#111'
+  },
+  passwordContainer: {
+    width: '100%',
+    marginBottom: 15,
+    position: 'relative',
+  },
+  passwordInput: {
+    marginBottom: 0,
+    paddingRight: 45,
+  },
+  passwordToggle: {
+    position: 'absolute',
+    right: 12,
+    top: 0,
+    height: 50,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   loginButton: {
     width: '100%',

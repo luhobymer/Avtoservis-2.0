@@ -5,7 +5,7 @@ import { getUserVehicles } from '../api/vehiclesApi';
 import { getUserServiceRecords } from '../api/servicesApi';
 import { LineChart, BarChart } from 'react-native-chart-kit';
 import { Picker } from '@react-native-picker/picker';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 
 export default function StatisticsScreen() {
   const { t } = useTranslation();
