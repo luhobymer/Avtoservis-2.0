@@ -705,6 +705,8 @@ exports.updateVehicle = async (req, res) => {
   }
 };
 
+
+
 exports.deleteVehicle = async (req, res) => {
   try {
     const { vin } = req.params;
@@ -790,3 +792,4 @@ exports.getVehicleByLicensePlateForBot = async (req, res) => {
     res.status(500).json({ message: 'Помилка сервера' });
   }
 };
+// Forced Update
