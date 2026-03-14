@@ -21,6 +21,8 @@ export default function MyClientsScreen({ navigation }) {
   });
   const [contactsModalVisible, setContactsModalVisible] = useState(false);
   const [contacts, setContacts] = useState([]);
+  const [filteredContacts, setFilteredContacts] = useState([]);
+  const [searchText, setSearchText] = useState('');
 
   const isMaster = String(user?.role || '').toLowerCase() === 'master';
 
@@ -39,7 +41,7 @@ export default function MyClientsScreen({ navigation }) {
   };
 
   const normalizePhone = (phone) => {
-    let normalizedPhone = String(phone || '').trim().replace(/\s+/g, '');
+    let normalizedPhone = String(phone || '').trim().replace(/[^\d+]/g, '');
     if (normalizedPhone.startsWith('0')) {
       normalizedPhone = `+380${normalizedPhone.slice(1)}`;
     } else if (normalizedPhone.startsWith('380')) {
@@ -51,19 +53,22 @@ export default function MyClientsScreen({ navigation }) {
   const handleCreateClient = async () => {
     const firstName = String(form.firstName || '').trim();
     const lastName = String(form.lastName || '').trim();
-    const phone = String(form.phone || '').trim();
+    let phoneInput = String(form.phone || '').trim();
+    
+    // Очищаємо номер від зайвих символів (пробіли, дужки, дефіси) перед валідацією
+    const cleanedPhone = phoneInput.replace(/[^\d+]/g, '');
 
-    if (!firstName || !lastName || !phone) {
+    if (!firstName || !lastName || !cleanedPhone) {
       Alert.alert(t('common.error'), t('validation.please_fill_all_fields'));
       return;
     }
     const phoneRegex = /^(\+?380|0)\d{9}$/;
-    if (!phoneRegex.test(phone)) {
+    if (!phoneRegex.test(cleanedPhone)) {
       Alert.alert(t('common.error'), t('validation.invalid_phone'));
       return;
     }
 
-    const normalizedPhone = normalizePhone(phone);
+    const normalizedPhone = normalizePhone(cleanedPhone);
     setSaving(true);
     try {
       const created = await usersDao.createUser({
@@ -104,6 +109,8 @@ export default function MyClientsScreen({ navigation }) {
     try {
       const list = await getPhoneContacts();
       setContacts(list);
+      setFilteredContacts(list);
+      setSearchText('');
       if (list.length) {
         setContactsModalVisible(true);
       } else {
@@ -113,6 +120,20 @@ export default function MyClientsScreen({ navigation }) {
       console.error('[MyClientsScreen] Failed to load contacts:', e);
       Alert.alert(t('common.error'), t('contacts.load_error', 'Не вдалося завантажити контакти'));
     }
+  };
+
+  const handleSearchContacts = (text) => {
+    setSearchText(text);
+    if (!text.trim()) {
+      setFilteredContacts(contacts);
+      return;
+    }
+    const lower = text.toLowerCase();
+    const filtered = contacts.filter(c => 
+      (c.name || '').toLowerCase().includes(lower) || 
+      (c.phone || '').includes(lower)
+    );
+    setFilteredContacts(filtered);
   };
 
   const handleSelectContact = (contact) => {
@@ -220,19 +241,19 @@ export default function MyClientsScreen({ navigation }) {
             <Text style={styles.modalTitle}>{t('clients.add', 'Додати клієнта')}</Text>
             <TextInput
               style={styles.modalInput}
-              placeholder={t('common.name', 'Імʼя')}
+              placeholder={t('common.name_placeholder', 'Введіть імʼя')}
               value={form.firstName}
               onChangeText={value => setForm(prev => ({ ...prev, firstName: value }))}
             />
             <TextInput
               style={styles.modalInput}
-              placeholder={t('common.last_name', 'Прізвище')}
+              placeholder={t('common.lastname_placeholder', 'Введіть прізвище')}
               value={form.lastName}
               onChangeText={value => setForm(prev => ({ ...prev, lastName: value }))}
             />
             <TextInput
               style={styles.modalInput}
-              placeholder={t('common.phone', 'Телефон')}
+              placeholder={t('common.phone_placeholder', 'Наприклад: 0501234567')}
               value={form.phone}
               onChangeText={value => setForm(prev => ({ ...prev, phone: value }))}
               keyboardType="phone-pad"
@@ -276,8 +297,14 @@ export default function MyClientsScreen({ navigation }) {
         <View style={styles.modalOverlay}>
           <View style={styles.contactsModalContent}>
             <Text style={styles.modalTitle}>{t('contacts.select_owner', 'Оберіть контакт')}</Text>
+            <TextInput
+              style={styles.modalInput}
+              placeholder={t('common.search', 'Пошук...')}
+              value={searchText}
+              onChangeText={handleSearchContacts}
+            />
             <FlatList
-              data={contacts}
+              data={filteredContacts}
               keyExtractor={(item) => item.id}
               renderItem={({ item }) => (
                 <TouchableOpacity

@@ -223,66 +223,38 @@ export default function AddVehicle({ navigation }) {
 
         const normalizedPlate = normalizeLicensePlate(formData.licensePlate);
 
-        try {
-          const dbVehicle = await vehiclesDao.getDetailsByLicensePlate(normalizedPlate);
-          if (dbVehicle) {
-            setFormData(prev => ({
-              ...prev,
-              make: dbVehicle.make || prev.make,
-              model: dbVehicle.model || prev.model,
-              year: dbVehicle.year ? String(dbVehicle.year) : prev.year,
-              vin: dbVehicle.vin || prev.vin,
-              licensePlate: dbVehicle.licensePlate || normalizedPlate,
-              color: dbVehicle.color || prev.color,
-              mileage: dbVehicle.mileage != null ? String(dbVehicle.mileage) : prev.mileage,
-              engineType: dbVehicle.engineType || prev.engineType,
-              engineCapacity: dbVehicle.engineCapacity
-                ? String(dbVehicle.engineCapacity)
-                : prev.engineCapacity,
-              transmission: dbVehicle.transmission || prev.transmission,
-            }));
-            Alert.alert(t('common.success'), t('vehicles.found_success'));
-            return;
-          }
-        } catch (dbErr) {
-          console.warn('Vehicle DB lookup by plate failed:', dbErr);
-        }
-
-        const response = await axiosAuth.get('/api/vehicle-registry', {
-            params: { license_plate: normalizedPlate }
-        });
+        const response = await axiosAuth.get(`/api/vehicles/plate/${normalizedPlate}`);
 
         if (response.data) {
             const data = response.data;
             
             let engineType = '';
-            const fuelRaw = String(data.fuel_type || '').toUpperCase();
-            if (fuelRaw.includes('BENZINE') || fuelRaw.includes('PETROL')) engineType = 'petrol';
-            else if (fuelRaw.includes('DIESEL')) engineType = 'diesel';
-            else if (fuelRaw.includes('GAS')) engineType = 'gas';
-            else if (fuelRaw.includes('ELECTRO') || fuelRaw.includes('ELECTRIC')) engineType = 'electric';
-            else if (fuelRaw.includes('HYBRID')) engineType = 'hybrid';
-
-            let color = '';
-            const colorRaw = String(data.color || '').toLowerCase();
-            const foundColor = colors.find(c => c.id === colorRaw || c.name.toLowerCase() === colorRaw);
-            if (foundColor) color = foundColor.id;
+            // Mapping engine type from DB format if necessary, otherwise use as is
+            const rawEngine = String(data.engineType || data.engine_type || '').toLowerCase();
+            if (rawEngine.includes('petrol') || rawEngine.includes('benzine')) engineType = 'petrol';
+            else if (rawEngine.includes('diesel')) engineType = 'diesel';
+            else if (rawEngine.includes('gas')) engineType = 'gas';
+            else if (rawEngine.includes('electric') || rawEngine.includes('electro')) engineType = 'electric';
+            else if (rawEngine.includes('hybrid')) engineType = 'hybrid';
+            else engineType = rawEngine; // Fallback
 
             setFormData(prev => ({
                 ...prev,
-                make: data.brand || prev.make,
+                make: data.make || prev.make,
                 model: data.model || prev.model,
-                year: data.make_year ? String(data.make_year) : prev.year,
+                year: data.year ? String(data.year) : prev.year,
                 vin: data.vin || prev.vin,
-                color: color || prev.color,
+                color: data.color || prev.color,
                 engineType: engineType || prev.engineType,
-                engineCapacity: data.engine_volume ? String(data.engine_volume) : prev.engineCapacity,
-                licensePlate: data.license_plate || normalizedPlate
+                engineCapacity: data.engineCapacity || data.engine_capacity ? String(data.engineCapacity || data.engine_capacity) : prev.engineCapacity,
+                licensePlate: data.licensePlate || data.license_plate || normalizedPlate,
+                mileage: data.mileage ? String(data.mileage) : prev.mileage
             }));
             
             Alert.alert(t('common.success'), t('vehicles.found_success'));
         } else {
-            Alert.alert(t('common.info'), t('vehicles.not_found'));
+            // If not found in DB, try external registry (fallback logic preserved if needed, or remove)
+             Alert.alert(t('common.info'), t('vehicles.not_found'));
         }
     } catch (error) {
         const status = error?.response?.status;
@@ -309,60 +281,31 @@ export default function AddVehicle({ navigation }) {
     try {
         const normalizedVin = String(formData.vin || '').replace(/\s+/g, '').toUpperCase();
 
-        try {
-          const dbVehicle = await vehiclesDao.getDetailsByVin(normalizedVin);
-          if (dbVehicle) {
-            setFormData(prev => ({
-              ...prev,
-              make: dbVehicle.make || prev.make,
-              model: dbVehicle.model || prev.model,
-              year: dbVehicle.year ? String(dbVehicle.year) : prev.year,
-              vin: dbVehicle.vin || normalizedVin,
-              licensePlate: dbVehicle.licensePlate || prev.licensePlate,
-              color: dbVehicle.color || prev.color,
-              mileage: dbVehicle.mileage != null ? String(dbVehicle.mileage) : prev.mileage,
-              engineType: dbVehicle.engineType || prev.engineType,
-              engineCapacity: dbVehicle.engineCapacity
-                ? String(dbVehicle.engineCapacity)
-                : prev.engineCapacity,
-              transmission: dbVehicle.transmission || prev.transmission,
-            }));
-            Alert.alert(t('common.success'), t('vehicles.found_success'));
-            return;
-          }
-        } catch (dbErr) {
-          console.warn('Vehicle DB lookup by VIN failed:', dbErr);
-        }
-
-        const response = await axiosAuth.get('/api/vehicle-registry', {
-            params: { vin: normalizedVin }
-        });
+        const response = await axiosAuth.get(`/api/vehicles/vin/${normalizedVin}`);
 
         if (response.data) {
             const data = response.data;
             let engineType = '';
-            const fuelRaw = String(data.fuel_type || '').toUpperCase();
-            if (fuelRaw.includes('BENZINE') || fuelRaw.includes('PETROL')) engineType = 'petrol';
-            else if (fuelRaw.includes('DIESEL')) engineType = 'diesel';
-            else if (fuelRaw.includes('GAS')) engineType = 'gas';
-            else if (fuelRaw.includes('ELECTRO') || fuelRaw.includes('ELECTRIC')) engineType = 'electric';
-            else if (fuelRaw.includes('HYBRID')) engineType = 'hybrid';
-
-            let color = '';
-            const colorRaw = String(data.color || '').toLowerCase();
-            const foundColor = colors.find(c => c.id === colorRaw || c.name.toLowerCase() === colorRaw);
-            if (foundColor) color = foundColor.id;
+            // Mapping engine type from DB format
+            const rawEngine = String(data.engineType || data.engine_type || '').toLowerCase();
+            if (rawEngine.includes('petrol') || rawEngine.includes('benzine')) engineType = 'petrol';
+            else if (rawEngine.includes('diesel')) engineType = 'diesel';
+            else if (rawEngine.includes('gas')) engineType = 'gas';
+            else if (rawEngine.includes('electric') || rawEngine.includes('electro')) engineType = 'electric';
+            else if (rawEngine.includes('hybrid')) engineType = 'hybrid';
+            else engineType = rawEngine;
 
             setFormData(prev => ({
                 ...prev,
-                make: data.brand || prev.make,
+                make: data.make || prev.make,
                 model: data.model || prev.model,
-                year: data.make_year ? String(data.make_year) : prev.year,
+                year: data.year ? String(data.year) : prev.year,
                 vin: data.vin || normalizedVin,
-                color: color || prev.color,
+                color: data.color || prev.color,
                 engineType: engineType || prev.engineType,
-                engineCapacity: data.engine_volume ? String(data.engine_volume) : prev.engineCapacity,
-                licensePlate: data.n_reg_new || data.license_plate || prev.licensePlate
+                engineCapacity: data.engineCapacity || data.engine_capacity ? String(data.engineCapacity || data.engine_capacity) : prev.engineCapacity,
+                licensePlate: data.licensePlate || data.license_plate || prev.licensePlate,
+                mileage: data.mileage ? String(data.mileage) : prev.mileage
             }));
 
             Alert.alert(t('common.success'), t('vehicles.found_success'));
@@ -498,102 +441,85 @@ export default function AddVehicle({ navigation }) {
     setContactsModalVisible(false);
   };
 
-  const pickVehicleImage = async () => {
+  const pickCombinedPhoto = async () => {
+    Alert.alert(
+      t('vehicles.add_photo'),
+      t('vehicles.choose_source'),
+      [
+        { text: t('vehicles.camera'), onPress: takeCombinedPhoto },
+        { text: t('vehicles.gallery'), onPress: pickGalleryCombinedPhoto },
+        { text: t('common.cancel'), style: 'cancel' }
+      ]
+    );
+  };
+
+  const pickGalleryCombinedPhoto = async () => {
     try {
       const hasPermission = await checkGalleryPermissions();
-      if (!hasPermission) {
-        Alert.alert(t('common.error'), t('permissions.gallery_denied'));
-        return;
-      }
+      if (!hasPermission) return;
       const result = await pickImage();
       if (!result.canceled) {
-        const optimizedUri = await optimizeImage(result.uri);
-        setPhoto(optimizedUri);
-        await runSmartPhotoRecognition(optimizedUri);
+        processCombinedPhoto(result.uri);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const takeCombinedPhoto = async () => {
+    try {
+      const hasPermission = await checkCameraPermissions();
+      if (!hasPermission) return;
+      const result = await takePhoto();
+      if (!result.canceled) {
+        processCombinedPhoto(result.uri);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const processCombinedPhoto = async (uri) => {
+    if (!uri) return;
+    setRecognizing(true);
+    setPhoto(uri); // Set as main vehicle photo by default
+    try {
+      const optimizedUri = await optimizeImage(uri);
+      
+      // Try License Plate First
+      let data = null;
+      try {
+        data = await ocrManager.recognizeLicensePlateAndGetVehicleData(optimizedUri);
+      } catch (e) {
+        console.warn('License plate OCR failed:', e);
+      }
+
+      // If no plate found, try Document
+      if (!data) {
+        try {
+          data = await ocrManager.recognizeVehicleDocument(optimizedUri);
+          if (data) {
+             setDocumentPhoto(optimizedUri); // It was a document
+          }
+        } catch (e) {
+          console.warn('Document OCR failed:', e);
+        }
+      } else {
+         setLicensePlatePhoto(optimizedUri); // It was a plate
+      }
+
+      if (data) {
+        updateFormWithOCRData(data);
+        Alert.alert(t('common.success'), t('vehicles.recognition_success', 'Дані успішно розпізнано!'));
+      } else {
+        Alert.alert(t('common.info'), t('vehicles.recognition_failed', 'Не вдалося розпізнати дані. Будь ласка, введіть їх вручну.'));
       }
     } catch (error) {
-      console.error('Error picking image:', error);
+      console.error('Recognition error:', error);
       Alert.alert(t('common.error'), t('vehicles.photo_error'));
+    } finally {
+      setRecognizing(false);
     }
-  };
-
-  const pickDocumentImage = async () => {
-    // ... existing logic for document OCR ...
-    // Note: For brevity, keeping simple or calling existing utils. 
-    // Assuming recognizeDocument logic handles form update.
-    // Re-implementing simplified version that uses ocrUtils
-    try {
-        const hasPermission = await checkGalleryPermissions();
-        if (!hasPermission) return;
-        const result = await pickImage();
-        if (!result.canceled) {
-            setRecognizing(true);
-            const optimizedUri = await optimizeImage(result.uri);
-            setDocumentPhoto(optimizedUri);
-            const data = await ocrManager.recognizeVehicleDocument(optimizedUri);
-            if (data) updateFormWithOCRData(data);
-            setRecognizing(false);
-        }
-    } catch (e) {
-        setRecognizing(false);
-        console.error(e);
-    }
-  };
-
-  const pickLicensePlateImage = async () => {
-      try {
-          const hasPermission = await checkGalleryPermissions();
-          if (!hasPermission) return;
-          const result = await pickImage();
-          if (!result.canceled) {
-              setRecognizing(true);
-              const optimizedUri = await optimizeImage(result.uri);
-              setLicensePlatePhoto(optimizedUri);
-              const data = await ocrManager.recognizeLicensePlateAndGetVehicleData(optimizedUri);
-              if (data) updateFormWithOCRData(data);
-              setRecognizing(false);
-          }
-      } catch (e) {
-          setRecognizing(false);
-          console.error(e);
-      }
-  };
-
-  const takeVehiclePhoto = async () => {
-      // Similar to pickVehicleImage but with camera
-      const hasPermission = await checkCameraPermissions();
-      if (!hasPermission) return;
-      const result = await takePhoto();
-      if (!result.canceled) {
-          setPhoto(result.uri);
-          await runSmartPhotoRecognition(result.uri);
-      }
-  };
-
-  const takeDocumentPhoto = async () => {
-      const hasPermission = await checkCameraPermissions();
-      if (!hasPermission) return;
-      const result = await takePhoto();
-      if (!result.canceled) {
-          setRecognizing(true);
-          setDocumentPhoto(result.uri);
-          const data = await ocrManager.recognizeVehicleDocument(result.uri);
-          if (data) updateFormWithOCRData(data);
-          setRecognizing(false);
-      }
-  };
-
-  const takeLicensePlatePhoto = async () => {
-      const hasPermission = await checkCameraPermissions();
-      if (!hasPermission) return;
-      const result = await takePhoto();
-      if (!result.canceled) {
-          setRecognizing(true);
-          setLicensePlatePhoto(result.uri);
-          const data = await ocrManager.recognizeLicensePlateAndGetVehicleData(result.uri);
-          if (data) updateFormWithOCRData(data);
-          setRecognizing(false);
-      }
   };
 
   const updateFormWithOCRData = (data) => {
@@ -678,40 +604,26 @@ export default function AddVehicle({ navigation }) {
       keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
     >
       <ScrollView>
-        {/* Photo Sections - simplified for brevity, assume they exist as in original */}
         <View style={styles.sectionContainer}>
-          <Text style={styles.sectionTitle}>{t('vehicles.photo')}</Text>
-          <TouchableOpacity style={styles.photoContainer} onPress={pickVehicleImage}>
-             {photo ? <Image source={{ uri: photo }} style={styles.photo} /> : <View style={styles.photoPlaceholder}><Ionicons name="car-outline" size={64} color="#666" /><Text style={styles.photoText}>{t('vehicles.add_photo')}</Text></View>}
+          <Text style={styles.sectionTitle}>{t('vehicles.photo_and_recognition', 'Фото та розпізнавання')}</Text>
+          <Text style={styles.sectionDescription}>{t('vehicles.photo_hint', 'Зробіть фото техпаспорта або номера авто для автозаповнення')}</Text>
+          
+          <TouchableOpacity style={styles.photoContainer} onPress={pickCombinedPhoto}>
+             {photo ? (
+               <Image source={{ uri: photo }} style={styles.photo} />
+             ) : (
+               <View style={styles.photoPlaceholder}>
+                 <Ionicons name="camera-outline" size={64} color="#666" />
+                 <Text style={styles.photoText}>{t('vehicles.add_photo_btn', 'Додати фото')}</Text>
+               </View>
+             )}
+             {recognizing && (
+               <View style={styles.recognizingOverlay}>
+                 <ActivityIndicator size="large" color="#fff" />
+                 <Text style={styles.recognizingText}>{t('vehicles.recognizing')}</Text>
+               </View>
+             )}
           </TouchableOpacity>
-          <View style={styles.photoButtonContainer}>
-             <TouchableOpacity style={styles.photoButton} onPress={takeVehiclePhoto}><Ionicons name="camera-outline" size={24} color="#fff" /><Text style={styles.photoButtonText}>{t('vehicles.take_photo')}</Text></TouchableOpacity>
-             <TouchableOpacity style={styles.photoButton} onPress={pickVehicleImage}><Ionicons name="images-outline" size={24} color="#fff" /><Text style={styles.photoButtonText}>{t('vehicles.pick_from_gallery')}</Text></TouchableOpacity>
-          </View>
-        </View>
-
-         <View style={styles.sectionContainer}>
-          <Text style={styles.sectionTitle}>{t('vehicles.documents')}</Text>
-          <TouchableOpacity style={styles.photoContainer} onPress={pickDocumentImage}>
-             {documentPhoto ? <Image source={{ uri: documentPhoto }} style={styles.photo} /> : <View style={styles.photoPlaceholder}><Ionicons name="document-text-outline" size={64} color="#666" /><Text style={styles.photoText}>{t('vehicles.add_photo')}</Text></View>}
-             {recognizing && <View style={styles.recognizingOverlay}><ActivityIndicator size="large" color="#fff" /><Text style={styles.recognizingText}>{t('vehicles.recognizing')}</Text></View>}
-          </TouchableOpacity>
-          <View style={styles.photoButtonContainer}>
-             <TouchableOpacity style={styles.photoButton} onPress={takeDocumentPhoto}><Ionicons name="camera-outline" size={24} color="#fff" /><Text style={styles.photoButtonText}>{t('vehicles.take_photo')}</Text></TouchableOpacity>
-             <TouchableOpacity style={styles.photoButton} onPress={pickDocumentImage}><Ionicons name="images-outline" size={24} color="#fff" /><Text style={styles.photoButtonText}>{t('vehicles.pick_from_gallery')}</Text></TouchableOpacity>
-          </View>
-        </View>
-
-        <View style={styles.sectionContainer}>
-          <Text style={styles.sectionTitle}>{t('vehicles.license_plate_photo')}</Text>
-          <TouchableOpacity style={styles.photoContainer} onPress={pickLicensePlateImage}>
-             {licensePlatePhoto ? <Image source={{ uri: licensePlatePhoto }} style={styles.photo} /> : <View style={styles.photoPlaceholder}><Ionicons name="car-sport-outline" size={64} color="#666" /><Text style={styles.photoText}>{t('vehicles.add_license_plate')}</Text></View>}
-             {recognizing && <View style={styles.recognizingOverlay}><ActivityIndicator size="large" color="#fff" /><Text style={styles.recognizingText}>{t('vehicles.recognizing')}</Text></View>}
-          </TouchableOpacity>
-          <View style={styles.photoButtonContainer}>
-             <TouchableOpacity style={styles.photoButton} onPress={takeLicensePlatePhoto}><Ionicons name="camera-outline" size={24} color="#fff" /><Text style={styles.photoButtonText}>{t('vehicles.take_photo')}</Text></TouchableOpacity>
-             <TouchableOpacity style={styles.photoButton} onPress={pickLicensePlateImage}><Ionicons name="images-outline" size={24} color="#fff" /><Text style={styles.photoButtonText}>{t('vehicles.pick_from_gallery')}</Text></TouchableOpacity>
-          </View>
         </View>
         
         <View style={styles.form}>
@@ -769,6 +681,27 @@ export default function AddVehicle({ navigation }) {
             </View>
           </View>
 
+          <View style={styles.inputContainer}>
+            <Text style={styles.inputLabel}>{t('vehicles.vin')}</Text>
+            <View style={{flexDirection: 'row', alignItems: 'center'}}>
+              <TextInput
+                style={[styles.input, {flex: 1, marginBottom: 0}]}
+                placeholder={t('vehicles.vin')}
+                value={formData.vin}
+                onChangeText={(text) => setFormData(prev => ({ ...prev, vin: text.toUpperCase() }))}
+                autoCapitalize="characters"
+                maxLength={17}
+              />
+              <TouchableOpacity
+                style={[styles.searchButton, (!formData.vin || vinLookupLoading) && styles.disabledButton]}
+                onPress={handleLookupByVin}
+                disabled={!formData.vin || vinLookupLoading}
+              >
+                {vinLookupLoading ? <ActivityIndicator size="small" color="#fff" /> : <Ionicons name="search" size={20} color="#fff" />}
+              </TouchableOpacity>
+            </View>
+          </View>
+
           <View style={styles.pickerContainer}>
             <Text style={styles.inputLabel}>{t('vehicles.make')}</Text>
             <Picker
@@ -811,27 +744,6 @@ export default function AddVehicle({ navigation }) {
                 <Picker.Item label={String(year)} value={String(year)} key={year} />
               ))}
             </Picker>
-          </View>
-          
-          <View style={styles.inputContainer}>
-            <Text style={styles.inputLabel}>{t('vehicles.vin')}</Text>
-            <View style={{flexDirection: 'row', alignItems: 'center'}}>
-              <TextInput
-                style={[styles.input, {flex: 1, marginBottom: 0}]}
-                placeholder={t('vehicles.vin')}
-                value={formData.vin}
-                onChangeText={(text) => setFormData(prev => ({ ...prev, vin: text.toUpperCase() }))}
-                autoCapitalize="characters"
-                maxLength={17}
-              />
-              <TouchableOpacity
-                style={[styles.searchButton, (!formData.vin || vinLookupLoading) && styles.disabledButton]}
-                onPress={handleLookupByVin}
-                disabled={!formData.vin || vinLookupLoading}
-              >
-                {vinLookupLoading ? <ActivityIndicator size="small" color="#fff" /> : <Ionicons name="search" size={20} color="#fff" />}
-              </TouchableOpacity>
-            </View>
           </View>
           
           <View style={styles.pickerContainer}>
