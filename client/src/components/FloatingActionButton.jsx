@@ -28,6 +28,7 @@ const FloatingActionButton = ({
   actions = [],
   color = 'primary',
   position = 'bottom-right',
+  bottomOffset = 0,
   extended = false,
   label = '',
 }) => {
@@ -37,17 +38,18 @@ const FloatingActionButton = ({
 
   // Визначення стилів позиціонування
   const getPositionStyle = () => {
+    const bottom = `calc(${16 + bottomOffset}px + env(safe-area-inset-bottom))`;
     switch (position) {
       case 'bottom-right':
-        return { position: 'fixed', bottom: 16, right: 16 };
+        return { position: 'fixed', bottom, right: 16 };
       case 'bottom-left':
-        return { position: 'fixed', bottom: 16, left: 16 };
+        return { position: 'fixed', bottom, left: 16 };
       case 'top-right':
         return { position: 'fixed', top: 16, right: 16 };
       case 'top-left':
         return { position: 'fixed', top: 16, left: 16 };
       default:
-        return { position: 'fixed', bottom: 16, right: 16 };
+        return { position: 'fixed', bottom, right: 16 };
     }
   };
 

@@ -16,7 +16,35 @@ router.get('/', auth, async (req, res) => {
       return res.status(401).json({ msg: 'Unauthorized' });
     }
 
+    const hasPaginationParams =
+      typeof req.query.limit !== 'undefined' || typeof req.query.offset !== 'undefined';
+    const rawLimit = req.query.limit;
+    const rawOffset = req.query.offset;
+    const parsedLimit = Number.parseInt(String(rawLimit ?? ''), 10);
+    const parsedOffset = Number.parseInt(String(rawOffset ?? ''), 10);
+    const limit = Number.isFinite(parsedLimit) && parsedLimit > 0 ? Math.min(parsedLimit, 200) : 20;
+    const offset = Number.isFinite(parsedOffset) && parsedOffset >= 0 ? parsedOffset : 0;
+
     const db = await getDb();
+
+    if (hasPaginationParams) {
+      const rows = await db
+        .prepare(
+          'SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?'
+        )
+        .all(req.user.id, limit + 1, offset);
+
+      const arr = Array.isArray(rows) ? rows : [];
+      const hasMore = arr.length > limit;
+      const data = hasMore ? arr.slice(0, limit) : arr;
+      const nextOffset = offset + data.length;
+
+      logger.info(
+        `Successfully fetched ${data.length} notifications (paged) for user ${req.user.id}, offset=${offset}, limit=${limit}`
+      );
+      return res.json({ data, hasMore, nextOffset });
+    }
+
     const notifications = await db
       .prepare('SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC')
       .all(req.user.id);

@@ -68,7 +68,7 @@ const MyChats = () => {
               <ListItem
                 key={c.related_entity_id}
                 button
-                onClick={() => navigate(`/appointments/${c.related_entity_id}`)}
+                onClick={() => navigate(`/appointments/${c.related_entity_id}#chat`)}
                 sx={{ borderRadius: 2 }}
               >
                 <Box sx={{ mr: 2 }}>

@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, SectionList, ActivityIndicator, TouchableOpacity, Alert, Modal, TextInput, Switch, ScrollView } from 'react-native';
+import { Picker } from '@react-native-picker/picker';
 import { useTranslation } from 'react-i18next';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import axiosAuth from '../api/axiosConfig';
@@ -7,11 +8,12 @@ import { useAuth } from '../context/AuthContext';
 import CustomButton from '../components/CustomButton';
 
 export default function MyServicesScreen() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [mechanic, setMechanic] = useState(null);
   const [services, setServices] = useState([]);
+  const [categories, setCategories] = useState([]);
   
   // Modal State
   const [modalVisible, setModalVisible] = useState(false);
@@ -21,9 +23,11 @@ export default function MyServicesScreen() {
     description: '',
     price: '',
     duration: '',
-    category: '',
+    categoryId: '',
     enabled: true
   });
+  const [categoryMode, setCategoryMode] = useState('select');
+  const [customCategory, setCustomCategory] = useState('');
   const [saving, setSaving] = useState(false);
 
   const isMaster = ['master', 'mechanic', 'admin'].includes(String(user?.role || '').toLowerCase());
@@ -41,10 +45,18 @@ export default function MyServicesScreen() {
       }
       setMechanic(mechanicData);
 
-      // Fetch ALL services (enabled and disabled)
-      const listRes = await axiosAuth.get(`/api/mechanics/${mechanicData.id}/services`);
+      const [listRes, categoriesRes] = await Promise.all([
+        axiosAuth.get(`/api/mechanics/${mechanicData.id}/services`),
+        axiosAuth.get('/api/service-categories'),
+      ]);
       const rows = Array.isArray(listRes.data) ? listRes.data : Array.isArray(listRes.data?.data) ? listRes.data.data : [];
+      const categoryRows = Array.isArray(categoriesRes.data)
+        ? categoriesRes.data
+        : Array.isArray(categoriesRes.data?.data)
+          ? categoriesRes.data.data
+          : [];
       setServices(rows);
+      setCategories(categoryRows);
     } catch (error) {
       console.error('[MyServicesScreen] Failed to load mechanic services:', error);
       Alert.alert(t('common.error'), t('common.data_load_error'));
@@ -61,27 +73,109 @@ export default function MyServicesScreen() {
     loadMechanicAndServices();
   }, [isMaster]);
 
+  const resolveLocalizedText = (value) => {
+    if (!value) return null;
+    if (typeof value === 'string') return value.trim() || null;
+    if (typeof value !== 'object') return null;
+    const locale = String(i18n.language || '').toLowerCase();
+    const base = locale.split('-')[0];
+    const keys = [locale, base];
+    if (base === 'uk') keys.push('ua');
+    if (base === 'ua') keys.push('uk');
+    if (base === 'ru') keys.push('ru');
+    if (base === 'en') keys.push('en');
+    for (const key of keys) {
+      const val = value[key];
+      if (typeof val === 'string' && val.trim()) return val.trim();
+    }
+    const first = Object.values(value).find(v => typeof v === 'string' && v.trim());
+    return typeof first === 'string' ? first.trim() : null;
+  };
+
+  const isLikelyId = (value) => {
+    if (!value || typeof value !== 'string') return false;
+    const trimmed = value.trim();
+    if (!trimmed) return false;
+    if (/^[0-9a-f]{24}$/i.test(trimmed)) return true;
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trimmed);
+  };
+
+  const getServiceCategoryId = (service) => {
+    const raw = service?.category_id ?? service?.categoryId ?? service?.category?.id ?? service?.category;
+    return raw != null ? String(raw) : '';
+  };
+
+  const getServiceCategoryName = (service) => {
+    const rawName =
+      service?.category_name ??
+      service?.categoryName ??
+      service?.categoryTitle ??
+      service?.category?.name ??
+      service?.category?.title;
+    return resolveLocalizedText(rawName) || '';
+  };
+
+  const categoryMap = useMemo(() => {
+    const map = new Map();
+    (categories || []).forEach((c) => {
+      const id = c?.id != null ? String(c.id) : '';
+      const name = c?.name ? String(c.name).trim() : '';
+      if (id && name) {
+        map.set(id, name);
+      }
+    });
+    return map;
+  }, [categories]);
+
+  const categoryOptions = useMemo(() => {
+    const list = Array.from(categoryMap.entries())
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    return list;
+  }, [categoryMap]);
+
+  const resolveCategoryTitle = (service) => {
+    const name = getServiceCategoryName(service);
+    if (name) return name;
+    const categoryId = getServiceCategoryId(service);
+    if (categoryId && categoryMap.has(categoryId)) {
+      return categoryMap.get(categoryId);
+    }
+    const raw = service?.category ?? service?.category_name ?? service?.categoryTitle ?? service?.categoryName;
+    const direct = resolveLocalizedText(raw);
+    if (direct && !isLikelyId(direct)) return direct;
+    return t('services.other', 'Інше');
+  };
+
   const handleEdit = (service) => {
+    const categoryId = getServiceCategoryId(service);
+    const categoryName = getServiceCategoryName(service) || (categoryId && categoryMap.get(categoryId)) || '';
+    const hasKnownCategory = categoryId && categoryMap.has(categoryId);
+    const useCustom = !hasKnownCategory && !!categoryName;
+    setCategoryMode(useCustom ? 'custom' : 'select');
+    setCustomCategory(useCustom ? categoryName : '');
     setEditingService(service);
     setForm({
       name: service.name || '',
       description: service.description || '',
       price: service.price ? String(service.price) : '',
       duration: service.duration ? String(service.duration) : '',
-      category: service.category || '',
+      categoryId: useCustom ? '' : hasKnownCategory ? categoryId : '',
       enabled: service.enabled !== 0 && service.enabled !== false
     });
     setModalVisible(true);
   };
 
   const handleAdd = () => {
+    setCategoryMode('select');
+    setCustomCategory('');
     setEditingService(null);
     setForm({
       name: '',
       description: '',
       price: '',
       duration: '',
-      category: '',
+      categoryId: '',
       enabled: true
     });
     setModalVisible(true);
@@ -95,12 +189,38 @@ export default function MyServicesScreen() {
 
     setSaving(true);
     try {
+      let categoryId = form.categoryId;
+      if (categoryMode === 'custom') {
+        const name = customCategory.trim();
+        if (name) {
+          const existing = categoryOptions.find(
+            (c) => c.name.toLowerCase() === name.toLowerCase()
+          );
+          if (existing) {
+            categoryId = existing.id;
+          } else {
+            const createdRes = await axiosAuth.post('/api/service-categories', { name });
+            const created = createdRes?.data;
+            if (created?.id && created?.name) {
+              setCategories((prev) => {
+                const next = Array.isArray(prev) ? [...prev] : [];
+                next.push(created);
+                return next;
+              });
+              categoryId = String(created.id);
+            }
+          }
+        } else {
+          categoryId = '';
+        }
+      }
+
       const payload = {
         name: form.name,
         description: form.description,
         price: parseFloat(form.price),
         duration: parseInt(form.duration, 10),
-        category: form.category,
+        category_id: categoryId || null,
         enabled: form.enabled ? 1 : 0,
         mechanic_id: mechanic.id
       };
@@ -138,15 +258,16 @@ export default function MyServicesScreen() {
   const groupServicesByCategory = () => {
     const groups = {};
     services.forEach(service => {
-      const cat = service.category || t('services.other', 'Інше');
+      const cat = resolveCategoryTitle(service);
       if (!groups[cat]) groups[cat] = [];
       groups[cat].push(service);
     });
-    
-    return Object.keys(groups).sort().map(key => ({
-      title: key,
-      data: groups[key]
-    }));
+    return Object.keys(groups)
+      .sort((a, b) => a.localeCompare(b))
+      .map(key => ({
+        title: key,
+        data: groups[key]
+      }));
   };
 
   const renderServiceItem = ({ item }) => {
@@ -158,7 +279,7 @@ export default function MyServicesScreen() {
           <Ionicons name="build-outline" size={24} color={isEnabled ? "#1976d2" : "#ccc"} />
         </View>
         <View style={styles.info}>
-          <Text style={[styles.name, !isEnabled && styles.disabledText]}>{item.name || t('services.unnamed')}</Text>
+          <Text style={[styles.name, !isEnabled && styles.disabledText]}>{item.name || t('services.unnamed', 'Послуга без назви')}</Text>
           {!!item.description && <Text style={styles.description} numberOfLines={1}>{item.description}</Text>}
           <View style={styles.metaRow}>
             <Text style={styles.meta}>{item.price} грн</Text>
@@ -175,7 +296,7 @@ export default function MyServicesScreen() {
     );
   };
 
-  if (!isMaster) return <View style={styles.center}><Text>{t('services.only_for_masters')}</Text></View>;
+  if (!isMaster) return <View style={styles.center}><Text>{t('services.only_for_masters', 'Розділ доступний лише для майстрів')}</Text></View>;
   if (loading) return <View style={styles.center}><ActivityIndicator size="large" color="#1976d2" /></View>;
   if (!mechanic) return <View style={styles.center}><Text>{t('errors.mechanicProfileNotFound')}</Text></View>;
 
@@ -193,7 +314,7 @@ export default function MyServicesScreen() {
         contentContainerStyle={styles.list}
         ListEmptyComponent={
           <View style={styles.center}>
-            <Text style={styles.message}>{t('services.noServices')}</Text>
+            <Text style={styles.message}>{t('services.no_services', 'Послуг немає')}</Text>
           </View>
         }
       />
@@ -224,12 +345,36 @@ export default function MyServicesScreen() {
               />
 
               <Text style={styles.label}>{t('common.category', 'Категорія')}</Text>
-              <TextInput
-                style={styles.input}
-                value={form.category}
-                onChangeText={t => setForm(prev => ({ ...prev, category: t }))}
-                placeholder={t('common.category')}
-              />
+              <View style={styles.pickerContainer}>
+                <Picker
+                  selectedValue={categoryMode === 'custom' ? '__custom__' : form.categoryId}
+                  onValueChange={(value) => {
+                    if (value === '__custom__') {
+                      setCategoryMode('custom');
+                      setForm(prev => ({ ...prev, categoryId: '' }));
+                      return;
+                    }
+                    setCategoryMode('select');
+                    setCustomCategory('');
+                    setForm(prev => ({ ...prev, categoryId: value }));
+                  }}
+                  style={styles.picker}
+                >
+                  <Picker.Item label={t('services.select_category', 'Оберіть категорію')} value="" />
+                  {categoryOptions.map((option) => (
+                    <Picker.Item key={option.id} label={option.name} value={option.id} />
+                  ))}
+                  <Picker.Item label={t('services.add_category', 'Додати нову категорію')} value="__custom__" />
+                </Picker>
+              </View>
+              {categoryMode === 'custom' && (
+                <TextInput
+                  style={styles.input}
+                  value={customCategory}
+                  onChangeText={(value) => setCustomCategory(value)}
+                  placeholder={t('services.new_category_placeholder', 'Введіть нову категорію')}
+                />
+              )}
 
               <View style={styles.row}>
                 <View style={styles.halfInput}>
@@ -357,6 +502,8 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#333'
   },
+  pickerContainer: { backgroundColor: '#f5f5f7', borderRadius: 8 },
+  picker: { color: '#333' },
   textArea: { height: 80, textAlignVertical: 'top' },
   row: { flexDirection: 'row', gap: 12 },
   halfInput: { flex: 1 },

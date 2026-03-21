@@ -12,4 +12,6 @@ const upload = multer({
 
 router.post('/parse', auth, upload.single('image'), ocrController.parsePartsFromImage);
 
+router.post('/plate', auth, upload.single('image'), ocrController.parseLicensePlateFromImage);
+
 module.exports = router;

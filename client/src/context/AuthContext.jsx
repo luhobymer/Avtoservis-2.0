@@ -213,6 +213,25 @@ export const AuthProvider = ({ children }) => {
       const status = err?.response?.status || null;
       const responseData = err?.response?.data;
 
+      if (!status) {
+        const rawMessage = String(err?.message || '').toLowerCase();
+        const code = String(err?.code || '').toLowerCase();
+        const looksLikeNetwork =
+          rawMessage.includes('network error') ||
+          rawMessage.includes('failed to fetch') ||
+          rawMessage.includes('econnrefused') ||
+          rawMessage.includes('err_connection_refused') ||
+          code.includes('econnrefused') ||
+          code.includes('err_network') ||
+          code.includes('enotfound');
+        if (looksLikeNetwork) {
+          const msg =
+            'API сервер недоступний. Запусти бекенд на порту 5001 (наприклад: npm run dev:full у корені проєкту).';
+          setError(msg);
+          throw new Error(msg);
+        }
+      }
+
       let msg =
         (responseData && typeof responseData === 'object' ? responseData.message : null) ||
         err?.message ||

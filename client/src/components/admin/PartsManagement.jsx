@@ -17,13 +17,17 @@ import {
   IconButton,
   Typography,
   Alert,
-  Snackbar
+  Snackbar,
+  useMediaQuery,
+  useTheme
 } from '@mui/material';
 import { Edit as EditIcon, Delete as DeleteIcon, Add as AddIcon } from '@mui/icons-material';
 import { listAll as listParts, create as createPart, updateById as updatePart, deleteById as deletePart } from '../../api/dao/partsDao';
 
 const PartsManagement = () => {
   const { t } = useTranslation();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [parts, setParts] = useState([]);
   const [openDialog, setOpenDialog] = useState(false);
   const [selectedPart, setSelectedPart] = useState(null);
@@ -149,7 +153,13 @@ const PartsManagement = () => {
         </Table>
       </TableContainer>
 
-      <Dialog open={openDialog} onClose={handleCloseDialog}>
+      <Dialog
+        open={openDialog}
+        onClose={handleCloseDialog}
+        fullScreen={isMobile}
+        fullWidth
+        maxWidth="sm"
+      >
         <DialogTitle>
           {selectedPart ? t('parts.edit') : t('parts.add_new')}
         </DialogTitle>
@@ -186,6 +196,11 @@ const PartsManagement = () => {
             onChange={handleInputChange}
             fullWidth
             margin="normal"
+            inputProps={{
+              inputMode: 'decimal',
+              min: 0,
+              step: 1
+            }}
           />
           <TextField
             name="warranty_period"
@@ -195,11 +210,24 @@ const PartsManagement = () => {
             onChange={handleInputChange}
             fullWidth
             margin="normal"
+            inputProps={{
+              inputMode: 'numeric',
+              min: 0,
+              step: 1
+            }}
           />
         </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCloseDialog}>{t('common.cancel')}</Button>
-          <Button onClick={handleSubmit} variant="contained">
+        <DialogActions
+          sx={{
+            flexDirection: isMobile ? 'column-reverse' : 'row',
+            alignItems: isMobile ? 'stretch' : 'center',
+            gap: isMobile ? 1 : 0
+          }}
+        >
+          <Button onClick={handleCloseDialog} fullWidth={isMobile}>
+            {t('common.cancel')}
+          </Button>
+          <Button onClick={handleSubmit} variant="contained" fullWidth={isMobile}>
             {t('common.save')}
           </Button>
         </DialogActions>

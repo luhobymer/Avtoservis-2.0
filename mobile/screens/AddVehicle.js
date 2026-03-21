@@ -76,6 +76,37 @@ export default function AddVehicle({ navigation }) {
     registrationDate: '',
     lastServiceDate: '',
   });
+
+  const normalizeLicensePlate = useCallback((plate) => {
+    if (!plate) return null;
+    const normalized = String(plate).replace(/[\s\-_.]/g, '').toUpperCase();
+    const map = {
+      А: 'A',
+      В: 'B',
+      Е: 'E',
+      І: 'I',
+      К: 'K',
+      М: 'M',
+      Н: 'H',
+      О: 'O',
+      Р: 'P',
+      С: 'C',
+      Т: 'T',
+      Х: 'X',
+      У: 'Y',
+    };
+    return normalized.replace(/[АВЕІКМНОРСТХУ]/g, (char) => map[char] || char);
+  }, []);
+
+  const normalizeEngineType = useCallback((raw) => {
+    const value = String(raw || '').toLowerCase();
+    if (value.includes('petrol') || value.includes('benzine')) return 'petrol';
+    if (value.includes('diesel')) return 'diesel';
+    if (value.includes('gas')) return 'gas';
+    if (value.includes('electric') || value.includes('electro')) return 'electric';
+    if (value.includes('hybrid')) return 'hybrid';
+    return value;
+  }, []);
   
   // Ініціалізація списку марок
   useEffect(() => {
@@ -216,56 +247,52 @@ export default function AddVehicle({ navigation }) {
 
     setLookupLoading(true);
     try {
-        const normalizeLicensePlate = (plate) => {
-            if (!plate) return null;
-            return plate.replace(/[\s\-_.]/g, '').toUpperCase();
-        };
-
         const normalizedPlate = normalizeLicensePlate(formData.licensePlate);
+        let data = null;
 
-        const response = await axiosAuth.get(`/api/vehicles/plate/${normalizedPlate}`);
+        try {
+          data = await vehiclesDao.getDetailsByLicensePlate(normalizedPlate);
+        } catch (error) {
+          const status = error?.response?.status;
+          if (status === 400) {
+            Alert.alert(t('common.error'), t('validation.enter_license_plate'));
+            return;
+          }
+          if (status !== 404) {
+            console.error('Lookup error:', error);
+          }
+        }
 
-        if (response.data) {
-            const data = response.data;
-            
-            let engineType = '';
-            // Mapping engine type from DB format if necessary, otherwise use as is
-            const rawEngine = String(data.engineType || data.engine_type || '').toLowerCase();
-            if (rawEngine.includes('petrol') || rawEngine.includes('benzine')) engineType = 'petrol';
-            else if (rawEngine.includes('diesel')) engineType = 'diesel';
-            else if (rawEngine.includes('gas')) engineType = 'gas';
-            else if (rawEngine.includes('electric') || rawEngine.includes('electro')) engineType = 'electric';
-            else if (rawEngine.includes('hybrid')) engineType = 'hybrid';
-            else engineType = rawEngine; // Fallback
+        if (!data) {
+          try {
+            data = await vehiclesDao.getRegistryDetailsByLicensePlate(normalizedPlate);
+          } catch (error) {
+            console.error('Registry lookup error:', error);
+          }
+        }
 
-            setFormData(prev => ({
-                ...prev,
-                make: data.make || prev.make,
-                model: data.model || prev.model,
-                year: data.year ? String(data.year) : prev.year,
-                vin: data.vin || prev.vin,
-                color: data.color || prev.color,
-                engineType: engineType || prev.engineType,
-                engineCapacity: data.engineCapacity || data.engine_capacity ? String(data.engineCapacity || data.engine_capacity) : prev.engineCapacity,
-                licensePlate: data.licensePlate || data.license_plate || normalizedPlate,
-                mileage: data.mileage ? String(data.mileage) : prev.mileage
-            }));
-            
-            Alert.alert(t('common.success'), t('vehicles.found_success'));
+        if (data) {
+          const engineType = normalizeEngineType(data.engineType);
+          setFormData(prev => ({
+            ...prev,
+            make: data.make || prev.make,
+            model: data.model || prev.model,
+            year: data.year ? String(data.year) : prev.year,
+            vin: data.vin || prev.vin,
+            color: data.color || prev.color,
+            engineType: engineType || prev.engineType,
+            engineCapacity: data.engineCapacity != null ? String(data.engineCapacity) : prev.engineCapacity,
+            licensePlate: data.licensePlate || normalizedPlate,
+            mileage: data.mileage != null ? String(data.mileage) : prev.mileage,
+          }));
+
+          Alert.alert(t('common.success'), t('vehicles.found_success'));
         } else {
-            // If not found in DB, try external registry (fallback logic preserved if needed, or remove)
-             Alert.alert(t('common.info'), t('vehicles.not_found'));
+          Alert.alert(t('common.info'), t('vehicles.not_found'));
         }
     } catch (error) {
-        const status = error?.response?.status;
-        if (status === 404) {
-          Alert.alert(t('common.info'), t('vehicles.not_found'));
-        } else if (status === 400) {
-          Alert.alert(t('common.error'), t('validation.enter_license_plate'));
-        } else {
-          console.error('Lookup error:', error);
-          Alert.alert(t('common.error'), t('vehicles.lookup_error'));
-        }
+        console.error('Lookup error:', error);
+        Alert.alert(t('common.error'), t('vehicles.lookup_error'));
     } finally {
         setLookupLoading(false);
     }
@@ -280,37 +307,26 @@ export default function AddVehicle({ navigation }) {
     setVinLookupLoading(true);
     try {
         const normalizedVin = String(formData.vin || '').replace(/\s+/g, '').toUpperCase();
+        const data = await vehiclesDao.getDetailsByVin(normalizedVin);
 
-        const response = await axiosAuth.get(`/api/vehicles/vin/${normalizedVin}`);
+        if (data) {
+          const engineType = normalizeEngineType(data.engineType);
+          setFormData(prev => ({
+            ...prev,
+            make: data.make || prev.make,
+            model: data.model || prev.model,
+            year: data.year ? String(data.year) : prev.year,
+            vin: data.vin || normalizedVin,
+            color: data.color || prev.color,
+            engineType: engineType || prev.engineType,
+            engineCapacity: data.engineCapacity != null ? String(data.engineCapacity) : prev.engineCapacity,
+            licensePlate: data.licensePlate || prev.licensePlate,
+            mileage: data.mileage != null ? String(data.mileage) : prev.mileage,
+          }));
 
-        if (response.data) {
-            const data = response.data;
-            let engineType = '';
-            // Mapping engine type from DB format
-            const rawEngine = String(data.engineType || data.engine_type || '').toLowerCase();
-            if (rawEngine.includes('petrol') || rawEngine.includes('benzine')) engineType = 'petrol';
-            else if (rawEngine.includes('diesel')) engineType = 'diesel';
-            else if (rawEngine.includes('gas')) engineType = 'gas';
-            else if (rawEngine.includes('electric') || rawEngine.includes('electro')) engineType = 'electric';
-            else if (rawEngine.includes('hybrid')) engineType = 'hybrid';
-            else engineType = rawEngine;
-
-            setFormData(prev => ({
-                ...prev,
-                make: data.make || prev.make,
-                model: data.model || prev.model,
-                year: data.year ? String(data.year) : prev.year,
-                vin: data.vin || normalizedVin,
-                color: data.color || prev.color,
-                engineType: engineType || prev.engineType,
-                engineCapacity: data.engineCapacity || data.engine_capacity ? String(data.engineCapacity || data.engine_capacity) : prev.engineCapacity,
-                licensePlate: data.licensePlate || data.license_plate || prev.licensePlate,
-                mileage: data.mileage ? String(data.mileage) : prev.mileage
-            }));
-
-            Alert.alert(t('common.success'), t('vehicles.found_success'));
+          Alert.alert(t('common.success'), t('vehicles.found_success'));
         } else {
-            Alert.alert(t('common.info'), t('vehicles.not_found'));
+          Alert.alert(t('common.info'), t('vehicles.not_found'));
         }
     } catch (error) {
         console.error('VIN lookup error:', error);
@@ -443,12 +459,12 @@ export default function AddVehicle({ navigation }) {
 
   const pickCombinedPhoto = async () => {
     Alert.alert(
-      t('vehicles.add_photo'),
-      t('vehicles.choose_source'),
+      t('vehicles.add_photo', 'Додати фото'),
+      t('vehicles.choose_source', 'Оберіть джерело'),
       [
-        { text: t('vehicles.camera'), onPress: takeCombinedPhoto },
-        { text: t('vehicles.gallery'), onPress: pickGalleryCombinedPhoto },
-        { text: t('common.cancel'), style: 'cancel' }
+        { text: t('common.camera', 'Камера'), onPress: takeCombinedPhoto },
+        { text: t('common.gallery', 'Галерея'), onPress: pickGalleryCombinedPhoto },
+        { text: t('common.cancel', 'Скасувати'), style: 'cancel' }
       ]
     );
   };

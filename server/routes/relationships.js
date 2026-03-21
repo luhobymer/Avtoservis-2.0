@@ -15,6 +15,9 @@ router.get('/mechanics', relationshipController.getClientMechanics);
 // Отримати моїх клієнтів (для майстра)
 router.get('/clients', relationshipController.getMechanicClients);
 
+// Додати клієнта майстру (створити accepted звʼязок)
+router.post('/clients', relationshipController.addClientForMechanic);
+
 // Оновити статус (прийняти/відхилити)
 router.put('/:id', relationshipController.updateStatus);
 

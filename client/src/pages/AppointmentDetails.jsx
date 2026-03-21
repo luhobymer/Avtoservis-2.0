@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useMemo, useRef, useState, useEffect } from 'react';
 import { Alert } from '@mui/material';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/useAuth';
 import {
@@ -44,7 +44,9 @@ import {
   TableRow,
   IconButton,
   Chip,
-  LinearProgress
+  LinearProgress,
+  useMediaQuery,
+  useTheme
 } from '@mui/material';
 import { DateTimePicker } from '@mui/x-date-pickers';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
@@ -55,6 +57,7 @@ import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 
 import Snackbar from '@mui/material/Snackbar';
 import AppointmentChat from '../components/chat/AppointmentChat';
+import { compressImageFile } from '../utils/imageUtils';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 const resolveUrl = (url) => (url.startsWith('http') ? url : `${API_BASE_URL}${url}`);
@@ -63,9 +66,36 @@ const AppointmentDetails = ({ isNew }) => {
   const { t } = useTranslation();
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const isNewAppointment = isNew || id === 'new';
   const { user, isMaster } = useAuth();
   const isMasterUser = typeof isMaster === 'function' ? isMaster() : false;
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+
+  const chatAnchorRef = useRef(null);
+
+  useEffect(() => {
+    if (isNewAppointment) return;
+
+    const hash = String(location.hash || '').toLowerCase();
+    const params = new URLSearchParams(location.search || '');
+    const tab = String(params.get('tab') || '').toLowerCase();
+    const wantsChat = hash === '#chat' || tab === 'chat';
+
+    if (!wantsChat) return;
+    if (!chatAnchorRef.current) return;
+
+    const timer = setTimeout(() => {
+      try {
+        chatAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      } catch (_) {
+        void _;
+      }
+    }, 250);
+
+    return () => clearTimeout(timer);
+  }, [isNewAppointment, location.hash, location.search]);
   
   const [hideMechanicSelection, setHideMechanicSelection] = useState(false);
   const [loading, setLoading] = useState(!isNewAppointment);
@@ -91,6 +121,7 @@ const AppointmentDetails = ({ isNew }) => {
   
   // OCR State for Completion
   const [ocrLoading, setOcrLoading] = useState(false);
+  const [ocrPreviewUrl, setOcrPreviewUrl] = useState('');
 
   // Client Manual Parts State (Create Appointment)
   const [clientParts, setClientParts] = useState([]);
@@ -606,8 +637,15 @@ const AppointmentDetails = ({ isNew }) => {
     if (!file) return;
 
     setOcrLoading(true);
+    if (ocrPreviewUrl) {
+      URL.revokeObjectURL(ocrPreviewUrl);
+    }
+    const preview = URL.createObjectURL(file);
+    setOcrPreviewUrl(preview);
+
+    const compressed = await compressImageFile(file);
     const formData = new FormData();
-    formData.append('image', file);
+    formData.append('image', compressed);
 
     try {
       const token = localStorage.getItem('auth_token');
@@ -646,12 +684,28 @@ const AppointmentDetails = ({ isNew }) => {
     e.preventDefault();
     setSaving(true);
     setError(null);
+    const focusField = (fieldId) => {
+      const el = document.getElementById(fieldId);
+      if (el && typeof el.scrollIntoView === 'function') {
+        el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      }
+      if (el && typeof el.focus === 'function') {
+        el.focus();
+      }
+    };
     try {
-      if (!formData.scheduledDate) throw new Error(t('errors.invalidScheduledDate', 'Некоректна дата'));
+      if (!formData.scheduledDate) {
+        focusField('scheduledDate');
+        throw new Error(t('errors.invalidScheduledDate', 'Некоректна дата'));
+      }
       if (!formData.service_id && (!formData.service_ids || formData.service_ids.length === 0)) {
+        focusField('service_ids');
         throw new Error(t('errors.serviceRequired', 'Оберіть послугу'));
       }
-      if (!formData.mechanic_id) throw new Error(t('errors.mechanicRequired', 'Оберіть механіка'));
+      if (!formData.mechanic_id) {
+        focusField('mechanic_id');
+        throw new Error(t('errors.mechanicRequired', 'Оберіть механіка'));
+      }
       
       const isClientUser = String(user?.role || '').toLowerCase() === 'client';
       const effectiveServiceIds =
@@ -685,7 +739,10 @@ const AppointmentDetails = ({ isNew }) => {
       }
 
       if (isNewAppointment) {
-        if (!payload.user_id) throw new Error(t('errors.clientRequired', 'Оберіть клієнта'));
+        if (!payload.user_id) {
+          focusField('client_id');
+          throw new Error(t('errors.clientRequired', 'Оберіть клієнта'));
+        }
         await createAppointment(payload);
       } else {
         await updateAppointment(id, payload);
@@ -753,7 +810,7 @@ const AppointmentDetails = ({ isNew }) => {
       <Paper elevation={3} sx={{ p: 3, mt: 4, mb: 4 }}>
           {/* Header & Stepper ... (same as before) */}
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-             <Typography variant="h4">{isNewAppointment ? t('appointment.schedule') : t('common.edit')}</Typography>
+             <Typography variant={isMobile ? 'h5' : 'h4'}>{isNewAppointment ? t('appointment.schedule') : t('common.edit')}</Typography>
              {!isNewAppointment && isMasterUser && formData.status !== 'completed' && formData.status !== 'cancelled' && (
                <Box>
                  {formData.status === 'pending' && (
@@ -783,7 +840,7 @@ const AppointmentDetails = ({ isNew }) => {
                 <Grid item xs={12}>
                   <FormControl fullWidth required>
                     <InputLabel>{t('clients.title')}</InputLabel>
-                    <Select value={clientId} onChange={handleClientChange} label={t('clients.title')}>
+                    <Select id="client_id" value={clientId} onChange={handleClientChange} label={t('clients.title')}>
                       {clients.map((c) => <MenuItem key={c.id} value={c.id}>{c.name || c.email}</MenuItem>)}
                     </Select>
                   </FormControl>
@@ -793,7 +850,7 @@ const AppointmentDetails = ({ isNew }) => {
                 {isNewAppointment ? (
                   <FormControl fullWidth required>
                     <InputLabel>{t('vehicle.title')}</InputLabel>
-                    <Select name="vehicle_vin" value={formData.vehicle_vin} onChange={handleChange} label={t('vehicle.title')}>
+                    <Select id="vehicle_vin" name="vehicle_vin" value={formData.vehicle_vin} onChange={handleChange} label={t('vehicle.title')}>
                       {vehicles.map((vehicle) => <MenuItem key={vehicle.vin} value={vehicle.vin}>{vehicle.brand} {vehicle.model} ({vehicle.licensePlate || vehicle.license_plate || vehicle.vin})</MenuItem>)}
                     </Select>
                   </FormControl>
@@ -808,14 +865,14 @@ const AppointmentDetails = ({ isNew }) => {
               </Grid>
               {!hideMechanicSelection && (
                 <Grid item xs={12} sm={6}>
-                  <TextField fullWidth label={t('auth.city')} value={mechanicCity} onChange={handleMechanicCityChange} />
+                  <TextField fullWidth label={t('auth.city')} value={mechanicCity} onChange={handleMechanicCityChange} autoComplete="address-level2" />
                 </Grid>
               )}
               {(!hideMechanicSelection || (hideMechanicSelection && mechanics.length > 1)) && (
                 <Grid item xs={12} sm={6}>
                   <FormControl fullWidth required>
                     <InputLabel>{t('appointment.mechanic')}</InputLabel>
-                    <Select name="mechanic_id" value={formData.mechanic_id || ''} onChange={handleMechanicChange} label={t('appointment.mechanic')}>
+                    <Select id="mechanic_id" name="mechanic_id" value={formData.mechanic_id || ''} onChange={handleMechanicChange} label={t('appointment.mechanic')}>
                       {mechanics.map((mechanic) => <MenuItem key={mechanic.id} value={mechanic.id}>{mechanic.fullName || mechanic.email}</MenuItem>)}
                     </Select>
                   </FormControl>
@@ -829,7 +886,7 @@ const AppointmentDetails = ({ isNew }) => {
                 <Grid item xs={12} sm={6}>
                   <FormControl fullWidth required disabled={!formData.mechanic_id || services.length === 0}>
                     <InputLabel>{t('services.category')}</InputLabel>
-                    <Select value={serviceCategoryId || ''} onChange={(e) => { setServiceCategoryId(String(e.target.value)); setFormData(prev => ({...prev, service_id: null, service_ids: []})); }} label={t('services.category')}>
+                    <Select id="service_category" value={serviceCategoryId || ''} onChange={(e) => { setServiceCategoryId(String(e.target.value)); setFormData(prev => ({...prev, service_id: null, service_ids: []})); }} label={t('services.category')}>
                       {serviceCategories.map((cat) => <MenuItem key={cat.id} value={cat.id}>{cat.name}</MenuItem>)}
                     </Select>
                   </FormControl>
@@ -838,6 +895,7 @@ const AppointmentDetails = ({ isNew }) => {
                    <FormControl fullWidth required disabled={!serviceCategoryId}>
                       <InputLabel>{t('appointment.serviceType')}</InputLabel>
                       <Select
+                        id="service_ids"
                         multiple
                         name="service_id"
                         value={formData.service_ids || []}
@@ -860,7 +918,7 @@ const AppointmentDetails = ({ isNew }) => {
                 <TextField
                   fullWidth
                   type="number"
-                  inputProps={{ min: 0, step: 1 }}
+                  inputProps={{ inputMode: 'numeric', pattern: '[0-9]*', min: 0, step: 1 }}
                   label={t('services.price', 'Ціна')}
                   name="appointment_price"
                   value={formData.appointment_price}
@@ -872,7 +930,7 @@ const AppointmentDetails = ({ isNew }) => {
                 <TextField
                   fullWidth
                   type="number"
-                  inputProps={{ min: 0, step: 1 }}
+                  inputProps={{ inputMode: 'numeric', pattern: '[0-9]*', min: 0, step: 1 }}
                   label={t('services.duration', 'Час (хв)')}
                   name="appointment_duration"
                   value={formData.appointment_duration}
@@ -882,7 +940,7 @@ const AppointmentDetails = ({ isNew }) => {
               </Grid>
               <Grid item xs={12} sm={6}>
                 <LocalizationProvider dateAdapter={AdapterDateFns}>
-                  <DateTimePicker label={t('appointment.scheduledDate')} value={formData.scheduledDate} onChange={(date) => handleDateChange('scheduledDate', date)} renderInput={(params) => <TextField {...params} fullWidth required />} />
+                  <DateTimePicker label={t('appointment.scheduledDate')} value={formData.scheduledDate} onChange={(date) => handleDateChange('scheduledDate', date)} renderInput={(params) => <TextField {...params} id="scheduledDate" fullWidth required />} />
                 </LocalizationProvider>
               </Grid>
               <Grid item xs={12}>
@@ -893,11 +951,17 @@ const AppointmentDetails = ({ isNew }) => {
               {isNewAppointment && (
                   <Grid item xs={12}>
                       <Typography variant="h6" gutterBottom>{t('parts.addParts', 'Додати свої запчастини')}</Typography>
-                      <Box sx={{ display: 'flex', gap: 1, mb: 2, alignItems: 'center' }}>
-                          <TextField label={t('parts.name')} size="small" value={clientNewPart.name} onChange={(e) => setClientNewPart({...clientNewPart, name: e.target.value})} sx={{ flexGrow: 1 }} />
-                          <TextField label={t('parts.qty')} size="small" type="number" value={clientNewPart.quantity} onChange={(e) => setClientNewPart({...clientNewPart, quantity: e.target.value})} sx={{ width: 80 }} />
-                          <TextField label={t('parts.notes')} size="small" value={clientNewPart.notes} onChange={(e) => setClientNewPart({...clientNewPart, notes: e.target.value})} />
-                          <IconButton color="primary" onClick={handleAddClientPart} disabled={!clientNewPart.name}><AddIcon /></IconButton>
+                      <Box sx={{ display: 'flex', gap: 1, mb: 2, alignItems: isMobile ? 'stretch' : 'center', flexDirection: isMobile ? 'column' : 'row' }}>
+                          <TextField label={t('parts.name')} size={isMobile ? 'medium' : 'small'} value={clientNewPart.name} onChange={(e) => setClientNewPart({...clientNewPart, name: e.target.value})} sx={{ flexGrow: 1 }} fullWidth />
+                          <TextField label={t('parts.qty')} size={isMobile ? 'medium' : 'small'} type="number" inputProps={{ inputMode: 'numeric', pattern: '[0-9]*', min: 1, step: 1 }} value={clientNewPart.quantity} onChange={(e) => setClientNewPart({...clientNewPart, quantity: e.target.value})} sx={isMobile ? undefined : { width: 80 }} fullWidth={isMobile} />
+                          <TextField label={t('parts.notes')} size={isMobile ? 'medium' : 'small'} value={clientNewPart.notes} onChange={(e) => setClientNewPart({...clientNewPart, notes: e.target.value})} fullWidth />
+                          {isMobile ? (
+                            <Button variant="contained" onClick={handleAddClientPart} disabled={!clientNewPart.name} startIcon={<AddIcon />} size="large">
+                              {t('common.add', 'Додати')}
+                            </Button>
+                          ) : (
+                            <IconButton color="primary" onClick={handleAddClientPart} disabled={!clientNewPart.name}><AddIcon /></IconButton>
+                          )}
                       </Box>
                       {clientParts.map(p => (
                           <Chip key={p.id} label={`${p.name} (${p.quantity})`} onDelete={() => handleRemoveClientPart(p.id)} sx={{ mr: 1, mb: 1 }} />
@@ -919,12 +983,21 @@ const AppointmentDetails = ({ isNew }) => {
               )}
 
               {!isNewAppointment && formData.status !== 'cancelled' && (
-                <Grid item xs={12}><AppointmentChat appointmentId={id} recipientId={user?.role === 'client' ? formData.mechanic_id : appointmentUserId} /></Grid>
+                <Grid item xs={12} ref={chatAnchorRef}>
+                  <AppointmentChat
+                    appointmentId={id}
+                    recipientId={
+                      user?.role === 'client'
+                        ? formData.mechanic_id
+                        : appointmentUserId
+                    }
+                  />
+                </Grid>
               )}
               <Grid item xs={12}>
-                <Box sx={{ display: 'flex', gap: 2 }}>
-                  <Button type="submit" variant="contained" color="primary" disabled={saving}>{isNewAppointment ? t('appointment.schedule') : t('common.save')}</Button>
-                  {!isNewAppointment && <Button type="button" variant="outlined" color="error" onClick={() => setDeleteDialogOpen(true)}>{t('appointment.cancelAppointment')}</Button>}
+                <Box sx={{ display: 'flex', gap: 2, flexDirection: isMobile ? 'column' : 'row' }}>
+                  <Button type="submit" variant="contained" color="primary" disabled={saving} size="large" fullWidth={isMobile}>{isNewAppointment ? t('appointment.schedule') : t('common.save')}</Button>
+                  {!isNewAppointment && <Button type="button" variant="outlined" color="error" onClick={() => setDeleteDialogOpen(true)} size="large" fullWidth={isMobile}>{t('appointment.cancelAppointment')}</Button>}
                 </Box>
               </Grid>
             </Grid>
@@ -936,22 +1009,35 @@ const AppointmentDetails = ({ isNew }) => {
         <DialogTitle>{t('appointment.completeWork')}</DialogTitle>
         <DialogContent>
            <DialogContentText sx={{ mb: 2 }}>{t('appointment.completePrompt')}</DialogContentText>
-           <TextField fullWidth label={t('vehicle.mileage')} type="number" value={completionData.completion_mileage} onChange={(e) => setCompletionData({...completionData, completion_mileage: e.target.value})} required margin="normal" />
+           <TextField fullWidth label={t('vehicle.mileage')} type="number" inputProps={{ inputMode: 'numeric', pattern: '[0-9]*', min: 0, step: 1 }} value={completionData.completion_mileage} onChange={(e) => setCompletionData({...completionData, completion_mileage: e.target.value})} required margin="normal" />
            <TextField fullWidth label={t('appointment.completionNotes')} multiline rows={2} value={completionData.completion_notes} onChange={(e) => setCompletionData({...completionData, completion_notes: e.target.value})} margin="normal" />
            
            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 3, mb: 1 }}>
                <Typography variant="h6">{t('parts.usedParts')}</Typography>
                <Button component="label" startIcon={<CloudUploadIcon />} size="small">
                    {t('parts.importFromImage')}
-                   <input type="file" hidden accept="image/*" onChange={handleOcrUpload} />
+                   <input type="file" hidden accept="image/*" capture="environment" onChange={handleOcrUpload} />
                </Button>
            </Box>
            {ocrLoading && <LinearProgress sx={{ mb: 1 }} />}
+           {ocrPreviewUrl && (
+             <Box sx={{ mb: 2, textAlign: 'center' }}>
+               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                 {t('common.preview', 'Попередній перегляд')}
+               </Typography>
+               <Box
+                 component="img"
+                 src={ocrPreviewUrl}
+                 alt="Preview"
+                 sx={{ maxWidth: '100%', maxHeight: 240, borderRadius: 1, objectFit: 'contain' }}
+               />
+             </Box>
+           )}
            
            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center', mb: 2, p: 2, bgcolor: 'background.default', borderRadius: 1 }}>
              <TextField label={t('parts.name')} size="small" value={newPart.name} onChange={(e) => setNewPart({...newPart, name: e.target.value})} sx={{ flexGrow: 1 }} />
-             <TextField label={t('parts.price')} size="small" type="number" value={newPart.price} onChange={(e) => setNewPart({...newPart, price: e.target.value})} sx={{ width: 100 }} />
-             <TextField label={t('parts.qty')} size="small" type="number" value={newPart.quantity} onChange={(e) => setNewPart({...newPart, quantity: e.target.value})} sx={{ width: 80 }} />
+             <TextField label={t('parts.price')} size="small" type="number" inputProps={{ inputMode: 'decimal' }} value={newPart.price} onChange={(e) => setNewPart({...newPart, price: e.target.value})} sx={{ width: 100 }} />
+             <TextField label={t('parts.qty')} size="small" type="number" inputProps={{ inputMode: 'numeric', pattern: '[0-9]*', min: 1, step: 1 }} value={newPart.quantity} onChange={(e) => setNewPart({...newPart, quantity: e.target.value})} sx={{ width: 80 }} />
              <FormControl size="small" sx={{ width: 150 }}>
                <InputLabel>{t('parts.buyer')}</InputLabel>
                <Select value={newPart.purchased_by} label={t('parts.buyer')} onChange={(e) => setNewPart({...newPart, purchased_by: e.target.value})}>

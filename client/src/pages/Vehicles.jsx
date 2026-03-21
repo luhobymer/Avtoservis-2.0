@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { list as listVehicles, listForUser as listVehiclesForUser } from '../api/dao/vehiclesDao';
@@ -11,9 +11,9 @@ import {
   Card,
   CardContent,
   CardMedia,
-  CircularProgress,
   Alert,
-  Box
+  Box,
+  Skeleton
 } from '@mui/material';
 import { format } from 'date-fns';
 
@@ -36,42 +36,81 @@ const Vehicles = () => {
   const [error, setError] = useState(null);
   const [mode, setMode] = useState(isMasterUser ? 'serviced' : 'owned'); // 'serviced' | 'owned'
 
-  useEffect(() => {
-    const fetchVehicles = async () => {
-      setLoading(true);
-      setError(null);
+  const withRetry = useCallback(async (fn, options = {}) => {
+    const retries = typeof options.retries === 'number' ? options.retries : 2;
+    const baseDelayMs = typeof options.baseDelayMs === 'number' ? options.baseDelayMs : 500;
+    for (let attempt = 0; attempt <= retries; attempt += 1) {
       try {
-        let rows = [];
-        if (isMasterUser) {
-          rows =
-            mode === 'serviced'
-              ? await listVehicles({ serviced: true })
-              : await listVehiclesForUser(user?.id || '');
-        } else {
-          rows = await listVehiclesForUser(user?.id || '');
-        }
-        setVehicles(rows);
-        console.log('[Vehicles] Дані про автомобілі (Supabase):', rows);
-      } catch (error) {
-        console.error('Error fetching vehicles:', error);
-        
-        // Очищаємо дані при будь-якій помилці
-        setVehicles([]);
-        
-        // Обробка різних типів помилок з локалізованими повідомленнями
-        setError(error.message || t('errors.unknownError', 'Виникла невідома помилка. Спробуйте пізніше.'));
-      } finally {
-        setLoading(false);
+        return await fn();
+      } catch (err) {
+        const message = String(err?.message || '');
+        const maybeTransient =
+          message.includes('NetworkError') ||
+          message.includes('Failed to fetch') ||
+          message.includes('timeout') ||
+          message.includes('502') ||
+          message.includes('503') ||
+          message.includes('504');
+        const shouldRetry = attempt < retries && maybeTransient;
+        if (!shouldRetry) throw err;
+        const delay = baseDelayMs * Math.pow(2, attempt);
+        await new Promise((r) => setTimeout(r, delay));
       }
-    };
+    }
+    return undefined;
+  }, []);
 
+  const fetchVehicles = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const rows = await withRetry(async () => {
+        if (isMasterUser) {
+          return mode === 'serviced'
+            ? await listVehicles({ serviced: true })
+            : await listVehiclesForUser(user?.id || '');
+        }
+        return await listVehiclesForUser(user?.id || '');
+      });
+      setVehicles(Array.isArray(rows) ? rows : []);
+    } catch (error) {
+      setVehicles([]);
+      setError(error?.message || t('errors.unknownError', 'Виникла невідома помилка. Спробуйте пізніше.'));
+    } finally {
+      setLoading(false);
+    }
+  }, [isMasterUser, mode, t, user?.id, withRetry]);
+
+  useEffect(() => {
     fetchVehicles();
-  }, [t, isMasterUser, mode, user]);
+  }, [fetchVehicles]);
+
+  const skeletonCards = useMemo(() => Array.from({ length: 6 }, (_, i) => i), []);
 
   if (loading) {
     return (
-      <Container sx={{ mt: 4, display: 'flex', justifyContent: 'center' }}>
-        <CircularProgress />
+      <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+          <Typography variant="h4">{t('vehicle.title')}</Typography>
+          <Button variant="contained" color="primary" disabled>
+            {t('vehicle.add')}
+          </Button>
+        </Box>
+        <Grid container spacing={3}>
+          {skeletonCards.map((key) => (
+            <Grid item key={key} xs={12} sm={6} md={4}>
+              <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+                <Skeleton variant="rectangular" height={180} />
+                <CardContent sx={{ flexGrow: 1 }}>
+                  <Skeleton variant="text" height={32} />
+                  <Skeleton variant="text" />
+                  <Skeleton variant="text" />
+                  <Skeleton variant="text" />
+                </CardContent>
+              </Card>
+            </Grid>
+          ))}
+        </Grid>
       </Container>
     );
   }
@@ -79,7 +118,16 @@ const Vehicles = () => {
   if (error) {
     return (
       <Container sx={{ mt: 4 }}>
-        <Alert severity="error">{error}</Alert>
+        <Alert
+          severity="error"
+          action={
+            <Button color="inherit" size="small" onClick={fetchVehicles}>
+              {t('common.retry', 'Повторити')}
+            </Button>
+          }
+        >
+          {error}
+        </Alert>
       </Container>
     );
   }

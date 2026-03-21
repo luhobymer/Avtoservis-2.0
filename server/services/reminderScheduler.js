@@ -4,9 +4,10 @@
 
 const crypto = require('crypto');
 const cron = require('node-cron');
-const { getDb } = require('../db/d1');
+const { getDb, getExistingColumn } = require('../db/d1');
 const logger = require('../middleware/logger.js');
 const { sendPushNotification } = require('./pushNotificationService.js');
+const { ensureVapidConfigured, sendWebPushToUser } = require('./webPushService.js');
 
 const mapReminderRow = (row) => {
   const {
@@ -46,10 +47,24 @@ const getActiveColumn = async (db, tableName) => {
   return ['is_active', 'isActive', 'active'].find((column) => columnNames.has(column));
 };
 
+const getNotificationSentColumn = async (db) => {
+  const columns = await db.prepare('PRAGMA table_info(reminders)').all();
+  const columnNames = new Set(columns.map((column) => column.name));
+  return ['notification_sent', 'notificationSent'].find((column) => columnNames.has(column));
+};
+
 /**
  * Перевірка нагадувань, які потрібно відправити
  */
 const checkAndSendReminders = async () => {
+  const report = {
+    due: 0,
+    processed: 0,
+    created: 0,
+    skipped_existing: 0,
+    skipped_flag: 0,
+    errors: 0,
+  };
   try {
     logger.info('Початок перевірки нагадувань...');
 
@@ -58,6 +73,12 @@ const checkAndSendReminders = async () => {
     tomorrow.setDate(tomorrow.getDate() + 1);
 
     const db = await getDb();
+
+    const notificationSentColumn = await getNotificationSentColumn(db);
+    const notificationSentFilter = notificationSentColumn
+      ? ` AND r.${notificationSentColumn} = 0`
+      : '';
+
     const reminderRows = await db
       .prepare(
         `SELECT r.*,
@@ -71,27 +92,40 @@ const checkAndSendReminders = async () => {
         FROM reminders r
         LEFT JOIN users u ON u.id = r.user_id
         LEFT JOIN vehicles v ON v.vin = r.vehicle_vin
-        WHERE r.is_completed = 0 AND r.due_date <= ? AND r.due_date >= ?`
+        WHERE r.is_completed = 0
+          AND r.due_date IS NOT NULL
+          AND date(r.due_date) <= date(?)
+          AND date(r.due_date) >= date(?)${notificationSentFilter}`
       )
       .all(tomorrow.toISOString(), new Date().toISOString());
 
     const reminders = reminderRows.map(mapReminderRow);
 
+    report.due = reminders.length;
+
     if (!reminders || reminders.length === 0) {
       logger.info('Нагадувань для відправки не знайдено');
-      return;
+      return report;
     }
 
     logger.info(`Знайдено ${reminders.length} нагадувань для відправки`);
 
     // Обробляємо кожне нагадування
     for (const reminder of reminders) {
-      await processReminder(reminder);
+      const result = await processReminder(reminder);
+      report.processed += 1;
+      if (result?.created) report.created += 1;
+      if (result?.reason === 'existing') report.skipped_existing += 1;
+      if (result?.reason === 'flag') report.skipped_flag += 1;
+      if (result?.reason === 'error') report.errors += 1;
     }
 
     logger.info('Завершено перевірку нагадувань');
+    return report;
   } catch (error) {
     logger.error('Помилка при перевірці нагадувань:', error);
+    report.errors += 1;
+    return report;
   }
 };
 
@@ -103,6 +137,13 @@ const processReminder = async (reminder) => {
   try {
     // Перевіряємо, чи не було вже відправлено сповіщення
     const db = await getDb();
+    const readColumn = await getExistingColumn('notifications', ['is_read', 'read']);
+    const notificationSentColumn = await getNotificationSentColumn(db);
+    if (notificationSentColumn && reminder?.[notificationSentColumn]) {
+      logger.info(`Нагадування ${reminder.id} вже має прапорець notification_sent, пропускаємо`);
+      return { created: false, reason: 'flag' };
+    }
+
     const existingNotification = await db
       .prepare(
         `SELECT id FROM notifications
@@ -113,7 +154,16 @@ const processReminder = async (reminder) => {
 
     if (existingNotification) {
       logger.info(`Сповіщення для нагадування ${reminder.id} вже відправлено`);
-      return;
+      if (notificationSentColumn) {
+        try {
+          await db
+            .prepare(`UPDATE reminders SET ${notificationSentColumn} = 1, updated_at = ? WHERE id = ?`)
+            .run(new Date().toISOString(), reminder.id);
+        } catch (updateError) {
+          logger.warn(`Не вдалося оновити прапорець notification_sent для ${reminder.id}:`, updateError);
+        }
+      }
+      return { created: false, reason: 'existing' };
     }
 
     // Створюємо сповіщення в базі даних
@@ -127,14 +177,19 @@ const processReminder = async (reminder) => {
       is_read: 0,
       created_at: new Date().toISOString(),
       status: 'pending',
-      data: JSON.stringify({ type: 'reminder', reminderId: reminder.id }),
+      data: JSON.stringify({
+        type: 'reminder',
+        reminderId: reminder.id,
+        reminder_id: reminder.id,
+        vehicle_vin: reminder.vehicle_vin || null,
+      }),
     };
 
     try {
       await db
         .prepare(
           `INSERT INTO notifications
-          (id, user_id, type, title, message, is_read, created_at, status, data)
+          (id, user_id, type, title, message, ${readColumn}, created_at, status, data)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
         )
         .run(
@@ -153,7 +208,35 @@ const processReminder = async (reminder) => {
         `Помилка створення сповіщення для нагадування ${reminder.id}:`,
         notificationError
       );
-      return;
+      return { created: false, reason: 'error' };
+    }
+
+    if (notificationSentColumn) {
+      try {
+        await db
+          .prepare(`UPDATE reminders SET ${notificationSentColumn} = 1, updated_at = ? WHERE id = ?`)
+          .run(new Date().toISOString(), reminder.id);
+      } catch (updateError) {
+        logger.warn(`Не вдалося оновити прапорець notification_sent для ${reminder.id}:`, updateError);
+      }
+    }
+
+    try {
+      const vapid = ensureVapidConfigured();
+      if (vapid.ok) {
+        await sendWebPushToUser(reminder.user_id, {
+          title: notificationData.title,
+          body: notificationData.message,
+          data: {
+            url: `/reminders?reminderId=${encodeURIComponent(reminder.id)}`,
+            type: 'reminder',
+            reminder_id: reminder.id,
+            vehicle_vin: reminder.vehicle_vin || null,
+          },
+        });
+      }
+    } catch (err) {
+      logger.warn('Web push send failed:', { message: err?.message });
     }
 
     // Отримуємо push-токени користувача
@@ -194,8 +277,10 @@ const processReminder = async (reminder) => {
     }
 
     logger.info(`Успішно оброблено нагадування ${reminder.id}`);
+    return { created: true };
   } catch (error) {
     logger.error(`Помилка обробки нагадування ${reminder.id}:`, error);
+    return { created: false, reason: 'error' };
   }
 };
 

@@ -611,10 +611,19 @@ exports.updateVehicle = async (req, res) => {
     }
 
     const db = await getDb();
-    const { columnNames, makeColumn, licenseColumn } = await getVehicleColumnInfo(db);
+    const { columnNames, makeColumn, licenseColumn, ownerColumn } = await getVehicleColumnInfo(db);
+    const role = String(req.user?.role || '').toLowerCase();
+    const isMaster = ['master', 'mechanic', 'admin'].includes(role);
+    const requestedUserIdRaw =
+      (typeof req.body?.user_id === 'string' ? req.body.user_id : null) ||
+      (typeof req.query?.user_id === 'string' ? req.query.user_id : null) ||
+      null;
+    const requestedUserId = requestedUserIdRaw ? String(requestedUserIdRaw).trim() : '';
+    const targetUserId = isMaster && requestedUserId ? requestedUserId : userId;
+
     const existing = await db
-      .prepare('SELECT * FROM vehicles WHERE vin = ? AND user_id = ?')
-      .get(vin, userId);
+      .prepare(`SELECT * FROM vehicles WHERE vin = ? AND ${ownerColumn} = ?`)
+      .get(vin, targetUserId);
 
     if (!existing) {
       return res.status(404).json({ message: 'Автомобіль не знайдено' });
@@ -639,6 +648,14 @@ exports.updateVehicle = async (req, res) => {
       year: payload.year !== undefined ? Number(payload.year) : undefined,
       color: payload.color !== undefined ? payload.color : undefined,
       mileage: payload.mileage !== undefined ? Number(payload.mileage) : undefined,
+      engine_type: payload.engineType !== undefined ? payload.engineType : undefined,
+      transmission: payload.transmission !== undefined ? payload.transmission : undefined,
+      engine_volume:
+        payload.engineVolume !== undefined && payload.engineVolume !== null && payload.engineVolume !== ''
+          ? Number(payload.engineVolume)
+          : payload.engineVolume !== undefined
+            ? null
+            : undefined,
       [licenseColumn]: normalizedPlate !== undefined ? normalizedPlate || null : undefined,
       updated_at: new Date().toISOString(),
     };
@@ -651,8 +668,8 @@ exports.updateVehicle = async (req, res) => {
       const setClause = fields.map((field) => `${field} = ?`).join(', ');
       const values = fields.map((field) => updateRow[field]);
       await db
-        .prepare(`UPDATE vehicles SET ${setClause} WHERE vin = ? AND user_id = ?`)
-        .run(...values, vin, userId);
+        .prepare(`UPDATE vehicles SET ${setClause} WHERE vin = ? AND ${ownerColumn} = ?`)
+        .run(...values, vin, targetUserId);
     }
 
     if (payload.photoUrl && String(payload.photoUrl).trim()) {
@@ -684,8 +701,8 @@ exports.updateVehicle = async (req, res) => {
     }
 
     const updated = await db
-      .prepare('SELECT * FROM vehicles WHERE vin = ? AND user_id = ?')
-      .get(vin, userId);
+      .prepare(`SELECT * FROM vehicles WHERE vin = ? AND ${ownerColumn} = ?`)
+      .get(vin, targetUserId);
 
     const updatedPhoto = await db
       .prepare(
@@ -701,7 +718,12 @@ exports.updateVehicle = async (req, res) => {
       photo_url: updatedPhoto?.url || null,
     });
   } catch (err) {
-    res.status(500).json({ message: 'Помилка сервера' });
+    const message = err && err.message ? String(err.message) : String(err);
+    console.error('[updateVehicle] error:', err);
+    res.status(500).json({
+      message: 'Помилка сервера',
+      details: message,
+    });
   }
 };
 
@@ -745,17 +767,21 @@ exports.deleteVehicle = async (req, res) => {
 
 exports.getVehicleByLicensePlate = async (req, res) => {
   try {
-    const userId = req.user?.id;
-    if (!userId) {
+    const requesterId = req.user?.id;
+    if (!requesterId) {
       return res.status(401).json({ msg: 'Unauthorized' });
     }
+    const role = String(req.user?.role || '').toLowerCase();
+    const isMaster = ['master', 'mechanic', 'admin'].includes(role);
+    const requestedUserId = typeof req.query?.user_id === 'string' ? req.query.user_id.trim() : '';
+    const targetUserId = isMaster && requestedUserId ? requestedUserId : requesterId;
     const plate = normalizeLicensePlate(req.params.licensePlate);
     const db = await getDb();
-    const { licenseColumn } = await getVehicleColumnInfo(db);
+    const { licenseColumn, ownerColumn } = await getVehicleColumnInfo(db);
 
     const vehicle = await db
-      .prepare(`SELECT * FROM vehicles WHERE user_id = ? AND ${licenseColumn} = ? LIMIT 1`)
-      .get(userId, plate);
+      .prepare(`SELECT * FROM vehicles WHERE ${ownerColumn} = ? AND ${licenseColumn} = ? LIMIT 1`)
+      .get(targetUserId, plate);
 
     if (!vehicle) {
       return res.status(404).json({ message: 'Автомобіль не знайдено' });

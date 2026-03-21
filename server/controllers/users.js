@@ -117,10 +117,24 @@ const getUserById = async (req, res) => {
   try {
     const requestedId = req.params.id;
     const requesterId = req.user?.id;
-    const requesterRole = req.user?.role;
+    const requesterRole = String(req.user?.role || '').toLowerCase();
 
     if (requestedId !== requesterId && !isAdminRole(requesterRole)) {
-      return res.status(403).json({ msg: 'Access denied' });
+      const canViewClient = ['master', 'mechanic'].includes(requesterRole);
+      if (!canViewClient) {
+        return res.status(403).json({ msg: 'Access denied' });
+      }
+
+      const db = await getDb();
+      const rel = await db
+        .prepare(
+          "SELECT id FROM client_mechanics WHERE mechanic_id = ? AND client_id = ? AND status = 'accepted' LIMIT 1"
+        )
+        .get(requesterId, requestedId);
+
+      if (!rel) {
+        return res.status(403).json({ msg: 'Access denied' });
+      }
     }
 
     const db = await getDb();

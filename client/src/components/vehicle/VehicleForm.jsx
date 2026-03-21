@@ -11,7 +11,9 @@ import {
   Box,
   CircularProgress,
   FormHelperText,
-  Typography
+  Typography,
+  useMediaQuery,
+  useTheme
 } from '@mui/material';
 import { Link } from 'react-router-dom';
 import { brandModelYears, getVehicleSpecs } from '../../data/vehicleData';
@@ -26,11 +28,14 @@ const VehicleForm = ({
   onLookupByPlate,
   lookupLoading,
   lookupError,
+  plateOcrLoading,
   handlePhotoChange,
   photoPreview
 }) => {
   const { t } = useTranslation();
   const [errors, setErrors] = useState({});
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [availableSpecs, setAvailableSpecs] = useState({
     engines: ['petrol', 'diesel', 'gas', 'hybrid', 'electric'],
     transmissions: ['manual', 'automatic', 'robot', 'variator']
@@ -116,6 +121,27 @@ const VehicleForm = ({
     e.preventDefault();
     if (validateForm()) {
       handleSubmit(e);
+      return;
+    }
+    const firstErrorKey = Object.keys(errors)[0] || Object.keys((() => {
+      const nextErrors = {};
+      if (!formData.brand) nextErrors.brand = true;
+      if (!formData.model) nextErrors.model = true;
+      if (!formData.year) nextErrors.year = true;
+      if (formData.vin && !validateVin(formData.vin)) nextErrors.vin = true;
+      if (formData.licensePlate && !validateLicensePlate(formData.licensePlate)) nextErrors.licensePlate = true;
+      if (formData.engineVolume && !validateEngineVolume(formData.engineVolume)) nextErrors.engineVolume = true;
+      if (formData.mileage && !validateMileage(formData.mileage)) nextErrors.mileage = true;
+      return nextErrors;
+    })())[0] || '';
+    if (firstErrorKey) {
+      const el = document.getElementById(firstErrorKey);
+      if (el && typeof el.scrollIntoView === 'function') {
+        el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      }
+      if (el && typeof el.focus === 'function') {
+        el.focus();
+      }
     }
   };
 
@@ -136,17 +162,24 @@ const VehicleForm = ({
                    <Typography color="text.secondary">No photo</Typography>
                 </Box>
              )}
-             <Button variant="contained" component="label">
-               {t('vehicle.uploadPhoto', 'Завантажити фото')}
-               <input type="file" hidden accept="image/*" onChange={handlePhotoChange} />
-             </Button>
+             <Box sx={{ display: 'flex', gap: 1, flexDirection: isMobile ? 'column' : 'row', width: '100%', maxWidth: 300 }}>
+               <Button variant="contained" component="label" fullWidth={isMobile}>
+                 {t('vehicle.uploadPhoto', 'Завантажити фото')}
+                 <input type="file" hidden accept="image/*" onChange={handlePhotoChange} />
+               </Button>
+               <Button variant="outlined" component="label" fullWidth={isMobile}>
+                 {t('vehicle.takePhoto', 'Зробити фото')}
+                 <input type="file" hidden accept="image/*" capture="environment" onChange={handlePhotoChange} />
+               </Button>
+             </Box>
            </Box>
         </Grid>
 
         <Grid item xs={12} sm={6}>
-          <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
+          <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start', flexDirection: isMobile ? 'column' : 'row' }}>
             <TextField
               fullWidth
+              id="licensePlate"
               label={t('vehicle.licensePlate', 'Державний номер')}
               name="licensePlate"
               value={formData.licensePlate}
@@ -155,16 +188,20 @@ const VehicleForm = ({
               helperText={
                 errors.licensePlate ||
                 lookupError ||
-                t('validation.license_plate_format')
+                (plateOcrLoading
+                  ? t('vehicle.plateRecognizing', 'Розпізнавання номера…')
+                  : t('validation.license_plate_format'))
               }
-              inputProps={{ maxLength: 10 }}
+              inputProps={{ maxLength: 10, autoCapitalize: 'characters', inputMode: 'text' }}
             />
             {onLookupByPlate && (
               <Button
                 variant="outlined"
-                sx={{ mt: 1 }}
+                sx={{ mt: isMobile ? 0 : 1, height: isMobile ? 48 : undefined }}
                 onClick={onLookupByPlate}
-                disabled={lookupLoading || !formData.licensePlate}
+                disabled={lookupLoading || plateOcrLoading || !formData.licensePlate}
+                fullWidth={isMobile}
+                size={isMobile ? 'large' : 'medium'}
               >
                 {lookupLoading ? <CircularProgress size={20} /> : t('vehicle.lookup', 'Знайти')}
               </Button>
@@ -176,6 +213,7 @@ const VehicleForm = ({
           <FormControl fullWidth error={!!errors.brand}>
             <InputLabel>{t('vehicle.brand', 'Марка')} *</InputLabel>
             <Select
+              id="brand"
               name="brand"
               value={formData.brand}
               label={t('vehicle.brand', 'Марка') + ' *'}
@@ -194,6 +232,7 @@ const VehicleForm = ({
           <FormControl fullWidth error={!!errors.model}>
             <InputLabel>{t('vehicle.model', 'Модель')} *</InputLabel>
             <Select
+              id="model"
               name="model"
               value={formData.model}
               label={t('vehicle.model', 'Модель') + ' *'}
@@ -215,6 +254,7 @@ const VehicleForm = ({
           <FormControl fullWidth error={!!errors.year}>
             <InputLabel>{t('vehicle.year', 'Рік випуску')} *</InputLabel>
             <Select
+              id="year"
               name="year"
               value={formData.year}
               label={t('vehicle.year', 'Рік випуску') + ' *'}
@@ -235,13 +275,14 @@ const VehicleForm = ({
         <Grid item xs={12} sm={6}>
           <TextField
             fullWidth
+            id="vin"
             label={t('vehicle.vin', 'VIN-код')}
             name="vin"
             value={formData.vin}
             onChange={handleChange}
             error={!!errors.vin}
             helperText={errors.vin || t('validation.vin_format')}
-            inputProps={{ maxLength: 17 }}
+            inputProps={{ maxLength: 17, autoCapitalize: 'characters', inputMode: 'text' }}
           />
         </Grid>
 
@@ -286,6 +327,7 @@ const VehicleForm = ({
         <Grid item xs={12} sm={6}>
           <TextField
             fullWidth
+            id="engineVolume"
             label={t('vehicle.engineVolume', 'Обʼєм двигуна')}
             name="engineVolume"
             value={formData.engineVolume}
@@ -297,7 +339,8 @@ const VehicleForm = ({
             inputProps={{ 
               step: "0.1", 
               min: "0.1", 
-              max: "10.0" 
+              max: "10.0",
+              inputMode: 'decimal'
             }}
           />
         </Grid>
@@ -323,6 +366,7 @@ const VehicleForm = ({
         <Grid item xs={12} sm={6}>
           <TextField
             fullWidth
+            id="mileage"
             label={t('vehicle.mileage', 'Пробіг (у кілометрах)')}
             name="mileage"
             type="number"
@@ -332,18 +376,21 @@ const VehicleForm = ({
             helperText={errors.mileage || t('validation.mileage_format')}
             inputProps={{ 
               min: "0", 
-              max: "1000000" 
+              max: "1000000",
+              inputMode: 'numeric',
+              pattern: '[0-9]*'
             }}
           />
         </Grid>
 
-        <Grid item xs={12} sx={{ display: 'flex', justifyContent: 'space-between' }}>
-          <Box>
+        <Grid item xs={12} sx={{ display: 'flex', justifyContent: 'space-between', flexDirection: isMobile ? 'column' : 'row', gap: 2 }}>
+          <Box sx={{ display: 'flex', gap: 2, flexDirection: isMobile ? 'column' : 'row' }}>
             <Button
               component={Link}
               to="/vehicles"
               variant="outlined"
-              sx={{ mr: 2 }}
+              size="large"
+              fullWidth={isMobile}
             >
               {t('common.cancel')}
             </Button>
@@ -353,6 +400,8 @@ const VehicleForm = ({
                 variant="outlined"
                 color="error"
                 onClick={onDeleteClick}
+                size="large"
+                fullWidth={isMobile}
               >
                 {t('common.delete')}
               </Button>
@@ -364,6 +413,8 @@ const VehicleForm = ({
             variant="contained"
             color="primary"
             disabled={saving || Object.keys(errors).length > 0}
+            size="large"
+            fullWidth={isMobile}
           >
             {saving ? <CircularProgress size={24} /> : t('common.save')}
           </Button>

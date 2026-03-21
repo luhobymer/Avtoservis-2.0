@@ -26,6 +26,30 @@ const mapVehicleDetails = (v) => ({
   photoUrl: v.photo_url || v.photoUrl || null,
 });
 
+const mapRegistryVehicle = (v) => {
+  const fuelRaw = String(v?.fuel_type || '').toUpperCase();
+  let engineType = '';
+  if (fuelRaw.includes('BENZINE') || fuelRaw.includes('PETROL')) engineType = 'petrol';
+  else if (fuelRaw.includes('DIESEL')) engineType = 'diesel';
+  else if (fuelRaw.includes('GAS')) engineType = 'gas';
+  else if (fuelRaw.includes('ELECTRO') || fuelRaw.includes('ELECTRIC')) engineType = 'electric';
+  else if (fuelRaw.includes('HYBRID')) engineType = 'hybrid';
+  return {
+    id: v?.vin || null,
+    make: v?.brand || v?.make || '',
+    model: v?.model || '',
+    year: v?.make_year || v?.year || null,
+    vin: v?.vin || '',
+    licensePlate: v?.license_plate || v?.licensePlate || '',
+    color: v?.color || '',
+    mileage: null,
+    engineType,
+    engineCapacity: v?.engine_volume || v?.engineVolume || null,
+    transmission: '',
+    photoUrl: null,
+  };
+};
+
 export async function listByUser(userId) {
   const response = await axiosAuth.get('/api/vehicles', {
     params: userId ? { user_id: userId } : undefined,
@@ -152,4 +176,14 @@ export async function getDetailsByVin(vin) {
   const response = await axiosAuth.get(`/api/vehicles/${encodeURIComponent(normalized)}`);
   if (!response?.data) return null;
   return mapVehicleDetails(response.data);
+}
+
+export async function getRegistryDetailsByLicensePlate(licensePlate) {
+  if (!licensePlate) return null;
+  const normalized = String(licensePlate).trim();
+  const response = await axiosAuth.get('/api/vehicle-registry', {
+    params: { license_plate: normalized },
+  });
+  if (!response?.data) return null;
+  return mapRegistryVehicle(response.data);
 }

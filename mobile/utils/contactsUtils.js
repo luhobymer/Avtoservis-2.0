@@ -2,6 +2,16 @@ import { PermissionsAndroid, Platform } from 'react-native';
 import Contacts from 'react-native-contacts';
 
 export const requestContactsPermission = async () => {
+  try {
+    if (Contacts.checkPermission) {
+      const status = await Contacts.checkPermission();
+      if (status === 'authorized') return true;
+      if (Contacts.requestPermission) {
+        const requested = await Contacts.requestPermission();
+        return requested === 'authorized';
+      }
+    }
+  } catch (_) {}
   if (Platform.OS !== 'android') {
     return true;
   }
@@ -19,17 +29,34 @@ export const requestContactsPermission = async () => {
 export const getPhoneContacts = async () => {
   const hasPermission = await requestContactsPermission();
   if (!hasPermission) return [];
-  const contacts = await Contacts.getAll();
+  let contacts = [];
+  try {
+    if (Contacts.getAllWithoutPhotos) {
+      contacts = await Contacts.getAllWithoutPhotos();
+    } else {
+      contacts = await Contacts.getAll();
+    }
+  } catch (_) {
+    try {
+      contacts = await Contacts.getAll();
+    } catch (_) {
+      return [];
+    }
+  }
   const withPhones = contacts
     .map((c) => {
-      const phoneNumber =
-        Array.isArray(c.phoneNumbers) && c.phoneNumbers.length
-          ? c.phoneNumbers[0].number
-          : null;
+      const phoneNumbers = Array.isArray(c.phoneNumbers) ? c.phoneNumbers : [];
+      const rawNumber = phoneNumbers
+        .map((p) => p?.number)
+        .find((num) => {
+          const cleaned = String(num || '').replace(/[^\d+]/g, '');
+          return cleaned.length > 0;
+        });
+      const cleanedNumber = rawNumber ? String(rawNumber).replace(/[^\d+]/g, '') : null;
       return {
         id: c.recordID,
         name: c.displayName || [c.givenName, c.familyName].filter(Boolean).join(' '),
-        phone: phoneNumber,
+        phone: cleanedNumber,
       };
     })
     .filter((c) => c.phone);

@@ -250,6 +250,22 @@ CREATE TABLE IF NOT EXISTS photos (
   updated_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS web_push_subscriptions (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  endpoint TEXT NOT NULL,
+  p256dh TEXT,
+  auth TEXT,
+  user_agent TEXT,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  last_used_at TEXT,
+  is_active INTEGER DEFAULT 1,
+  UNIQUE(endpoint)
+);
+
+CREATE INDEX IF NOT EXISTS idx_web_push_subscriptions_user_id ON web_push_subscriptions(user_id);
+CREATE INDEX IF NOT EXISTS idx_web_push_subscriptions_active ON web_push_subscriptions(is_active);
+
 CREATE TABLE IF NOT EXISTS insurance (
   id INTEGER PRIMARY KEY,
   vehicle_vin TEXT,

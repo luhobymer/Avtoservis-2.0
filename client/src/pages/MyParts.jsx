@@ -32,6 +32,7 @@ import {
 import { format } from 'date-fns';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import AddPhotoAlternateIcon from '@mui/icons-material/AddPhotoAlternate';
+import { compressImageFile } from '../utils/imageUtils';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 const resolveUrl = (url) => (url.startsWith('http') ? url : `${API_BASE_URL}${url}`);
@@ -50,6 +51,7 @@ const MyParts = () => {
   const [parsedParts, setParsedParts] = useState([]);
   const [selectedVehicleVin, setSelectedVehicleVin] = useState('');
   const [savingParts, setSavingParts] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState('');
 
   const fetchParts = useCallback(async () => {
     setLoading(true);
@@ -92,9 +94,15 @@ const MyParts = () => {
 
     setOcrLoading(true);
     setParsedParts([]);
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+    }
+    const preview = URL.createObjectURL(file);
+    setPreviewUrl(preview);
     
+    const compressed = await compressImageFile(file);
     const formData = new FormData();
-    formData.append('image', file);
+    formData.append('image', compressed);
 
     try {
       const token = localStorage.getItem('auth_token');
@@ -123,7 +131,7 @@ const MyParts = () => {
       return;
     }
 
-    setSavingParts(true);
+      setSavingParts(true);
     try {
       for (const part of parsedParts) {
         await vehiclePartsDao.createPart({
@@ -140,6 +148,10 @@ const MyParts = () => {
       setOcrDialogOpen(false);
       setParsedParts([]);
       setSelectedVehicleVin('');
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+        setPreviewUrl('');
+      }
       fetchParts(); // Refresh list
       alert(t('common.saved', 'Збережено успішно'));
     } catch (err) {
@@ -243,9 +255,23 @@ const MyParts = () => {
                 sx={{ height: 100, borderStyle: 'dashed' }}
                 >
                 {t('common.uploadImage', 'Завантажити зображення')}
-                <input type="file" hidden accept="image/*" onChange={handleImageUpload} />
+                <input type="file" hidden accept="image/*" capture="environment" onChange={handleImageUpload} />
                 </Button>
             </Box>
+
+            {previewUrl && (
+              <Box sx={{ mb: 2, textAlign: 'center' }}>
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                  {t('common.preview', 'Попередній перегляд')}
+                </Typography>
+                <Box
+                  component="img"
+                  src={previewUrl}
+                  alt="Preview"
+                  sx={{ maxWidth: '100%', maxHeight: 260, borderRadius: 1, objectFit: 'contain' }}
+                />
+              </Box>
+            )}
 
             {ocrLoading && <LinearProgress sx={{ mb: 2 }} />}
 

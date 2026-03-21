@@ -347,6 +347,13 @@ const ensureSchemaSqliteSync = (sqliteDb) => {
     )
   `);
 
+  ensureColumnsSync('vehicles', [
+    { name: 'engine_type', def: 'TEXT' },
+    { name: 'transmission', def: 'TEXT' },
+    { name: 'engine_capacity', def: 'REAL' },
+    { name: 'engine_volume', def: 'REAL' },
+  ]);
+
   ensureColumnsSync('appointments', [
     { name: 'service_ids', def: 'TEXT' },
     { name: 'appointment_price', def: 'REAL' },
@@ -576,6 +583,10 @@ const ensureSchema = async (client) => {
       color TEXT,
       license_plate TEXT,
       mileage INTEGER,
+      engine_type TEXT,
+      transmission TEXT,
+      engine_capacity REAL,
+      engine_volume REAL,
       created_at TEXT,
       updated_at TEXT
     )

@@ -245,12 +245,14 @@ export default function MyClientsScreen({ navigation }) {
               value={form.firstName}
               onChangeText={value => setForm(prev => ({ ...prev, firstName: value }))}
             />
+            <Text style={styles.hintText}>{t('common.name_hint', 'Наприклад: Іван')}</Text>
             <TextInput
               style={styles.modalInput}
               placeholder={t('common.lastname_placeholder', 'Введіть прізвище')}
               value={form.lastName}
               onChangeText={value => setForm(prev => ({ ...prev, lastName: value }))}
             />
+            <Text style={styles.hintText}>{t('common.lastname_hint', 'Наприклад: Петренко')}</Text>
             <TextInput
               style={styles.modalInput}
               placeholder={t('common.phone_placeholder', 'Наприклад: 0501234567')}
@@ -258,6 +260,7 @@ export default function MyClientsScreen({ navigation }) {
               onChangeText={value => setForm(prev => ({ ...prev, phone: value }))}
               keyboardType="phone-pad"
             />
+            <Text style={styles.hintText}>{t('common.phone_hint', 'Формат: 0XXXXXXXXX або +380XXXXXXXXX')}</Text>
             <View style={styles.modalActions}>
               <TouchableOpacity
                 style={[styles.modalButton, styles.modalCancel]}
@@ -421,6 +424,13 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     fontSize: 16,
     color: '#000',
+  },
+  hintText: {
+    width: '100%',
+    fontSize: 12,
+    color: '#888',
+    marginTop: -6,
+    marginBottom: 10,
   },
   modalActions: {
     flexDirection: 'row',

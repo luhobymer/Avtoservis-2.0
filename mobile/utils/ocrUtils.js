@@ -6,7 +6,23 @@ const isMobile = Platform.OS !== 'web';
 
 const normalizeLicensePlate = (plate) => {
   if (!plate) return null;
-  return plate.replace(/[\s-]/g, '').toUpperCase();
+  const normalized = String(plate).replace(/[\s\-_.]/g, '').toUpperCase();
+  const map = {
+    А: 'A',
+    В: 'B',
+    Е: 'E',
+    І: 'I',
+    К: 'K',
+    М: 'M',
+    Н: 'H',
+    О: 'O',
+    Р: 'P',
+    С: 'C',
+    Т: 'T',
+    Х: 'X',
+    У: 'Y',
+  };
+  return normalized.replace(/[АВЕІКМНОРСТХУ]/g, (char) => map[char] || char);
 };
 
 // Клас для роботи з OCR
@@ -269,7 +285,7 @@ export class OCRManager {
       const plateRegex = /[A-ZА-ЯІЇЄ]{2}[ ]?[0-9]{4}[ ]?[A-ZА-ЯІЇЄ]{2}/gi;
       const plateMatches = text.match(plateRegex);
       if (plateMatches && plateMatches.length > 0) {
-        vehicleData.licensePlate = plateMatches[0].replace(/\s/g, '').toUpperCase();
+        vehicleData.licensePlate = normalizeLicensePlate(plateMatches[0]);
         console.log('Розпізнано номерний знак:', vehicleData.licensePlate);
       }
       
@@ -472,7 +488,7 @@ export class OCRManager {
       // Регулярний вираз для українських номерних знаків
       const plateRegex = /[A-ZА-ЯІЇЄ]{2}[ ]?[0-9]{4}[ ]?[A-ZА-ЯІЇЄ]{2}/i;
       const match = text.match(plateRegex);
-      return match ? match[0].replace(/\s/g, '').toUpperCase() : null;
+      return match ? normalizeLicensePlate(match[0]) : null;
     } catch (error) {
       console.error('Error recognizing license plate:', error);
       return null;

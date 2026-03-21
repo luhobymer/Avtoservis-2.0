@@ -1,4 +1,5 @@
 const path = require('path');
+const fs = require('fs');
 require('dotenv').config({ path: path.resolve(__dirname, '..', '.env') });
 const express = require('express');
 const cors = require('cors');
@@ -39,6 +40,7 @@ const paymentsRoutes = require('./routes/payments');
 const ocrRoutes = require('./routes/ocr');
 const maintenanceRoutes = require('./routes/maintenance');
 const insuranceRoutes = require('./routes/insurance');
+const webPushRoutes = require('./routes/webPush');
 const { getDb } = require('./db/d1');
 
 const app = express();
@@ -97,10 +99,22 @@ app.use('/api/payments', paymentsRoutes);
 app.use('/api/ocr', ocrRoutes);
 app.use('/api/maintenance', maintenanceRoutes);
 app.use('/api/insurance', insuranceRoutes);
+app.use('/api/web-push', webPushRoutes);
 
 // Роут для Telegram-бота
 const telegramRoutes = require('./routes/telegram');
 app.use('/api/telegram', telegramRoutes);
+
+const clientDistPath = path.resolve(__dirname, '..', 'client', 'dist');
+const clientIndexPath = path.join(clientDistPath, 'index.html');
+const hasClientDist = fs.existsSync(clientIndexPath);
+
+if (hasClientDist) {
+  app.use(express.static(clientDistPath));
+  app.get(/^\/(?!api\/).*/, (req, res) => {
+    res.sendFile(clientIndexPath);
+  });
+}
 
 // Обробка помилок 404
 app.use((req, res) => {

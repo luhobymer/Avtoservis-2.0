@@ -657,7 +657,7 @@ exports.register = async (req, res) => {
     } = req.body;
 
     const email = rawEmail ? rawEmail.trim() : null;
-    const phone = rawPhone ? rawPhone.trim() : null;
+    const phone = rawPhone ? normalizePhone(rawPhone) : null;
 
     // Використовуємо ім'я з параметрів або комбінуємо firstName і lastName
     const normalizedRole = (role || 'client').toLowerCase();
@@ -753,7 +753,12 @@ exports.register = async (req, res) => {
     };
 
     // Додаємо email або телефон в залежності від наявності
-    if (hasEmail) userData.email = email;
+    if (hasEmail) {
+      userData.email = email;
+    } else if (hasPhone) {
+      const safePhone = String(phone).replace(/[^0-9]/g, '');
+      userData.email = `phone_${safePhone}@phone.local`;
+    }
     if (hasPhone) userData.phone = phone;
 
     // Створюємо користувача з хешованим паролем

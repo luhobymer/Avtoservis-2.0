@@ -1,11 +1,17 @@
-import { precacheAndRoute } from 'workbox-precaching';
-import { registerRoute } from 'workbox-routing';
-import { NetworkFirst, StaleWhileRevalidate, CacheFirst } from 'workbox-strategies';
+import { precacheAndRoute, matchPrecache } from 'workbox-precaching';
+import { registerRoute, setCatchHandler } from 'workbox-routing';
+import { StaleWhileRevalidate, CacheFirst, NetworkFirst } from 'workbox-strategies';
 import { ExpirationPlugin } from 'workbox-expiration';
 import { CacheableResponsePlugin } from 'workbox-cacheable-response';
 
-// Прекешування основних ресурсів
 precacheAndRoute(self.__WB_MANIFEST);
+
+setCatchHandler(async ({ event }) => {
+  if (event.request.destination === 'document') {
+    return (await matchPrecache('/offline.html')) || Response.error();
+  }
+  return Response.error();
+});
 
 // Кешування статичних ресурсів
 registerRoute(
@@ -44,29 +50,59 @@ registerRoute(
   })
 );
 
-// Офлайн-сторінка
-const FALLBACK_HTML_URL = '/offline.html';
-self.addEventListener('install', (event) => {
+registerRoute(
+  ({ request }) => request.mode === 'navigate',
+  new NetworkFirst({
+    cacheName: 'html-pages',
+    plugins: [
+      new CacheableResponsePlugin({
+        statuses: [0, 200]
+      })
+    ]
+  })
+);
+
+self.addEventListener('push', (event) => {
+  let payload = null;
+  try {
+    payload = event.data ? event.data.json() : null;
+  } catch (e) {
+    payload = event.data ? { title: 'Автосервіс', body: event.data.text() } : null;
+  }
+
+  const title = payload?.title || 'Автосервіс';
+  const body = payload?.body || '';
+  const data = payload?.data || {};
+  const icon = payload?.icon || '/pwa-192x192.png';
+
   event.waitUntil(
-    caches.open('offline-html').then((cache) => cache.add(FALLBACK_HTML_URL))
+    self.registration.showNotification(title, {
+      body,
+      icon,
+      data
+    })
   );
 });
 
-// Показ офлайн-сторінки при відсутності з'єднання
-registerRoute(
-  ({ request }) => request.mode === 'navigate',
-  async ({ event }) => {
-    try {
-      return await new NetworkFirst({
-        cacheName: 'pages',
-        plugins: [
-          new ExpirationPlugin({
-            maxEntries: 25
-          })
-        ]
-      }).handle({ event });
-    } catch (error) {
-      return caches.match(FALLBACK_HTML_URL);
-    }
-  }
-);
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+
+  const targetUrl =
+    (event.notification?.data && typeof event.notification.data.url === 'string' && event.notification.data.url) ||
+    '/notifications';
+
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      for (const client of clientList) {
+        if ('focus' in client) {
+          client.navigate(targetUrl);
+          return client.focus();
+        }
+      }
+      if (self.clients.openWindow) {
+        return self.clients.openWindow(targetUrl);
+      }
+      return undefined;
+    })
+  );
+});

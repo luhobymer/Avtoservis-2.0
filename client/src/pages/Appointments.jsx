@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/useAuth';
@@ -16,11 +16,11 @@ import {
   TableHead,
   TableRow,
   Chip,
-  CircularProgress,
   Alert,
   Box,
   Tabs,
-  Tab
+  Tab,
+  Skeleton
 } from '@mui/material';
 import { format } from 'date-fns';
 
@@ -38,46 +38,64 @@ const Appointments = () => {
   const { user, isMaster } = useAuth();
   const isMasterUser = typeof isMaster === 'function' ? isMaster() : false;
 
-  useEffect(() => {
-    const fetchData = async () => {
-      setLoading(true);
-      setError(null);
+  const withRetry = useCallback(async (fn, options = {}) => {
+    const retries = typeof options.retries === 'number' ? options.retries : 2;
+    const baseDelayMs = typeof options.baseDelayMs === 'number' ? options.baseDelayMs : 500;
+    for (let attempt = 0; attempt <= retries; attempt += 1) {
       try {
+        return await fn();
+      } catch (err) {
+        const message = String(err?.message || '');
+        const maybeTransient =
+          message.includes('NetworkError') ||
+          message.includes('Failed to fetch') ||
+          message.includes('timeout') ||
+          message.includes('502') ||
+          message.includes('503') ||
+          message.includes('504');
+        const shouldRetry = attempt < retries && maybeTransient;
+        if (!shouldRetry) throw err;
+        const delay = baseDelayMs * Math.pow(2, attempt);
+        await new Promise((r) => setTimeout(r, delay));
+      }
+    }
+    return undefined;
+  }, []);
+
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [userRows, vehiclesRows, adminRows] = await withRetry(async () => {
         const promises = [
           user?.id ? listAppointmentsForUser(user.id) : Promise.resolve([]),
           listVehicles()
         ];
-        
-        if (isMasterUser) {
-          promises.push(listAdminAppointments());
-        } else {
-          promises.push(Promise.resolve([]));
+        promises.push(isMasterUser ? listAdminAppointments() : Promise.resolve([]));
+        return Promise.all(promises);
+      });
+      
+      setAppointments(Array.isArray(userRows) ? userRows : []);
+      setVehicles(Array.isArray(vehiclesRows) ? vehiclesRows : []);
+      
+      if (isMasterUser) {
+        setAdminAppointments(Array.isArray(adminRows) ? adminRows : []);
+        if ((userRows || []).length === 0 && (adminRows || []).length > 0) {
+          setTabValue(1);
         }
-
-        const [userRows, vehiclesRows, adminRows] = await Promise.all(promises);
-        
-        setAppointments(userRows);
-        setVehicles(vehiclesRows);
-        
-        if (isMasterUser) {
-          // Filter admin appointments for the current mechanic if needed, or show all
-          // For now, showing all for master/admin
-          // If we want to show only assigned to this mechanic:
-          // const myWork = adminRows.filter(a => a.mechanic_id === user.id); // Assuming mechanic_id matches user.id
-          setAdminAppointments(adminRows);
-          // Default to work tab if no personal appointments but have work appointments
-          if (userRows.length === 0 && adminRows.length > 0) {
-             setTabValue(1);
-          }
-        }
-      } catch (err) {
-        setError(err.message || t('errors.failedToLoadAppointments'));
-      } finally {
-        setLoading(false);
+      } else {
+        setAdminAppointments([]);
       }
-    };
+    } catch (err) {
+      setError(err?.message || t('errors.failedToLoadAppointments'));
+    } finally {
+      setLoading(false);
+    }
+  }, [isMasterUser, t, user?.id, withRetry]);
+
+  useEffect(() => {
     fetchData();
-  }, [location.key, user?.id, t, isMasterUser]);
+  }, [fetchData, location.key]);
 
   const handleTabChange = (event, newValue) => {
     setTabValue(newValue);
@@ -106,23 +124,25 @@ const Appointments = () => {
     }
   };
 
-  if (loading) {
-    return (
-      <Container sx={{ mt: 4, display: 'flex', justifyContent: 'center' }}>
-        <CircularProgress />
-      </Container>
-    );
-  }
+  const currentList = isMasterUser && tabValue === 1 ? adminAppointments : appointments;
+  const skeletonRows = useMemo(() => Array.from({ length: 7 }, (_, i) => i), []);
 
   if (error) {
     return (
       <Container sx={{ mt: 4 }}>
-        <Alert severity="error">{error}</Alert>
+        <Alert
+          severity="error"
+          action={
+            <Button color="inherit" size="small" onClick={fetchData}>
+              {t('common.retry', 'Повторити')}
+            </Button>
+          }
+        >
+          {error}
+        </Alert>
       </Container>
     );
   }
-
-  const currentList = isMasterUser && tabValue === 1 ? adminAppointments : appointments;
 
   return (
     <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
@@ -135,6 +155,7 @@ const Appointments = () => {
           to="/appointments/schedule" 
           variant="contained" 
           color="primary"
+          disabled={loading}
         >
           {t('appointment.schedule')}
         </Button>
@@ -149,7 +170,36 @@ const Appointments = () => {
         </Box>
       )}
 
-      {currentList.length === 0 ? (
+      {loading ? (
+        <TableContainer component={Paper}>
+          <Table sx={{ minWidth: 650 }}>
+            <TableHead>
+              <TableRow>
+                <TableCell>{t('appointment.scheduledDate')}</TableCell>
+                <TableCell>{t('vehicle.title')}</TableCell>
+                <TableCell>{t('appointment.serviceType')}</TableCell>
+                <TableCell>{t('appointment.status')}</TableCell>
+                <TableCell>{t('appointment.estimatedCompletionDate')}</TableCell>
+                <TableCell>{t('appointment.actualCompletionDate', 'Фактичне завершення')}</TableCell>
+                <TableCell align="right">{t('common.edit')}</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {skeletonRows.map((key) => (
+                <TableRow key={key}>
+                  <TableCell><Skeleton width={140} /></TableCell>
+                  <TableCell><Skeleton width={220} /></TableCell>
+                  <TableCell><Skeleton width={160} /></TableCell>
+                  <TableCell><Skeleton width={90} /></TableCell>
+                  <TableCell><Skeleton width={120} /></TableCell>
+                  <TableCell><Skeleton width={160} /></TableCell>
+                  <TableCell align="right"><Skeleton width={60} /></TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      ) : currentList.length === 0 ? (
         <Alert severity="info">
           {tabValue === 0 
             ? t('appointment.noAppointments', 'У вас ще немає записів на обслуговування') 

@@ -156,6 +156,14 @@ export async function listForUser(userId) {
   return rows.map(mapAppointment);
 }
 
+export async function listForMechanic(mechanicId) {
+  if (!mechanicId) return [];
+  const mechanicIdValue = /^[0-9]+$/.test(String(mechanicId)) ? Number(mechanicId) : mechanicId;
+  const payload = await requestJson(`/api/appointments?mechanic_id=${encodeURIComponent(mechanicIdValue)}`);
+  const rows = normalizeListPayload(payload);
+  return rows.map(mapAppointment);
+}
+
 export async function getById(id) {
   const row = await requestJson(`/api/appointments/${id}`);
   if (!row) {

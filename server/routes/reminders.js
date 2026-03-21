@@ -38,10 +38,20 @@ router.get('/', auth, async (req, res) => {
 
 router.post('/run-check', apiKey, async (req, res) => {
   try {
-    await checkAndSendReminders();
-    res.json({ success: true });
+    const report = await checkAndSendReminders();
+    res.json({ success: true, report: report || null });
   } catch (error) {
     console.error('Помилка запуску перевірки нагадувань:', error);
+    res.status(500).json({ success: false, message: 'Помилка сервера' });
+  }
+});
+
+router.post('/run-check-auth', auth, async (req, res) => {
+  try {
+    const report = await checkAndSendReminders();
+    res.json({ success: true, report: report || null });
+  } catch (error) {
+    console.error('Помилка запуску перевірки нагадувань (auth):', error);
     res.status(500).json({ success: false, message: 'Помилка сервера' });
   }
 });

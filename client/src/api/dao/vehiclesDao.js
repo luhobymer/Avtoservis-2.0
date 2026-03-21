@@ -95,12 +95,20 @@ const mapVehicle = (v) => ({
     '',
   mileage: v.mileage != null ? v.mileage : 0,
   color: normalizeColorId(v.color),
-  engineType: v.engine_type || '',
-  transmission: v.transmission || '',
-  engineVolume: v.engine_capacity || '',
+  engineType: v.engine_type || v.engineType || v.fuel_type || '',
+  transmission: v.transmission || v.transmission_type || v.gearbox || v.gear_box || '',
+  engineVolume:
+    v.engine_capacity ||
+    v.engine_volume ||
+    v.engineVolume ||
+    v.engineCapacity ||
+    v.engine_capacity_l ||
+    '',
   photoUrl: v.photo_url || v.photoUrl || '',
   UserId: v.user_id || v.UserId || null
 });
+
+const vehicleByPlateCache = new Map();
 
 function normalizeListPayload(payload) {
   if (!payload) return [];
@@ -230,6 +238,26 @@ export async function lookupRegistryByLicensePlate(licensePlate) {
   return payload;
 }
 
+export async function getByLicensePlate(licensePlate, options = {}) {
+  const plate = String(licensePlate || '').trim();
+  if (!plate) throw new Error('License plate is required');
+
+  const userId = typeof options?.userId === 'string' ? options.userId.trim() : '';
+  const key = `${plate.toUpperCase()}|${userId || ''}`;
+  if (vehicleByPlateCache.has(key)) {
+    return vehicleByPlateCache.get(key);
+  }
+
+  const url = userId
+    ? `/api/vehicles/license/${encodeURIComponent(plate)}?user_id=${encodeURIComponent(userId)}`
+    : `/api/vehicles/license/${encodeURIComponent(plate)}`;
+
+  const payload = await requestJson(url);
+  const mapped = payload ? mapVehicle(payload) : null;
+  vehicleByPlateCache.set(key, mapped);
+  return mapped;
+}
+
 export async function uploadPhoto(file) {
   const token = localStorage.getItem('auth_token');
   const formData = new FormData();
@@ -244,8 +272,38 @@ export async function uploadPhoto(file) {
   });
 
   if (!response.ok) {
-    throw new Error('Photo upload failed');
+    let message = 'Photo upload failed';
+    try {
+      const errorBody = await response.json();
+      if (errorBody && typeof errorBody.message === 'string' && errorBody.message.trim()) {
+        message = errorBody.message;
+      }
+    } catch (err) {
+      void err;
+    }
+    throw new Error(message);
   }
 
   return response.json();
+}
+
+export async function recognizeLicensePlateFromPhoto(file) {
+  const token = localStorage.getItem('auth_token');
+  const formData = new FormData();
+  formData.append('image', file);
+
+  const response = await fetch(resolveUrl('/api/ocr/plate'), {
+    method: 'POST',
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    },
+    body: formData
+  });
+
+  if (!response.ok) {
+    throw new Error('OCR plate failed');
+  }
+
+  const payload = await response.json();
+  return payload?.licensePlate || '';
 }

@@ -1,5 +1,47 @@
 const { createWorker } = require('tesseract.js');
 const fs = require('fs');
+let Jimp;
+try {
+  Jimp = require('jimp');
+} catch (_) {
+  Jimp = null;
+}
+
+let plateWorkerPromise = null;
+let plateWorkerBusy = Promise.resolve();
+
+async function getPlateWorker() {
+  if (plateWorkerPromise) return plateWorkerPromise;
+  plateWorkerPromise = (async () => {
+    const worker = await createWorker('ukr+eng');
+    try {
+      await worker.setParameters({
+        tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789АВЕІКМНОРСТХУЇЄҐ',
+        preserve_interword_spaces: '1',
+      });
+    } catch (_) {
+      void _;
+    }
+    return worker;
+  })();
+  return plateWorkerPromise;
+}
+
+async function withPlateWorker(fn) {
+  let release;
+  const next = new Promise((resolve) => {
+    release = resolve;
+  });
+  const prev = plateWorkerBusy;
+  plateWorkerBusy = prev.then(() => next);
+  await prev;
+  try {
+    const worker = await getPlateWorker();
+    return await fn(worker);
+  } finally {
+    release();
+  }
+}
 
 exports.parsePartsFromImage = async (req, res) => {
   try {
@@ -28,6 +70,94 @@ exports.parsePartsFromImage = async (req, res) => {
     res.json(parts);
   } catch (err) {
     console.error('OCR Error:', err);
+    res.status(500).json({ message: 'Помилка розпізнавання тексту', error: err.message });
+  }
+};
+
+exports.parseLicensePlateFromImage = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: 'Зображення не знайдено' });
+    }
+
+    const imagePath = req.file.path;
+    let preprocessedPath = null;
+
+    if (Jimp) {
+      try {
+        const img = await Jimp.read(imagePath);
+        const w = img.bitmap.width;
+        const h = img.bitmap.height;
+
+        const cropX = Math.max(0, Math.round(w * 0.18));
+        const cropY = Math.max(0, Math.round(h * 0.40));
+        const cropW = Math.min(w - cropX, Math.round(w * 0.64));
+        const cropH = Math.min(h - cropY, Math.round(h * 0.35));
+
+        img
+          .crop(cropX, cropY, cropW, cropH)
+          .resize(900, Jimp.AUTO)
+          .greyscale()
+          .contrast(0.6)
+          .normalize();
+
+        preprocessedPath = `${imagePath}-plate.png`;
+        await img.writeAsync(preprocessedPath);
+      } catch (err) {
+        void err;
+        preprocessedPath = null;
+      }
+    }
+
+    const ocrPath = preprocessedPath || imagePath;
+
+    const result = await withPlateWorker(async (worker) => {
+      const psmModes = ['7', '6', '11'];
+      let bestText = '';
+      let bestPlate = null;
+
+      for (const psm of psmModes) {
+        try {
+          try {
+            await worker.setParameters({ tessedit_pageseg_mode: psm });
+          } catch (_) {
+            void _;
+          }
+
+          const {
+            data: { text },
+          } = await worker.recognize(ocrPath);
+          bestText = text || bestText;
+          const plate = extractLicensePlateFromText(text);
+          if (plate) {
+            bestPlate = plate;
+            bestText = text || bestText;
+            break;
+          }
+        } catch (err) {
+          void err;
+        }
+      }
+
+      return { bestPlate, bestText };
+    });
+
+    fs.unlink(imagePath, (err) => {
+      if (err) console.error('Failed to delete temp file:', err);
+    });
+
+    if (preprocessedPath) {
+      fs.unlink(preprocessedPath, (err) => {
+        if (err) void err;
+      });
+    }
+
+    if (!result?.bestPlate) {
+      return res.status(200).json({ licensePlate: null, rawText: result?.bestText || '' });
+    }
+    return res.status(200).json({ licensePlate: result.bestPlate, rawText: result?.bestText || '' });
+  } catch (err) {
+    console.error('OCR Plate Error:', err);
     res.status(500).json({ message: 'Помилка розпізнавання тексту', error: err.message });
   }
 };
@@ -186,4 +316,51 @@ function parseOcrText(text) {
   }
 
   return parts;
+}
+
+function extractLicensePlateFromText(text) {
+  const raw = String(text || '').toUpperCase();
+  if (!raw) return null;
+
+  const map = {
+    А: 'A',
+    В: 'B',
+    Е: 'E',
+    І: 'I',
+    К: 'K',
+    М: 'M',
+    Н: 'H',
+    О: 'O',
+    Р: 'P',
+    С: 'C',
+    Т: 'T',
+    Х: 'X',
+    У: 'Y',
+    Ї: 'I',
+    Є: 'E',
+    Ґ: 'G',
+  };
+
+  const normalized = raw
+    .replace(/[АВЕІКМНОРСТХУЇЄҐ]/g, (ch) => map[ch] || ch)
+    .replace(/[^A-Z0-9]/g, '');
+
+  if (normalized.length < 8) return null;
+
+  const isLetter = (ch) => ch >= 'A' && ch <= 'Z';
+  const isDigitOrO = (ch) => (ch >= '0' && ch <= '9') || ch === 'O';
+
+  for (let i = 0; i <= normalized.length - 8; i += 1) {
+    const s = normalized.slice(i, i + 8);
+    if (!isLetter(s[0]) || !isLetter(s[1])) continue;
+    if (!isDigitOrO(s[2]) || !isDigitOrO(s[3]) || !isDigitOrO(s[4]) || !isDigitOrO(s[5])) continue;
+    if (!isLetter(s[6]) || !isLetter(s[7])) continue;
+
+    const fixed = `${s.slice(0, 2)}${s.slice(2, 6).replace(/O/g, '0')}${s.slice(6, 8)}`;
+    if (/^[A-Z]{2}\d{4}[A-Z]{2}$/.test(fixed)) return fixed;
+  }
+
+  const direct = normalized.match(/[A-Z]{2}\d{4}[A-Z]{2}/g);
+  if (direct && direct[0]) return direct[0];
+  return null;
 }

@@ -6,10 +6,12 @@ import {
   create as createVehicle,
   update as updateVehicle,
   remove as removeVehicle,
+  getByLicensePlate,
   lookupRegistryByLicensePlate,
   uploadPhoto,
   listForUser as listVehiclesForUser,
   attachServicedVehicles,
+  recognizeLicensePlateFromPhoto,
 } from '../api/dao/vehiclesDao';
 import useAuth from '../context/useAuth';
 import { brandModelYears } from '../data/vehicleData';
@@ -77,7 +79,7 @@ const VehicleDetailsContent = () => {
   const [addClientOpen, setAddClientOpen] = useState(false);
   const [addClientSaving, setAddClientSaving] = useState(false);
   const [addClientError, setAddClientError] = useState('');
-  const [addClientDraft, setAddClientDraft] = useState({ name: '', email: '', phone: '', password: '' });
+  const [addClientDraft, setAddClientDraft] = useState({ firstName: '', lastName: '', phone: '' });
 
   const [formData, setFormData] = useState({
     brand: '',
@@ -104,6 +106,7 @@ const VehicleDetailsContent = () => {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [lookupLoading, setLookupLoading] = useState(false);
   const [lookupError, setLookupError] = useState(null);
+  const [plateOcrLoading, setPlateOcrLoading] = useState(false);
   const [tabValue, setTabValue] = useState(0);
 
   // Initialize tab from URL query params
@@ -174,7 +177,7 @@ const VehicleDetailsContent = () => {
 
         const allowedByRelationship = new Set(
           (myClients || [])
-            .filter((c) => String(c?.status || '') !== 'rejected')
+            .filter((c) => String(c?.status || '').toLowerCase() === 'accepted')
             .map((c) => c?.client_id)
             .filter(Boolean)
             .map((id) => String(id))
@@ -182,7 +185,7 @@ const VehicleDetailsContent = () => {
 
         const clients = (list || [])
           .filter((u) => String(u?.role || '').toLowerCase() === 'client')
-          .filter((u) => Number(u?.email_verified || 0) === 1 || allowedByRelationship.has(String(u?.id)));
+          .filter((u) => allowedByRelationship.has(String(u?.id)));
 
         const selfOption =
           user?.id
@@ -206,6 +209,45 @@ const VehicleDetailsContent = () => {
     };
     run();
   }, [isNewVehicle, isMasterUser, ownerId, user?.id, user?.email]);
+
+  const pickContactForClient = async () => {
+    try {
+      const contactsApi = navigator?.contacts;
+      const canSelect = typeof contactsApi?.select === 'function';
+      if (!canSelect) {
+        setSnackbar({
+          open: true,
+          message:
+            'Вибір контактів не підтримується цим браузером. Введіть дані вручну або відкрийте сайт у Chrome на Android.'
+        });
+        return;
+      }
+
+      const picked = await contactsApi.select(['name', 'tel'], { multiple: false });
+      const contact = Array.isArray(picked) ? picked[0] : null;
+      if (!contact) return;
+
+      const nameRaw =
+        (Array.isArray(contact.name) ? contact.name[0] : contact.name) || '';
+      const phoneRaw =
+        (Array.isArray(contact.tel) ? contact.tel[0] : contact.tel) || '';
+
+      const parts = String(nameRaw).trim().split(/\s+/).filter(Boolean);
+      const firstName = parts[0] || '';
+      const lastName = parts.slice(1).join(' ');
+      const phone = String(phoneRaw).trim();
+
+      setAddClientDraft((prev) => ({
+        ...prev,
+        firstName,
+        lastName,
+        phone
+      }));
+    } catch (err) {
+      void err;
+      setSnackbar({ open: true, message: t('common.error', 'Помилка') });
+    }
+  };
 
   const handleOwnerChange = async (e) => {
     const nextOwnerId = e.target.value;
@@ -235,23 +277,24 @@ const VehicleDetailsContent = () => {
   };
 
   const submitCreateClient = async () => {
-    const name = String(addClientDraft.name || '').trim();
-    const email = String(addClientDraft.email || '').trim();
+    const firstName = String(addClientDraft.firstName || '').trim();
+    const lastName = String(addClientDraft.lastName || '').trim();
+    const name = `${firstName} ${lastName}`.trim();
     const phone = String(addClientDraft.phone || '').trim();
-    const password = String(addClientDraft.password || '').trim();
 
-    if (!name || !email || !phone || !password) {
-      setAddClientError(t('errors.required_field', 'Обов\'язкове поле'));
+    if (!firstName || !lastName || !phone) {
+      setAddClientError(t('validation.please_fill_all_fields', 'Заповніть усі поля'));
       return;
     }
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     const phoneRegex = /^(\+?380|0)\d{9}$/;
-    if (!emailRegex.test(email) || !phoneRegex.test(phone)) {
-      setAddClientError(t('validation.invalid_email_or_phone', 'Невірний email або телефон'));
+
+    const cleanedPhone = phone.replace(/[^\d+]/g, '');
+    if (!phoneRegex.test(cleanedPhone)) {
+      setAddClientError(t('validation.invalid_phone', 'Невірний формат телефону'));
       return;
     }
 
-    let normalizedPhone = phone.trim().replace(/\s+/g, '');
+    let normalizedPhone = cleanedPhone;
     if (normalizedPhone.startsWith('0')) {
       normalizedPhone = `+380${normalizedPhone.slice(1)}`;
     } else if (normalizedPhone.startsWith('380')) {
@@ -261,9 +304,41 @@ const VehicleDetailsContent = () => {
     setAddClientSaving(true);
     setAddClientError('');
     try {
-      const created = await createUser({ name, email, phone: normalizedPhone, password, role: 'client' });
+      const created = await createUser({
+        name,
+        firstName,
+        lastName,
+        phone: normalizedPhone,
+        password: '12345678',
+        role: 'client'
+      });
       if (created?.id) {
-        setOwners((prev) => [{ ...created, email_verified: 1 }, ...(prev || [])]);
+        const token = localStorage.getItem('auth_token');
+        try {
+          const relResp = await fetch(resolveUrl('/api/relationships/clients'), {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(token ? { Authorization: `Bearer ${token}` } : {})
+            },
+            body: JSON.stringify({ client_id: created.id })
+          });
+          if (!relResp.ok) {
+            let msg = 'Failed to create relationship';
+            try {
+              const body = await relResp.json();
+              if (body && typeof body.message === 'string') msg = body.message;
+            } catch (e) {
+              void e;
+            }
+            throw new Error(msg);
+          }
+        } catch (relErr) {
+          setAddClientError(relErr?.message || t('common.error', 'Помилка'));
+          return;
+        }
+
+        setOwners((prev) => [{ ...created }, ...(prev || [])]);
         setOwnerId(created.id);
         setOwnerVehicles([]);
         setSelectedOwnerVehicleIds([]);
@@ -320,6 +395,117 @@ const VehicleDetailsContent = () => {
         setPhotoPreview(reader.result);
       };
       reader.readAsDataURL(file);
+
+      (async () => {
+        setPlateOcrLoading(true);
+        setLookupError(null);
+        try {
+          const plate = await recognizeLicensePlateFromPhoto(file);
+          const normalizedPlate = String(plate || '').trim().toUpperCase();
+          if (!normalizedPlate) {
+            setLookupError(t('vehicle.plateNotRecognized', 'Не вдалося розпізнати номер на фото'));
+            return;
+          }
+
+          setFormData((prev) => ({
+            ...prev,
+            licensePlate: prev.licensePlate ? prev.licensePlate : normalizedPlate,
+          }));
+
+          try {
+            let filledFromDb = false;
+            try {
+              const lookupUserId = isMasterUser && ownerId ? String(ownerId) : '';
+              const local = await getByLicensePlate(
+                normalizedPlate,
+                lookupUserId ? { userId: lookupUserId } : undefined
+              );
+              if (local && (local.brand || local.make || local.model || local.vin)) {
+                filledFromDb = true;
+                setFormData((prev) => {
+                  const next = { ...prev };
+
+                  const isEmpty = (value) => value === '' || value === null || value === undefined;
+
+                  if (isEmpty(next.brand) && (local.brand || local.make)) next.brand = local.brand || local.make;
+                  if (isEmpty(next.model) && local.model) next.model = local.model;
+                  if (isEmpty(next.year) && local.year) next.year = String(local.year);
+                  if (isEmpty(next.vin) && local.vin) next.vin = local.vin;
+                  if (isEmpty(next.engineType) && local.engineType) next.engineType = local.engineType;
+                  if (isEmpty(next.transmission) && local.transmission) next.transmission = local.transmission;
+                  if (isEmpty(next.engineVolume) && local.engineVolume) next.engineVolume = String(local.engineVolume);
+                  if (isEmpty(next.color) && local.color) next.color = local.color;
+                  if (isEmpty(next.mileage) && local.mileage != null) next.mileage = String(local.mileage);
+                  if (isEmpty(next.photoUrl) && local.photoUrl) next.photoUrl = local.photoUrl;
+                  if (isEmpty(next.licensePlate) && local.licensePlate) next.licensePlate = local.licensePlate;
+
+                  return next;
+                });
+              }
+            } catch (dbErr) {
+              void dbErr;
+            }
+
+            if (!filledFromDb) {
+              const registry = await lookupRegistryByLicensePlate(normalizedPlate);
+              const rawBrand = registry?.brand || registry?.make || '';
+              const rawModel = registry?.model || '';
+              const registryYear = registry?.make_year || registry?.year || null;
+
+              const brandKey = rawBrand
+                ? Object.keys(brandModelYears).find(
+                    (b) => String(b).toLowerCase() === String(rawBrand).toLowerCase()
+                  ) || ''
+                : '';
+              const modelKey =
+                brandKey && rawModel && brandModelYears[brandKey]
+                  ? Object.keys(brandModelYears[brandKey]).find(
+                      (m) => String(m).toLowerCase() === String(rawModel).toLowerCase()
+                    ) || ''
+                  : '';
+
+              setFormData((prev) => {
+                const next = { ...prev };
+
+                const isEmpty = (value) => value === '' || value === null || value === undefined;
+
+                const licenseValue =
+                  registry?.n_reg_new ||
+                  registry?.license_plate_normalized ||
+                  registry?.license_plate ||
+                  registry?.licensePlate ||
+                  '';
+
+                let engineType = '';
+                const fuelRaw = String(registry?.fuel_type || registry?.fuel || '').toUpperCase();
+                if (fuelRaw.includes('BENZINE') || fuelRaw.includes('PETROL') || fuelRaw.includes('БЕНЗИН')) engineType = 'petrol';
+                else if (fuelRaw.includes('DIESEL') || fuelRaw.includes('ДИЗЕЛ')) engineType = 'diesel';
+                else if (fuelRaw.includes('GAS') || fuelRaw.includes('ГАЗ')) engineType = 'gas';
+                else if (fuelRaw.includes('ELECTRO') || fuelRaw.includes('ELECTRIC') || fuelRaw.includes('ЕЛЕКТРО')) engineType = 'electric';
+                else if (fuelRaw.includes('HYBRID') || fuelRaw.includes('ГІБРИД')) engineType = 'hybrid';
+
+                if (isEmpty(next.brand) && brandKey) next.brand = brandKey;
+                if (isEmpty(next.model) && modelKey) next.model = modelKey;
+                if (isEmpty(next.year) && registryYear) next.year = String(registryYear);
+                if (isEmpty(next.vin) && registry?.vin) next.vin = registry.vin;
+                if (isEmpty(next.color) && registry?.color) next.color = String(registry.color);
+                if (isEmpty(next.licensePlate) && licenseValue) next.licensePlate = String(licenseValue);
+                if (isEmpty(next.engineType) && engineType) next.engineType = engineType;
+                if (isEmpty(next.engineVolume) && registry?.engine_volume != null && registry?.engine_volume !== '') {
+                  next.engineVolume = String(registry.engine_volume);
+                }
+                return next;
+              });
+            }
+          } catch (err) {
+            void err;
+          }
+        } catch (err) {
+          setLookupError(err?.message || t('errors.ocrFailed', 'Не вдалося розпізнати зображення'));
+        } finally {
+          setPlateOcrLoading(false);
+        }
+      })();
     }
   };
 
@@ -364,13 +550,14 @@ const VehicleDetailsContent = () => {
         try {
           const uploadResult = await uploadPhoto(photoFile);
           if (!uploadResult?.url) {
-            setError(t('vehicle.photoUploadFailed', 'Не вдалося завантажити фото'));
+            setError(t('vehicle.photoUploadFailed', uploadResult?.message || 'Не вдалося завантажити фото'));
             setSaving(false);
             return;
           }
           uploadedPhotoUrl = uploadResult.url;
         } catch (uploadErr) {
-          setError(t('vehicle.photoUploadFailed', 'Не вдалося завантажити фото'));
+          const details = uploadErr?.message ? String(uploadErr.message) : '';
+          setError(t('vehicle.photoUploadFailed', details || 'Не вдалося завантажити фото'));
           setSaving(false);
           return;
         }
@@ -391,45 +578,27 @@ const VehicleDetailsContent = () => {
           photoUrl: uploadedPhotoUrl
         };
         const targetUserId = isMasterUser ? ownerId : user?.id || null;
-        try {
-          if (isMasterUser && targetUserId) {
-            const token = localStorage.getItem('auth_token');
-            const resp = await fetch(resolveUrl('/api/relationships/clients'), {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                ...(token ? { Authorization: `Bearer ${token}` } : {})
-              },
-              body: JSON.stringify({ client_id: targetUserId })
-            }).catch(() => null);
-            if (resp && resp.ok) {
-              setSnackbar({ open: true, message: t('relationships.client_connected', 'Клієнта додано до ваших клієнтів') });
-            }
-          }
-        } catch (e) {
-          void e;
-        }
         await createVehicle(payload, targetUserId);
-        setSnackbar({ open: true, message: t('vehicles.add_success', 'Авто успішно додано') });
       } else {
         const payload = {
           make: formData.brand,
           model: formData.model,
           year: formData.year,
           vin: formData.vin,
-          license_plate: formData.licensePlate,
+          licensePlate: formData.licensePlate,
+          mileage: formData.mileage,
           engineType: formData.engineType,
           transmission: formData.transmission,
           engineVolume: formData.engineVolume,
-          mileage: formData.mileage,
           color: formData.color,
-          photoUrl: uploadedPhotoUrl
+          photoUrl: uploadedPhotoUrl,
+          UserId: isMasterUser && ownerId ? ownerId : undefined
         };
         await updateVehicle(id, payload);
       }
       navigate('/vehicles');
     } catch (err) {
-      setError(t('errors.saveFailed', 'Помилка збереження даних'));
+      setError(err?.message || t('errors.saveFailed', 'Помилка збереження даних'));
       setSaving(false);
     }
   };
@@ -604,7 +773,7 @@ const VehicleDetailsContent = () => {
                   disabled={ownersLoading || addClientSaving}
                   onClick={() => {
                     setAddClientError('');
-                    setAddClientDraft({ name: '', email: '', phone: '', password: '' });
+                    setAddClientDraft({ firstName: '', lastName: '', phone: '' });
                     setAddClientOpen(true);
                   }}
                 >
@@ -630,16 +799,20 @@ const VehicleDetailsContent = () => {
                 <TextField
                   fullWidth
                   sx={{ mt: 1 }}
-                  label={t('auth.name', "Ім'я")}
-                  value={addClientDraft.name}
-                  onChange={(e) => setAddClientDraft((d) => ({ ...d, name: e.target.value }))}
+                  label={t('auth.firstName', "Ім'я")}
+                  value={addClientDraft.firstName}
+                  onChange={(e) =>
+                    setAddClientDraft((d) => ({ ...d, firstName: e.target.value }))
+                  }
                 />
                 <TextField
                   fullWidth
                   sx={{ mt: 2 }}
-                  label={t('auth.email', 'Електронна пошта')}
-                  value={addClientDraft.email}
-                  onChange={(e) => setAddClientDraft((d) => ({ ...d, email: e.target.value }))}
+                  label={t('auth.lastName', 'Прізвище')}
+                  value={addClientDraft.lastName}
+                  onChange={(e) =>
+                    setAddClientDraft((d) => ({ ...d, lastName: e.target.value }))
+                  }
                 />
                 <TextField
                   fullWidth
@@ -648,18 +821,13 @@ const VehicleDetailsContent = () => {
                   value={addClientDraft.phone}
                   onChange={(e) => setAddClientDraft((d) => ({ ...d, phone: e.target.value }))}
                 />
-                <TextField
-                  fullWidth
-                  sx={{ mt: 2 }}
-                  label={t('auth.password', 'Пароль')}
-                  type="password"
-                  value={addClientDraft.password}
-                  onChange={(e) => setAddClientDraft((d) => ({ ...d, password: e.target.value }))}
-                />
               </DialogContent>
               <DialogActions>
                 <Button onClick={() => setAddClientOpen(false)} disabled={addClientSaving}>
                   {t('common.cancel', 'Скасувати')}
+                </Button>
+                <Button onClick={pickContactForClient} disabled={addClientSaving}>
+                  {t('contacts.from_phone', 'З контактів')}
                 </Button>
                 <Button onClick={submitCreateClient} variant="contained" disabled={addClientSaving}>
                   {t('common.save', 'Зберегти')}
@@ -730,6 +898,7 @@ const VehicleDetailsContent = () => {
               onLookupByPlate={handleLookupByPlate}
               lookupLoading={lookupLoading}
               lookupError={lookupError}
+              plateOcrLoading={plateOcrLoading}
               handlePhotoChange={handlePhotoChange}
               photoPreview={photoPreview}
             />

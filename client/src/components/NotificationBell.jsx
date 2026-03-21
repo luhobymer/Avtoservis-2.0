@@ -16,6 +16,7 @@ import NotificationsIcon from '@mui/icons-material/Notifications';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import BuildIcon from '@mui/icons-material/Build';
 import EventIcon from '@mui/icons-material/Event';
+import AlarmIcon from '@mui/icons-material/Alarm';
 import useAuth from '../context/useAuth';
 import * as notificationsDao from '../api/dao/notificationsDao';
 
@@ -43,7 +44,12 @@ const NotificationBell = () => {
     if (isAuthenticated) {
       fetchNotifications();
       const interval = setInterval(fetchNotifications, 60000);
-      return () => clearInterval(interval);
+      const onUpdated = () => fetchNotifications();
+      window.addEventListener('notificationsUpdated', onUpdated);
+      return () => {
+        window.removeEventListener('notificationsUpdated', onUpdated);
+        clearInterval(interval);
+      };
     }
   }, [isAuthenticated, user?.id, fetchNotifications]);
   
@@ -77,6 +83,18 @@ const NotificationBell = () => {
       navigate(`/appointments/${notification.referenceId}`);
     } else if (notification.type === 'service-record') {
       navigate(`/service-records/${notification.referenceId}`);
+    } else if (notification.type === 'reminder') {
+      let reminderId = null;
+      try {
+        const raw = notification?.data;
+        const parsed = raw && typeof raw === 'string' ? JSON.parse(raw) : raw;
+        reminderId = parsed?.reminderId || parsed?.reminder_id || null;
+      } catch (_) {
+        void _;
+      }
+      navigate(reminderId ? `/reminders?reminderId=${encodeURIComponent(reminderId)}` : '/reminders');
+    } else {
+      navigate('/notifications');
     }
     
     handleClose();
@@ -90,6 +108,8 @@ const NotificationBell = () => {
         return <BuildIcon fontSize="small" />;
       case 'status-update':
         return <CheckCircleOutlineIcon fontSize="small" />;
+      case 'reminder':
+        return <AlarmIcon fontSize="small" />;
       default:
         return <NotificationsIcon fontSize="small" />;
     }

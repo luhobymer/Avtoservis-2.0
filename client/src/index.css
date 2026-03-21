@@ -5,8 +5,8 @@ body {
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background-color: #f8f8f8;
-  color: #333;
+  background-color: transparent;
+  color: inherit;
   transition: all 0.3s ease;
 }
 
@@ -19,18 +19,15 @@ code {
 .MuiButton-root {
   text-transform: none !important;
   border-radius: 8px !important;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
   transition: all 0.3s ease !important;
 }
 
 .MuiButton-root:hover {
   transform: translateY(-2px);
-  box-shadow: 0 4px 8px rgba(0,0,0,0.15) !important;
 }
 
 .MuiPaper-root {
   border-radius: 12px !important;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.08) !important;
   overflow: hidden;
 }
 
@@ -44,14 +41,6 @@ code {
 }
 
 /* Стилі для навігації */
-.MuiDrawer-paper {
-  background: linear-gradient(to bottom, #ffffff, #f5f5f5) !important;
-}
-
-.MuiAppBar-root {
-  background: linear-gradient(to right, #c62828, #b71c1c) !important;
-  box-shadow: 0 2px 10px rgba(198, 40, 40, 0.3) !important;
-}
 
 /* Додаткові стилі для мобільної версії */
 @media (max-width: 600px) {

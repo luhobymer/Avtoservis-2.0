@@ -59,6 +59,17 @@ export async function list() {
   return rows.map(mapUser);
 }
 
+export async function getById(id) {
+  if (!id) {
+    throw new Error('User id is required');
+  }
+  const payload = await requestJson(`/api/users/${encodeURIComponent(id)}`);
+  if (!payload) {
+    throw new Error('User not found');
+  }
+  return mapUser(payload);
+}
+
 export async function update(id, payload) {
   const body = {
     name: payload.name,

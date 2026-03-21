@@ -108,6 +108,19 @@ export async function listForUser(userId) {
   return rows.map(mapNotification)
 }
 
+export async function listForUserPaged(userId, options = {}) {
+  if (!userId) return { rows: [], hasMore: false, nextOffset: 0 }
+  const limit = typeof options.limit === 'number' ? options.limit : 20
+  const offset = typeof options.offset === 'number' ? options.offset : 0
+  const payload = await requestJson(`/api/notifications?limit=${encodeURIComponent(limit)}&offset=${encodeURIComponent(offset)}`)
+  const data = normalizeListPayload(payload)
+  return {
+    rows: data.map(mapNotification),
+    hasMore: !!payload?.hasMore,
+    nextOffset: typeof payload?.nextOffset === 'number' ? payload.nextOffset : offset + data.length
+  }
+}
+
 export async function markAsRead(id) {
   await requestJson(`/api/notifications/${id}/read`, {
     method: 'PUT'
