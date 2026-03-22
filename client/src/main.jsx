@@ -11,14 +11,31 @@ import { registerSW } from 'virtual:pwa-register'
 
 const updateSW = registerSW({
   onNeedRefresh() {
-    if (confirm('Доступна нова версія додатку. Оновити?')) {
-      updateSW(true);
-    }
+    updateSW(true);
   },
   onOfflineReady() {
     console.log('Додаток готовий до роботи офлайн');
   },
+  onRegisteredSW(_swUrl, registration) {
+    if (!registration) return;
+    try {
+      setInterval(() => {
+        registration.update();
+      }, 60 * 60 * 1000);
+    } catch (_) {
+      void _;
+    }
+  },
 });
+
+if ('serviceWorker' in navigator) {
+  let refreshing = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (refreshing) return;
+    refreshing = true;
+    window.location.reload();
+  });
+}
 
 // Network status monitoring
 window.addEventListener('online', () => {

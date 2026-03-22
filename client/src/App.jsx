@@ -5,6 +5,7 @@ import { CssBaseline } from '@mui/material';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import i18n from './i18n.js';
+import InstallPrompt from './components/InstallPrompt';
 
 // Layouts
 import MainLayout from './layouts/MainLayout';
@@ -177,6 +178,7 @@ const App = () => {
   return (
     <ThemeProvider theme={theme}>
         <CssBaseline />
+        <InstallPrompt />
         <Routes>
           {/* Auth Routes */}
           <Route path="/auth" element={<AuthLayout />}>

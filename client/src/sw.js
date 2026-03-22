@@ -3,8 +3,18 @@ import { registerRoute, setCatchHandler } from 'workbox-routing';
 import { StaleWhileRevalidate, CacheFirst, NetworkFirst } from 'workbox-strategies';
 import { ExpirationPlugin } from 'workbox-expiration';
 import { CacheableResponsePlugin } from 'workbox-cacheable-response';
+import { clientsClaim } from 'workbox-core';
 
 precacheAndRoute(self.__WB_MANIFEST);
+
+self.skipWaiting();
+clientsClaim();
+
+self.addEventListener('message', (event) => {
+  if (event?.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+});
 
 setCatchHandler(async ({ event }) => {
   if (event.request.destination === 'document') {
