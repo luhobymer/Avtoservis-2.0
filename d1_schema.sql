@@ -339,26 +339,3 @@ CREATE TABLE IF NOT EXISTS password_reset_tokens (
 
 CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_user_id ON password_reset_tokens(user_id);
 CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_token_hash ON password_reset_tokens(token_hash);
-
--- Таблиця реєстру транспортних засобів України (для пошуку за номерним знаком)
-CREATE TABLE IF NOT EXISTS ua_vehicle_registry (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  n_reg_new TEXT,
-  brand TEXT,
-  model TEXT,
-  vin TEXT,
-  make_year INTEGER,
-  color TEXT,
-  fuel TEXT,
-  capacity INTEGER,
-  own_weight REAL,
-  total_weight REAL,
-  n_reg_old TEXT,
-  license_plate_normalized TEXT,
-  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX IF NOT EXISTS idx_ua_vehicle_registry_n_reg_new ON ua_vehicle_registry(n_reg_new);
-CREATE INDEX IF NOT EXISTS idx_ua_vehicle_registry_vin ON ua_vehicle_registry(vin);
-CREATE INDEX IF NOT EXISTS idx_ua_vehicle_registry_license_normalized ON ua_vehicle_registry(license_plate_normalized);
