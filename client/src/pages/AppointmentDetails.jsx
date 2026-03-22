@@ -940,7 +940,18 @@ const AppointmentDetails = ({ isNew }) => {
               </Grid>
               <Grid item xs={12} sm={6}>
                 <LocalizationProvider dateAdapter={AdapterDateFns}>
-                  <DateTimePicker label={t('appointment.scheduledDate')} value={formData.scheduledDate} onChange={(date) => handleDateChange('scheduledDate', date)} renderInput={(params) => <TextField {...params} id="scheduledDate" fullWidth required />} />
+                  <DateTimePicker
+                    label={t('appointment.scheduledDate')}
+                    value={formData.scheduledDate}
+                    onChange={(date) => handleDateChange('scheduledDate', date)}
+                    slotProps={{
+                      textField: {
+                        id: 'scheduledDate',
+                        fullWidth: true,
+                        required: true,
+                      },
+                    }}
+                  />
                 </LocalizationProvider>
               </Grid>
               <Grid item xs={12}>

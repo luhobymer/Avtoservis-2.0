@@ -70,8 +70,9 @@ const ClientDetails = () => {
         if (!alive) return;
         setError(err?.message || t('common.error', 'Помилка'));
       } finally {
-        if (!alive) return;
-        setLoading(false);
+        if (alive) {
+          setLoading(false);
+        }
       }
     })();
 
@@ -109,7 +110,9 @@ const ClientDetails = () => {
           const body = await res.json();
           if (body && typeof body.message === 'string') message = body.message;
           if (body && typeof body.msg === 'string') message = body.msg;
-        } catch (_) {}
+        } catch (_) {
+          void 0;
+        }
         throw new Error(message);
       }
       const updated = await res.json();
@@ -155,7 +158,9 @@ const ClientDetails = () => {
         try {
           const body = await res.json();
           if (body && typeof body.message === 'string') message = body.message;
-        } catch (_) {}
+        } catch (_) {
+          void 0;
+        }
         throw new Error(message);
       }
 

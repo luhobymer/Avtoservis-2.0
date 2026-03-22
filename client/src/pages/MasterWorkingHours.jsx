@@ -17,8 +17,7 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
-  DialogActions,
-  TextField
+  DialogActions
 } from '@mui/material';
 import { AccessTime as AccessTimeIcon, ArrowBack as ArrowBackIcon } from '@mui/icons-material';
 import { TimePicker } from '@mui/x-date-pickers';
@@ -264,7 +263,7 @@ const MasterWorkingHours = () => {
             onChange={(value) => {
               if (value) setTimeDraft(value);
             }}
-            renderInput={(params) => <TextField fullWidth {...params} />}
+            slotProps={{ textField: { fullWidth: true } }}
           />
         </DialogContent>
         <DialogActions>

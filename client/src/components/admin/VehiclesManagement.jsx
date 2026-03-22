@@ -345,7 +345,7 @@ const VehiclesManagement = () => {
                   label={t('vehicle.lastService')}
                   value={formData.lastService}
                   onChange={handleDateChange}
-                  renderInput={(params) => <TextField {...params} fullWidth margin="normal" />}
+                  slotProps={{ textField: { fullWidth: true, margin: 'normal' } }}
                 />
               </LocalizationProvider>
             </Grid>

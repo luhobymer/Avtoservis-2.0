@@ -224,13 +224,13 @@ const InsuranceManagement = () => {
             label={t('insurance.start_date')}
             value={formData.start_date}
             onChange={(value) => handleDateChange('start_date', value)}
-            renderInput={(params) => <TextField {...params} fullWidth margin="normal" />}
+            slotProps={{ textField: { fullWidth: true, margin: 'normal' } }}
           />
           <DatePicker
             label={t('insurance.end_date')}
             value={formData.end_date}
             onChange={(value) => handleDateChange('end_date', value)}
-            renderInput={(params) => <TextField {...params} fullWidth margin="normal" />}
+            slotProps={{ textField: { fullWidth: true, margin: 'normal' } }}
           />
         </DialogContent>
         <DialogActions>

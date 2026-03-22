@@ -196,7 +196,7 @@ const Reminders = () => {
     } finally {
       setLoading(false);
     }
-  }, [user?.id, t]);
+  }, [user?.id, user?.role, t]);
 
   useEffect(() => {
     fetchData();
@@ -212,8 +212,7 @@ const Reminders = () => {
     params.delete('reminderId');
     const nextSearch = params.toString();
     window.history.replaceState(null, '', `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ''}`);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location.search, reminders]);
+  }, [location.search, reminders, openEditDialog]);
 
   useEffect(() => {
     const update = () => setNotificationPermission(normalizeNotificationPermission());
@@ -311,7 +310,7 @@ const Reminders = () => {
     setDialogOpen(true);
   };
 
-  const openEditDialog = (reminder) => {
+  const openEditDialog = useCallback((reminder) => {
     setEditingReminder(reminder);
     setNewReminder({
       title: reminder.title || '',
@@ -321,7 +320,7 @@ const Reminders = () => {
       priority: reminder.priority || 'medium'
     });
     setDialogOpen(true);
-  };
+  }, []);
 
   const handleRunCheck = async () => {
     setRunCheckLoading(true);

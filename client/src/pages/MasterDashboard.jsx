@@ -31,6 +31,8 @@ import {
   History as HistoryIcon
 } from '@mui/icons-material';
 import { DateTimePicker } from '@mui/x-date-pickers';
+import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
+import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { useAuth } from '../context/useAuth';
 import * as appointmentsDao from '../api/dao/appointmentsDao';
 import * as scheduleDao from '../api/dao/scheduleDao';
@@ -165,7 +167,8 @@ const MasterDashboard = () => {
   }
 
   return (
-    <Container maxWidth="xl" sx={{ mt: 4, mb: 6 }}>
+    <LocalizationProvider dateAdapter={AdapterDateFns}>
+      <Container maxWidth="xl" sx={{ mt: 4, mb: 6 }}>
       <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
         <Box>
           <Typography variant={isMobile ? 'h5' : 'h4'} fontWeight="bold" gutterBottom>
@@ -402,7 +405,7 @@ const MasterDashboard = () => {
               onChange={(value) => {
                 if (value) setBusyUntilDraft(value);
               }}
-              renderInput={(params) => <TextField fullWidth {...params} />}
+              slotProps={{ textField: { fullWidth: true } }}
             />
           </Box>
           <TextField
@@ -423,7 +426,8 @@ const MasterDashboard = () => {
           </Button>
         </DialogActions>
       </Dialog>
-    </Container>
+      </Container>
+    </LocalizationProvider>
   );
 };
 

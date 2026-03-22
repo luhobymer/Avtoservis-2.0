@@ -298,7 +298,7 @@ const AppointmentsManagement = () => {
                   minDateTime={selectedAppointment?.scheduledDate ? new Date(selectedAppointment.scheduledDate) : undefined}
                   ampm={false}
                   format="dd.MM.yyyy HH:mm"
-                  renderInput={(params) => <TextField {...params} fullWidth margin="normal" />}
+                  slotProps={{ textField: { fullWidth: true, margin: 'normal' } }}
                 />
               </LocalizationProvider>
             </Grid>

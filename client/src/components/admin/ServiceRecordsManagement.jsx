@@ -267,7 +267,7 @@ const ServiceRecordsManagement = () => {
                   label={t('serviceRecord.serviceDate')}
                   value={formData.serviceDate}
                   onChange={handleDateChange}
-                  renderInput={(params) => <TextField {...params} fullWidth margin="normal" />}
+                  slotProps={{ textField: { fullWidth: true, margin: 'normal' } }}
                 />
               </LocalizationProvider>
             </Grid>

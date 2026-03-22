@@ -41,7 +41,7 @@ import VehicleForm from '../components/vehicle/VehicleForm';
 import DeleteVehicleDialog from '../components/vehicle/DeleteVehicleDialog';
 import MaintenanceTab from '../components/vehicle/MaintenanceTab';
 import ErrorBoundary from '../components/ErrorBoundary';
-import { list as listUsers, create as createUser } from '../api/dao/usersDao';
+import { list as listUsers } from '../api/dao/usersDao';
 import { Tabs, Tab } from '@mui/material';
 
 import ServiceRecords from './ServiceRecords';
@@ -143,7 +143,7 @@ const VehicleDetailsContent = () => {
         v.mileage !== undefined && v.mileage !== null && v.mileage !== '' ? Number(v.mileage) : null
       );
       if (v.photoUrl) {
-        setPhotoPreview(v.photoUrl);
+        setPhotoPreview(resolveUrl(v.photoUrl));
       }
       setLoading(false);
     } catch (err) {
@@ -304,48 +304,71 @@ const VehicleDetailsContent = () => {
     setAddClientSaving(true);
     setAddClientError('');
     try {
-      const created = await createUser({
-        name,
-        firstName,
-        lastName,
-        phone: normalizedPhone,
-        password: '12345678',
-        role: 'client'
-      });
-      if (created?.id) {
-        const token = localStorage.getItem('auth_token');
-        try {
-          const relResp = await fetch(resolveUrl('/api/relationships/clients'), {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              ...(token ? { Authorization: `Bearer ${token}` } : {})
-            },
-            body: JSON.stringify({ client_id: created.id })
-          });
-          if (!relResp.ok) {
-            let msg = 'Failed to create relationship';
-            try {
-              const body = await relResp.json();
-              if (body && typeof body.message === 'string') msg = body.message;
-            } catch (e) {
-              void e;
-            }
-            throw new Error(msg);
-          }
-        } catch (relErr) {
-          setAddClientError(relErr?.message || t('common.error', 'Помилка'));
-          return;
-        }
+      const token = localStorage.getItem('auth_token');
 
-        setOwners((prev) => [{ ...created }, ...(prev || [])]);
-        setOwnerId(created.id);
-        setOwnerVehicles([]);
-        setSelectedOwnerVehicleIds([]);
-        setImportDialogOpen(false);
-        setOwnerVehiclesChecked(true);
-        setSnackbar({ open: true, message: t('common.saved', 'Збережено') });
+      const registerRes = await fetch(resolveUrl('/api/auth/register'), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({
+          name,
+          firstName,
+          lastName,
+          phone: normalizedPhone,
+          password: '12345678',
+          role: 'client'
+        })
+      });
+
+      if (!registerRes.ok) {
+        let msg = `Request failed with status ${registerRes.status}`;
+        try {
+          const body = await registerRes.json();
+          if (body && typeof body.message === 'string') msg = body.message;
+          if (!msg && body && typeof body.msg === 'string') msg = body.msg;
+        } catch (e) {
+          void e;
+        }
+        throw new Error(msg);
       }
+
+      const registerData = await registerRes.json();
+      if (registerData?.requiresEmailConfirmation) {
+        throw new Error(t('auth.emailVerificationRequired', 'Потрібно підтвердити email для цього користувача'));
+      }
+      const created = registerData?.user || registerData;
+      if (!created?.id) {
+        throw new Error('Invalid user response');
+      }
+
+      const relResp = await fetch(resolveUrl('/api/relationships/clients'), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({ client_id: created.id })
+      });
+      if (!relResp.ok) {
+        let msg = 'Failed to create relationship';
+        try {
+          const body = await relResp.json();
+          if (body && typeof body.message === 'string') msg = body.message;
+        } catch (e) {
+          void e;
+        }
+        throw new Error(msg);
+      }
+
+      setOwners((prev) => [{ ...created }, ...(prev || [])]);
+      setOwnerId(created.id);
+      setOwnerVehicles([]);
+      setSelectedOwnerVehicleIds([]);
+      setImportDialogOpen(false);
+      setOwnerVehiclesChecked(true);
+      setSnackbar({ open: true, message: t('common.saved', 'Збережено') });
       setAddClientOpen(false);
     } catch (err) {
       setAddClientError(err?.message || t('common.error', 'Помилка'));
@@ -555,6 +578,8 @@ const VehicleDetailsContent = () => {
             return;
           }
           uploadedPhotoUrl = uploadResult.url;
+          setFormData((prev) => ({ ...prev, photoUrl: uploadedPhotoUrl }));
+          setPhotoPreview(resolveUrl(uploadedPhotoUrl));
         } catch (uploadErr) {
           const details = uploadErr?.message ? String(uploadErr.message) : '';
           setError(t('vehicle.photoUploadFailed', details || 'Не вдалося завантажити фото'));

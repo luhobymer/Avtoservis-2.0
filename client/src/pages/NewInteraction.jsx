@@ -144,7 +144,7 @@ const NewInteraction = () => {
         setDraft((prev) => ({ ...prev, relatedEntityId: '' }));
       }
     }
-  }, [draft.relatedEntity]);
+  }, [draft.relatedEntity, appointments, vehicles]);
 
   const handleSubmit = async () => {
     const message = String(draft.message || '').trim();
