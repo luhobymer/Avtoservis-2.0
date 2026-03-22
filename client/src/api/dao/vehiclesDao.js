@@ -292,16 +292,42 @@ export async function recognizeLicensePlateFromPhoto(file) {
   const formData = new FormData();
   formData.append('image', file);
 
-  const response = await fetch(resolveUrl('/api/ocr/plate'), {
-    method: 'POST',
-    headers: {
-      ...(token ? { Authorization: `Bearer ${token}` } : {})
-    },
-    body: formData
-  });
+  const controller = new AbortController();
+  const timeoutMs = 45000;
+  const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
+
+  let response;
+  try {
+    response = await fetch(resolveUrl('/api/ocr/plate'), {
+      method: 'POST',
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {})
+      },
+      body: formData,
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if (err?.name === 'AbortError') {
+      throw new Error('OCR timeout');
+    }
+    throw err;
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
 
   if (!response.ok) {
-    throw new Error('OCR plate failed');
+    let message = 'OCR plate failed';
+    try {
+      const body = await response.json();
+      if (body && typeof body.message === 'string' && body.message.trim()) {
+        message = body.message;
+      } else if (body && typeof body.error === 'string' && body.error.trim()) {
+        message = body.error;
+      }
+    } catch (err) {
+      void err;
+    }
+    throw new Error(message);
   }
 
   const payload = await response.json();

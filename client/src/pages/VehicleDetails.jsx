@@ -524,7 +524,12 @@ const VehicleDetailsContent = () => {
             void err;
           }
         } catch (err) {
-          setLookupError(err?.message || t('errors.ocrFailed', 'Не вдалося розпізнати зображення'));
+          const rawMessage = String(err?.message || '');
+          if (rawMessage.toLowerCase().includes('ocr timeout') || rawMessage.toLowerCase().includes('timeout')) {
+            setLookupError(t('errors.ocrTimeout', 'Розпізнавання займає забагато часу. Спробуйте інше фото.'));
+          } else {
+            setLookupError(rawMessage || t('errors.ocrFailed', 'Не вдалося розпізнати зображення'));
+          }
         } finally {
           setPlateOcrLoading(false);
         }

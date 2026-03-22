@@ -9,11 +9,45 @@ try {
 
 let plateWorkerPromise = null;
 let plateWorkerBusy = Promise.resolve();
+let plateWorkerInstance = null;
+
+async function resetPlateWorker() {
+  const instance = plateWorkerInstance;
+  plateWorkerInstance = null;
+  plateWorkerPromise = null;
+  if (!instance) return;
+  try {
+    await instance.terminate();
+  } catch (_) {
+    void _;
+  }
+}
+
+function withTimeout(promise, ms, onTimeout) {
+  let timer;
+  const timeoutPromise = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      try {
+        if (typeof onTimeout === 'function') onTimeout();
+      } catch (_) {
+        void _;
+      }
+      const err = new Error('OCR timeout');
+      err.code = 'OCR_TIMEOUT';
+      reject(err);
+    }, ms);
+  });
+  return Promise.race([
+    Promise.resolve(promise).finally(() => clearTimeout(timer)),
+    timeoutPromise,
+  ]);
+}
 
 async function getPlateWorker() {
   if (plateWorkerPromise) return plateWorkerPromise;
   plateWorkerPromise = (async () => {
     const worker = await createWorker('ukr+eng');
+    plateWorkerInstance = worker;
     try {
       await worker.setParameters({
         tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789АВЕІКМНОРСТХУЇЄҐ',
@@ -126,7 +160,9 @@ exports.parseLicensePlateFromImage = async (req, res) => {
 
           const {
             data: { text },
-          } = await worker.recognize(ocrPath);
+          } = await withTimeout(worker.recognize(ocrPath), 40000, () => {
+            void resetPlateWorker();
+          });
           bestText = text || bestText;
           const plate = extractLicensePlateFromText(text);
           if (plate) {
@@ -157,6 +193,9 @@ exports.parseLicensePlateFromImage = async (req, res) => {
     }
     return res.status(200).json({ licensePlate: result.bestPlate, rawText: result?.bestText || '' });
   } catch (err) {
+    if (String(err?.code || '') === 'OCR_TIMEOUT' || String(err?.message || '').toLowerCase().includes('timeout')) {
+      return res.status(504).json({ message: 'OCR timeout', error: err.message });
+    }
     console.error('OCR Plate Error:', err);
     res.status(500).json({ message: 'Помилка розпізнавання тексту', error: err.message });
   }

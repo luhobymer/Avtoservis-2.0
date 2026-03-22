@@ -263,7 +263,7 @@ describe('VehicleController - D1 інтеграційні тести', () => {
       await vehicleController.addVehicle(req, res);
 
       expect(res.status).toHaveBeenCalledWith(400);
-      expect(res.json).toHaveBeenCalledWith({ message: 'Автомобіль з таким VIN вже існує' });
+      expect(res.json).toHaveBeenCalledWith({ message: 'Автомобіль з таким VIN вже існує у вашому гаражі' });
     });
   });
 

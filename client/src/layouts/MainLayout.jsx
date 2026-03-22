@@ -263,13 +263,22 @@ const MainLayout = () => {
         component="main"
         sx={{
           flexGrow: 1,
-          p: 3,
+          px: { xs: 1.5, sm: 3 },
+          py: { xs: 2, sm: 3 },
           width: { sm: `calc(100% - ${drawerWidth}px)` },
           mt: 8,
           pb: { xs: 'calc(80px + env(safe-area-inset-bottom))', sm: 3 },
         }}
       >
-        <Outlet />
+        <Box
+          sx={{
+            width: '100%',
+            maxWidth: { xs: 720, md: 1200 },
+            mx: 'auto',
+          }}
+        >
+          <Outlet />
+        </Box>
         <FloatingActionButton 
           mode={fabMode}
           position="bottom-right"

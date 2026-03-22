@@ -2,6 +2,86 @@ const path = require('path');
 const fs = require('fs');
 const { getRegistryDb } = require('../db/d1');
 
+let registrySchemaPromise = null;
+
+const isSafeIdentifier = (value) => /^[a-zA-Z0-9_]+$/.test(String(value || ''));
+
+const pickFirstExisting = (columns, candidates) => {
+  const set = new Set((columns || []).map((c) => String(c || '').toLowerCase()));
+  for (const candidate of candidates) {
+    if (set.has(String(candidate).toLowerCase())) return candidate;
+  }
+  return null;
+};
+
+async function detectRegistrySchema(db) {
+  if (registrySchemaPromise) return registrySchemaPromise;
+  registrySchemaPromise = (async () => {
+    let tables = [];
+    try {
+      tables = await db
+        .prepare("SELECT name FROM sqlite_master WHERE type='table'")
+        .all();
+    } catch (err) {
+      void err;
+      tables = [];
+    }
+
+    const tableNames = (tables || [])
+      .map((t) => t?.name)
+      .filter((name) => typeof name === 'string' && isSafeIdentifier(name));
+
+    if (tableNames.length === 0) {
+      return null;
+    }
+
+    const preferred = ['bd_avto_ua', 'ua_vehicle_registry', 'vehicle_registry', 'registry', 'cars', 'auto'];
+    const ordered = [
+      ...preferred.filter((p) => tableNames.includes(p)),
+      ...tableNames.filter((t) => !preferred.includes(t)),
+    ];
+
+    for (const tableName of ordered) {
+      let columns = [];
+      try {
+        columns = await db.prepare(`PRAGMA table_info(${tableName})`).all();
+      } catch (err) {
+        void err;
+        continue;
+      }
+      const names = (columns || []).map((c) => c?.name).filter(Boolean);
+      if (names.length === 0) continue;
+
+      const colPlate = pickFirstExisting(names, [
+        'n_reg_new',
+        'license_plate_normalized',
+        'license_plate',
+        'reg_number',
+        'registration_number',
+        'plate',
+      ]);
+      if (!colPlate) continue;
+
+      const schema = {
+        table: tableName,
+        plate: colPlate,
+        brand: pickFirstExisting(names, ['brand', 'brend', 'make', 'marka', 'марка']),
+        model: pickFirstExisting(names, ['model', 'model_name', 'модель']),
+        vin: pickFirstExisting(names, ['vin', 'vin_code']),
+        year: pickFirstExisting(names, ['make_year', 'year', 'manufacture_year', 'рік']),
+        color: pickFirstExisting(names, ['color', 'colour', 'колір']),
+        fuel: pickFirstExisting(names, ['fuel', 'fuel_type', 'паливо']),
+        capacity: pickFirstExisting(names, ['capacity', 'engine_volume', 'engine_capacity', 'обєм', 'обʼєм']),
+      };
+
+      return schema;
+    }
+
+    return null;
+  })();
+  return registrySchemaPromise;
+}
+
 const normalizeLicensePlate = (input) => {
   if (!input) return '';
   const raw = String(input)
@@ -150,10 +230,27 @@ exports.searchVehicle = async (req, res) => {
 
     try {
       const db = await getRegistryDb();
-      // Try searching with Cyrillic (most likely) or Latin (fallback)
+      const schema = await detectRegistrySchema(db);
+      if (!schema) {
+        return res.status(503).json({
+          message: 'Registry DB is not configured or schema not found',
+        });
+      }
+
+      const selectColumns = [
+        schema.brand ? `${schema.brand} as brand` : "'' as brand",
+        schema.model ? `${schema.model} as model` : "'' as model",
+        schema.vin ? `${schema.vin} as vin` : "'' as vin",
+        schema.year ? `${schema.year} as make_year` : 'NULL as make_year',
+        schema.color ? `${schema.color} as color` : "'' as color",
+        schema.fuel ? `${schema.fuel} as fuel_type` : "'' as fuel_type",
+        schema.capacity ? `${schema.capacity} as engine_volume` : 'NULL as engine_volume',
+        `${schema.plate} as license_plate`,
+      ].join(', ');
+
       const row = await db
         .prepare(
-          'SELECT brand, model, vin, make_year, color, fuel as fuel_type, capacity as engine_volume, n_reg_new as license_plate FROM ua_vehicle_registry WHERE n_reg_new = ? OR n_reg_new = ? LIMIT 1'
+          `SELECT ${selectColumns} FROM ${schema.table} WHERE ${schema.plate} = ? OR ${schema.plate} = ? LIMIT 1`
         )
         .get(cyrillic, normalized);
 
