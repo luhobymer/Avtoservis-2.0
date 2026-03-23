@@ -114,6 +114,8 @@ exports.parseLicensePlateFromImage = async (req, res) => {
       return res.status(400).json({ message: 'Зображення не знайдено' });
     }
 
+    const debug = String(req.query?.debug || '') === '1';
+
     const imagePath = req.file.path;
     let preprocessedPath = null;
     let fullPreprocessedPath = null;
@@ -230,14 +232,21 @@ exports.parseLicensePlateFromImage = async (req, res) => {
       }
     }
 
-    const ocrPaths = [bottomPreprocessedPath, binaryPreprocessedPath, preprocessedPath, fullPreprocessedPath, imagePath].filter(Boolean);
+    const ocrInputs = [
+      { label: 'bottom', path: bottomPreprocessedPath },
+      { label: 'binary', path: binaryPreprocessedPath },
+      { label: 'plate', path: preprocessedPath },
+      { label: 'full', path: fullPreprocessedPath },
+      { label: 'orig', path: imagePath },
+    ].filter((x) => Boolean(x.path));
 
     const result = await withPlateWorker(async (worker) => {
       const psmModes = ['7', '8', '6', '11'];
       let bestText = '';
       let bestPlate = null;
+      const attempts = [];
 
-      for (const ocrPath of ocrPaths) {
+      for (const input of ocrInputs) {
         for (const psm of psmModes) {
           try {
             try {
@@ -248,11 +257,20 @@ exports.parseLicensePlateFromImage = async (req, res) => {
 
             const {
               data: { text },
-            } = await withTimeout(worker.recognize(ocrPath), 90000, () => {
+            } = await withTimeout(worker.recognize(input.path), 90000, () => {
               void resetPlateWorker();
             });
             bestText = text || bestText;
             const plate = extractLicensePlateFromText(text);
+
+            if (debug) {
+              attempts.push({
+                label: input.label,
+                psm,
+                plate: plate || null,
+                rawText: String(text || '').slice(0, 1000),
+              });
+            }
             if (plate) {
               bestPlate = plate;
               bestText = text || bestText;
@@ -260,12 +278,22 @@ exports.parseLicensePlateFromImage = async (req, res) => {
             }
           } catch (err) {
             void err;
+
+            if (debug) {
+              attempts.push({
+                label: input.label,
+                psm,
+                plate: null,
+                rawText: '',
+                error: String(err?.message || err),
+              });
+            }
           }
         }
         if (bestPlate) break;
       }
 
-      return { bestPlate, bestText };
+      return { bestPlate, bestText, attempts };
     });
 
     fs.unlink(imagePath, (err) => {
@@ -297,11 +325,21 @@ exports.parseLicensePlateFromImage = async (req, res) => {
     }
 
     if (!result?.bestPlate) {
-      return res.status(200).json({ licensePlate: null, rawText: result?.bestText || '' });
+      return res
+        .status(200)
+        .json({
+          licensePlate: null,
+          rawText: result?.bestText || '',
+          ...(debug ? { attempts: result?.attempts || [] } : {}),
+        });
     }
     return res
       .status(200)
-      .json({ licensePlate: result.bestPlate, rawText: result?.bestText || '' });
+      .json({
+        licensePlate: result.bestPlate,
+        rawText: result?.bestText || '',
+        ...(debug ? { attempts: result?.attempts || [] } : {}),
+      });
   } catch (err) {
     if (
       String(err?.code || '') === 'OCR_TIMEOUT' ||
@@ -502,6 +540,128 @@ function extractLicensePlateFromText(text) {
   if (normalized.length < 8) return null;
 
   const allowedLetters = new Set(['A', 'B', 'C', 'E', 'H', 'I', 'K', 'M', 'O', 'P', 'T', 'X', 'Y']);
+  const uaPrefixes = new Set([
+    'AA',
+    'AB',
+    'AC',
+    'AE',
+    'AH',
+    'AI',
+    'AK',
+    'AM',
+    'AO',
+    'AP',
+    'AT',
+    'AX',
+    'BA',
+    'BB',
+    'BC',
+    'BE',
+    'BH',
+    'BI',
+    'BK',
+    'BM',
+    'BO',
+    'BP',
+    'BT',
+    'BX',
+    'CA',
+    'CB',
+    'CC',
+    'CE',
+    'CH',
+    'CI',
+    'CK',
+    'CM',
+    'CO',
+    'CP',
+    'CT',
+    'CX',
+    'EA',
+    'EB',
+    'EC',
+    'EE',
+    'EH',
+    'EI',
+    'EK',
+    'EM',
+    'EO',
+    'EP',
+    'ET',
+    'EX',
+    'HA',
+    'HB',
+    'HC',
+    'HE',
+    'HH',
+    'HI',
+    'HK',
+    'HM',
+    'HO',
+    'HP',
+    'HT',
+    'HX',
+    'IA',
+    'IB',
+    'IC',
+    'IE',
+    'IH',
+    'II',
+    'IK',
+    'IM',
+    'IO',
+    'IP',
+    'IT',
+    'IX',
+    'KA',
+    'KB',
+    'KC',
+    'KE',
+    'KH',
+    'KI',
+    'KK',
+    'KM',
+    'KO',
+    'KP',
+    'KT',
+    'KX',
+    'MA',
+    'MB',
+    'MC',
+    'ME',
+    'MH',
+    'MI',
+    'MK',
+    'MM',
+    'MO',
+    'MP',
+    'MT',
+    'MX',
+    'OA',
+    'OB',
+    'OC',
+    'OE',
+    'OH',
+    'OI',
+    'OK',
+    'OM',
+    'OO',
+    'OP',
+    'OT',
+    'OX',
+    'PA',
+    'PB',
+    'PC',
+    'PE',
+    'PH',
+    'PI',
+    'PK',
+    'PM',
+    'PO',
+    'PP',
+    'PT',
+    'PX',
+  ]);
   const isAllowedLetter = (ch) => allowedLetters.has(ch);
   const isDigit = (ch) => ch >= '0' && ch <= '9';
 
@@ -520,6 +680,29 @@ function extractLicensePlateFromText(text) {
     return { ch, cost: 99 };
   };
 
+  const fixPrefix = (a, b) => {
+    const direct = `${a}${b}`;
+    if (uaPrefixes.has(direct)) return { a, b, cost: 0 };
+
+    const variants = [
+      { a, b },
+      // common confusion between Cyrillic-like shapes: P<->B
+      { a: a === 'P' ? 'B' : a === 'B' ? 'P' : a, b },
+      { a, b: b === 'P' ? 'B' : b === 'B' ? 'P' : b },
+      { a: a === 'P' ? 'B' : a === 'B' ? 'P' : a, b: b === 'P' ? 'B' : b === 'B' ? 'P' : b },
+    ];
+
+    for (const v of variants) {
+      const p = `${v.a}${v.b}`;
+      if (uaPrefixes.has(p)) {
+        const cost = (v.a !== a ? 1 : 0) + (v.b !== b ? 1 : 0);
+        return { a: v.a, b: v.b, cost };
+      }
+    }
+
+    return null;
+  };
+
   const scoreCandidate = (candidate) => {
     let cost = 0;
     const s = candidate.split('');
@@ -536,9 +719,21 @@ function extractLicensePlateFromText(text) {
     const d5 = fixDigit(s[5]);
     if (d2.cost >= 99 || d3.cost >= 99 || d4.cost >= 99 || d5.cost >= 99) return null;
 
-    cost += a0.cost + a1.cost + d2.cost + d3.cost + d4.cost + d5.cost + a6.cost + a7.cost;
+    const prefixFix = fixPrefix(a0.ch, a1.ch);
+    if (!prefixFix) return null;
 
-    const fixed = `${a0.ch}${a1.ch}${d2.ch}${d3.ch}${d4.ch}${d5.ch}${a6.ch}${a7.ch}`;
+    cost +=
+      a0.cost +
+      a1.cost +
+      d2.cost +
+      d3.cost +
+      d4.cost +
+      d5.cost +
+      a6.cost +
+      a7.cost +
+      prefixFix.cost;
+
+    const fixed = `${prefixFix.a}${prefixFix.b}${d2.ch}${d3.ch}${d4.ch}${d5.ch}${a6.ch}${a7.ch}`;
     if (!/^[A-Z]{2}\d{4}[A-Z]{2}$/.test(fixed)) return null;
     if (!isAllowedLetter(fixed[0]) || !isAllowedLetter(fixed[1])) return null;
     if (!isAllowedLetter(fixed[6]) || !isAllowedLetter(fixed[7])) return null;

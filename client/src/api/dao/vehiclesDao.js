@@ -292,13 +292,16 @@ export async function recognizeLicensePlateFromPhoto(file) {
   const formData = new FormData();
   formData.append('image', file);
 
+  const ocrDebug = typeof window !== 'undefined' && window.location?.search?.includes('ocrDebug=1');
+  const url = ocrDebug ? resolveUrl('/api/ocr/plate?debug=1') : resolveUrl('/api/ocr/plate');
+
   const controller = new AbortController();
   const timeoutMs = 120000;
   const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
 
   let response;
   try {
-    response = await fetch(resolveUrl('/api/ocr/plate'), {
+    response = await fetch(url, {
       method: 'POST',
       headers: {
         ...(token ? { Authorization: `Bearer ${token}` } : {})
@@ -331,5 +334,12 @@ export async function recognizeLicensePlateFromPhoto(file) {
   }
 
   const payload = await response.json();
+  if (ocrDebug) {
+    try {
+      window.__OCR_DEBUG_PLATE__ = payload;
+    } catch (err) {
+      void err;
+    }
+  }
   return payload?.licensePlate || '';
 }
