@@ -685,8 +685,8 @@ const createDbAdapter = (client, readyPromise) => {
 
   return {
     prepare: (sql) => {
-      const d1Mode = (getEnv('D1_MODE') ||
-        (process.env.NODE_ENV === 'production' ? 'strict' : 'fallback')
+      const d1Mode = (
+        getEnv('D1_MODE') || (process.env.NODE_ENV === 'production' ? 'strict' : 'fallback')
       ).toLowerCase();
 
       const shouldFallback = (err) => {
@@ -767,8 +767,10 @@ const getDb = () => {
 };
 
 const getRegistryDb = async () => {
-  const registryId =
-    getEnv('CLOUDFLARE_D1_DATABASE_ID_REGISTRY') || '9bfb63b3-de8e-4028-a00f-031203462c34';
+  const registryId = getEnv('CLOUDFLARE_D1_DATABASE_ID_REGISTRY');
+  if (!registryId) {
+    throw new Error('CLOUDFLARE_D1_DATABASE_ID_REGISTRY is not configured');
+  }
   return initDb(registryId);
 };
 

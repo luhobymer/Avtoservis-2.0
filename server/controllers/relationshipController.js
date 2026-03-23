@@ -202,7 +202,9 @@ exports.addClientForMechanic = async (req, res) => {
             0,
             nowIso
           );
-      } catch (_) {}
+      } catch (_) {
+        void _;
+      }
       return res.json({ message: 'Client connected' });
     }
 
@@ -251,7 +253,9 @@ exports.addClientForMechanic = async (req, res) => {
           0,
           nowIso
         );
-    } catch (_) {}
+    } catch (_) {
+      void _;
+    }
 
     res.status(201).json({ message: 'Client connected' });
   } catch (err) {

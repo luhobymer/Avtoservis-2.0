@@ -14,7 +14,9 @@ router.get('/vapid-public-key', auth, async (req, res) => {
   try {
     const key = getVapidPublicKey();
     if (!key) {
-      return res.status(500).json({ msg: 'Web push not configured', details: 'Missing VAPID keys' });
+      return res
+        .status(500)
+        .json({ msg: 'Web push not configured', details: 'Missing VAPID keys' });
     }
     return res.json({ publicKey: key });
   } catch (err) {

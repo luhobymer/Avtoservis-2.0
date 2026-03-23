@@ -293,7 +293,7 @@ export async function recognizeLicensePlateFromPhoto(file) {
   formData.append('image', file);
 
   const controller = new AbortController();
-  const timeoutMs = 45000;
+  const timeoutMs = 120000;
   const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
 
   let response;

@@ -71,54 +71,58 @@ const upload = multer({
 });
 
 // Upload endpoint
-router.post('/', (req, res, next) => {
-  upload.single('photo')(req, res, (err) => {
-    if (!err) return next();
-    if (err && err.code === 'LIMIT_FILE_SIZE') {
-      return res.status(413).json({ message: 'File is too large (max 5MB)' });
-    }
-    return res.status(400).json({ message: err?.message || 'Upload failed' });
-  });
-}, async (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({ message: 'No file uploaded' });
-    }
-    let fileUrl = null;
-    let filename = null;
-    const extension = path.extname(req.file.originalname);
-    const key = `${Date.now()}-${crypto.randomUUID()}${extension}`;
-
-    if (r2Client && r2Config) {
-      await r2Client.send(
-        new PutObjectCommand({
-          Bucket: r2Config.bucket,
-          Key: key,
-          Body: req.file.buffer,
-          ContentType: req.file.mimetype,
-        })
-      );
-      filename = key;
-      fileUrl = `${r2Config.publicBaseUrl.replace(/\/$/, '')}/${key}`;
-    } else {
-      const uploadsDir = path.join(__dirname, '..', 'public', 'uploads');
-      if (!fs.existsSync(uploadsDir)) {
-        fs.mkdirSync(uploadsDir, { recursive: true });
+router.post(
+  '/',
+  (req, res, next) => {
+    upload.single('photo')(req, res, (err) => {
+      if (!err) return next();
+      if (err && err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(413).json({ message: 'File is too large (max 5MB)' });
       }
-      const destPath = path.join(uploadsDir, key);
-      fs.writeFileSync(destPath, req.file.buffer);
-      filename = key;
-      fileUrl = `/api/uploads/${key}`;
-    }
-    res.json({
-      message: 'File uploaded successfully',
-      url: fileUrl,
-      filename: filename,
+      return res.status(400).json({ message: err?.message || 'Upload failed' });
     });
-  } catch (err) {
-    console.error('Upload error:', err);
-    res.status(500).json({ message: err?.message || 'Server error during upload' });
+  },
+  async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: 'No file uploaded' });
+      }
+      let fileUrl = null;
+      let filename = null;
+      const extension = path.extname(req.file.originalname);
+      const key = `${Date.now()}-${crypto.randomUUID()}${extension}`;
+
+      if (r2Client && r2Config) {
+        await r2Client.send(
+          new PutObjectCommand({
+            Bucket: r2Config.bucket,
+            Key: key,
+            Body: req.file.buffer,
+            ContentType: req.file.mimetype,
+          })
+        );
+        filename = key;
+        fileUrl = `${r2Config.publicBaseUrl.replace(/\/$/, '')}/${key}`;
+      } else {
+        const uploadsDir = path.join(__dirname, '..', 'public', 'uploads');
+        if (!fs.existsSync(uploadsDir)) {
+          fs.mkdirSync(uploadsDir, { recursive: true });
+        }
+        const destPath = path.join(uploadsDir, key);
+        fs.writeFileSync(destPath, req.file.buffer);
+        filename = key;
+        fileUrl = `/api/uploads/${key}`;
+      }
+      res.json({
+        message: 'File uploaded successfully',
+        url: fileUrl,
+        filename: filename,
+      });
+    } catch (err) {
+      console.error('Upload error:', err);
+      res.status(500).json({ message: err?.message || 'Server error during upload' });
+    }
   }
-});
+);
 
 module.exports = router;

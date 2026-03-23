@@ -116,6 +116,7 @@ exports.parseLicensePlateFromImage = async (req, res) => {
 
     const imagePath = req.file.path;
     let preprocessedPath = null;
+    let fullPreprocessedPath = null;
 
     if (Jimp) {
       try {
@@ -124,7 +125,7 @@ exports.parseLicensePlateFromImage = async (req, res) => {
         const h = img.bitmap.height;
 
         const cropX = Math.max(0, Math.round(w * 0.18));
-        const cropY = Math.max(0, Math.round(h * 0.40));
+        const cropY = Math.max(0, Math.round(h * 0.4));
         const cropW = Math.min(w - cropX, Math.round(w * 0.64));
         const cropH = Math.min(h - cropY, Math.round(h * 0.35));
 
@@ -141,38 +142,51 @@ exports.parseLicensePlateFromImage = async (req, res) => {
         void err;
         preprocessedPath = null;
       }
+
+      try {
+        const full = await Jimp.read(imagePath);
+        full.resize(1400, Jimp.AUTO).greyscale().contrast(0.5).normalize();
+        fullPreprocessedPath = `${imagePath}-full.png`;
+        await full.writeAsync(fullPreprocessedPath);
+      } catch (err) {
+        void err;
+        fullPreprocessedPath = null;
+      }
     }
 
-    const ocrPath = preprocessedPath || imagePath;
+    const ocrPaths = [preprocessedPath, fullPreprocessedPath, imagePath].filter(Boolean);
 
     const result = await withPlateWorker(async (worker) => {
       const psmModes = ['7', '6', '11'];
       let bestText = '';
       let bestPlate = null;
 
-      for (const psm of psmModes) {
-        try {
+      for (const ocrPath of ocrPaths) {
+        for (const psm of psmModes) {
           try {
-            await worker.setParameters({ tessedit_pageseg_mode: psm });
-          } catch (_) {
-            void _;
-          }
+            try {
+              await worker.setParameters({ tessedit_pageseg_mode: psm });
+            } catch (_) {
+              void _;
+            }
 
-          const {
-            data: { text },
-          } = await withTimeout(worker.recognize(ocrPath), 40000, () => {
-            void resetPlateWorker();
-          });
-          bestText = text || bestText;
-          const plate = extractLicensePlateFromText(text);
-          if (plate) {
-            bestPlate = plate;
+            const {
+              data: { text },
+            } = await withTimeout(worker.recognize(ocrPath), 90000, () => {
+              void resetPlateWorker();
+            });
             bestText = text || bestText;
-            break;
+            const plate = extractLicensePlateFromText(text);
+            if (plate) {
+              bestPlate = plate;
+              bestText = text || bestText;
+              break;
+            }
+          } catch (err) {
+            void err;
           }
-        } catch (err) {
-          void err;
         }
+        if (bestPlate) break;
       }
 
       return { bestPlate, bestText };
@@ -188,12 +202,25 @@ exports.parseLicensePlateFromImage = async (req, res) => {
       });
     }
 
+    if (fullPreprocessedPath) {
+      fs.unlink(fullPreprocessedPath, (err) => {
+        if (err) void err;
+      });
+    }
+
     if (!result?.bestPlate) {
       return res.status(200).json({ licensePlate: null, rawText: result?.bestText || '' });
     }
-    return res.status(200).json({ licensePlate: result.bestPlate, rawText: result?.bestText || '' });
+    return res
+      .status(200)
+      .json({ licensePlate: result.bestPlate, rawText: result?.bestText || '' });
   } catch (err) {
-    if (String(err?.code || '') === 'OCR_TIMEOUT' || String(err?.message || '').toLowerCase().includes('timeout')) {
+    if (
+      String(err?.code || '') === 'OCR_TIMEOUT' ||
+      String(err?.message || '')
+        .toLowerCase()
+        .includes('timeout')
+    ) {
       return res.status(504).json({ message: 'OCR timeout', error: err.message });
     }
     console.error('OCR Plate Error:', err);

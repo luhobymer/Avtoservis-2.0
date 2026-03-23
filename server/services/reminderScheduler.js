@@ -157,10 +157,15 @@ const processReminder = async (reminder) => {
       if (notificationSentColumn) {
         try {
           await db
-            .prepare(`UPDATE reminders SET ${notificationSentColumn} = 1, updated_at = ? WHERE id = ?`)
+            .prepare(
+              `UPDATE reminders SET ${notificationSentColumn} = 1, updated_at = ? WHERE id = ?`
+            )
             .run(new Date().toISOString(), reminder.id);
         } catch (updateError) {
-          logger.warn(`Не вдалося оновити прапорець notification_sent для ${reminder.id}:`, updateError);
+          logger.warn(
+            `Не вдалося оновити прапорець notification_sent для ${reminder.id}:`,
+            updateError
+          );
         }
       }
       return { created: false, reason: 'existing' };
@@ -214,10 +219,15 @@ const processReminder = async (reminder) => {
     if (notificationSentColumn) {
       try {
         await db
-          .prepare(`UPDATE reminders SET ${notificationSentColumn} = 1, updated_at = ? WHERE id = ?`)
+          .prepare(
+            `UPDATE reminders SET ${notificationSentColumn} = 1, updated_at = ? WHERE id = ?`
+          )
           .run(new Date().toISOString(), reminder.id);
       } catch (updateError) {
-        logger.warn(`Не вдалося оновити прапорець notification_sent для ${reminder.id}:`, updateError);
+        logger.warn(
+          `Не вдалося оновити прапорець notification_sent для ${reminder.id}:`,
+          updateError
+        );
       }
     }
 

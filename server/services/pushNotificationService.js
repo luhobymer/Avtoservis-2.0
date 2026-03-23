@@ -15,6 +15,7 @@ const logger = require('../middleware/logger.js');
  */
 const sendPushNotification = async (notificationData) => {
   try {
+    void notificationData;
     logger.warn('Push-сповіщення вимкнені без Expo або іншого провайдера.');
     return false;
   } catch (error) {

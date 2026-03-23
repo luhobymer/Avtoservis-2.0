@@ -19,9 +19,7 @@ async function detectRegistrySchema(db) {
   registrySchemaPromise = (async () => {
     let tables = [];
     try {
-      tables = await db
-        .prepare("SELECT name FROM sqlite_master WHERE type='table'")
-        .all();
+      tables = await db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all();
     } catch (err) {
       void err;
       tables = [];
@@ -35,7 +33,14 @@ async function detectRegistrySchema(db) {
       return null;
     }
 
-    const preferred = ['bd_avto_ua', 'ua_vehicle_registry', 'vehicle_registry', 'registry', 'cars', 'auto'];
+    const preferred = [
+      'bd_avto_ua',
+      'ua_vehicle_registry',
+      'vehicle_registry',
+      'registry',
+      'cars',
+      'auto',
+    ];
     const ordered = [
       ...preferred.filter((p) => tableNames.includes(p)),
       ...tableNames.filter((t) => !preferred.includes(t)),
@@ -66,12 +71,18 @@ async function detectRegistrySchema(db) {
         table: tableName,
         plate: colPlate,
         brand: pickFirstExisting(names, ['brand', 'brend', 'make', 'marka', 'марка']),
-        model: pickFirstExisting(names, ['model', 'model_name', 'модель']),
+        model: pickFirstExisting(names, ['model', 'model1', 'model_name', 'модель']),
         vin: pickFirstExisting(names, ['vin', 'vin_code']),
         year: pickFirstExisting(names, ['make_year', 'year', 'manufacture_year', 'рік']),
         color: pickFirstExisting(names, ['color', 'colour', 'колір']),
         fuel: pickFirstExisting(names, ['fuel', 'fuel_type', 'паливо']),
-        capacity: pickFirstExisting(names, ['capacity', 'engine_volume', 'engine_capacity', 'обєм', 'обʼєм']),
+        capacity: pickFirstExisting(names, [
+          'capacity',
+          'engine_volume',
+          'engine_capacity',
+          'обєм',
+          'обʼєм',
+        ]),
       };
 
       return schema;
@@ -188,17 +199,21 @@ const toCyrillic = (text) => {
 
 exports.searchVehicle = async (req, res) => {
   try {
-    const { license_plate, type } = req.query;
+    const { license_plate, type, debug } = req.query;
 
     if (type === 'makes') {
       const db = await getRegistryDb();
       try {
+        const schema = await detectRegistrySchema(db);
+        if (!schema || !schema.brand) {
+          return res.json([]);
+        }
         const makes = await db
           .prepare(
-            'SELECT DISTINCT brand as name FROM ua_vehicle_registry ORDER BY brand ASC LIMIT 100'
+            `SELECT DISTINCT ${schema.brand} as name FROM ${schema.table} ORDER BY ${schema.brand} ASC LIMIT 100`
           )
           .all();
-        return res.json(makes.map((m, i) => ({ id: i + 1, name: m.name })));
+        return res.json((makes || []).map((m, i) => ({ id: i + 1, name: m.name })));
       } catch (e) {
         console.error('Makes error:', e);
         return res.json([]); // Fallback
@@ -248,11 +263,13 @@ exports.searchVehicle = async (req, res) => {
         `${schema.plate} as license_plate`,
       ].join(', ');
 
+      const plateExpr = `upper(replace(replace(replace(replace(${schema.plate}, ' ', ''), '-', ''), '.', ''), '_', ''))`;
+
       const row = await db
         .prepare(
-          `SELECT ${selectColumns} FROM ${schema.table} WHERE ${schema.plate} = ? OR ${schema.plate} = ? LIMIT 1`
+          `SELECT ${selectColumns} FROM ${schema.table} WHERE ${schema.plate} = ? OR ${schema.plate} = ? OR ${plateExpr} = ? OR ${plateExpr} = ? LIMIT 1`
         )
-        .get(cyrillic, normalized);
+        .get(cyrillic, normalized, cyrillic, normalized);
 
       if (row) {
         // Convert engine volume from cc to liters if needed (assuming capacity is in cc)
@@ -265,7 +282,70 @@ exports.searchVehicle = async (req, res) => {
           source: 'registry_d1',
         });
       }
+
+      if (String(debug || '') === '1') {
+        try {
+          const digits = String(normalized).replace(/\D/g, '');
+          const total = await db.prepare(`SELECT COUNT(*) as count FROM ${schema.table}`).get();
+          const matchExact = await db
+            .prepare(
+              `SELECT COUNT(*) as count FROM ${schema.table} WHERE ${schema.plate} = ? OR ${schema.plate} = ?`
+            )
+            .get(cyrillic, normalized);
+          const matchNormalized = await db
+            .prepare(
+              `SELECT COUNT(*) as count FROM ${schema.table} WHERE ${plateExpr} = ? OR ${plateExpr} = ?`
+            )
+            .get(cyrillic, normalized);
+          const like = await db
+            .prepare(
+              `SELECT ${schema.plate} as license_plate FROM ${schema.table} WHERE ${schema.plate} LIKE ? OR ${schema.plate} LIKE ? LIMIT 5`
+            )
+            .all(`%${normalized}%`, `%${cyrillic}%`);
+
+          const likeDigits = digits
+            ? await db
+                .prepare(
+                  `SELECT ${schema.plate} as license_plate FROM ${schema.table} WHERE ${schema.plate} LIKE ? LIMIT 5`
+                )
+                .all(`%${digits}%`)
+            : [];
+
+          return res.status(404).json({
+            message: 'Vehicle not found',
+            debug: {
+              schema,
+              input: String(license_plate),
+              normalized,
+              cyrillic,
+              digits,
+              total_rows: total?.count ?? null,
+              match_exact_count: matchExact?.count ?? null,
+              match_normalized_count: matchNormalized?.count ?? null,
+              like_samples: (like || []).map((r) => r.license_plate).filter(Boolean),
+              like_digits_samples: (likeDigits || []).map((r) => r.license_plate).filter(Boolean),
+            },
+          });
+        } catch (dbgErr) {
+          return res.status(404).json({
+            message: 'Vehicle not found',
+            debug: {
+              schema,
+              input: String(license_plate),
+              normalized,
+              cyrillic,
+              debug_error: dbgErr && dbgErr.message ? String(dbgErr.message) : String(dbgErr),
+            },
+          });
+        }
+      }
     } catch (d1Error) {
+      const message = d1Error && d1Error.message ? String(d1Error.message) : String(d1Error);
+      if (message.includes('CLOUDFLARE_D1_DATABASE_ID_REGISTRY is not configured')) {
+        return res.status(503).json({
+          message: 'Registry DB is not configured',
+        });
+      }
       console.error('Registry D1 error:', d1Error);
     }
 
