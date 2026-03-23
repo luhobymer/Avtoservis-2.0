@@ -199,7 +199,7 @@ const toCyrillic = (text) => {
 
 exports.searchVehicle = async (req, res) => {
   try {
-    const { license_plate, type, debug } = req.query;
+    const { license_plate, vin, type, debug } = req.query;
 
     if (type === 'makes') {
       const db = await getRegistryDb();
@@ -220,12 +220,15 @@ exports.searchVehicle = async (req, res) => {
       }
     }
 
-    if (!license_plate) {
-      return res.status(400).json({ message: 'License plate required' });
+    const vinInput = vin ? String(vin).trim() : '';
+    const vinNormalized = vinInput ? vinInput.replace(/\s+/g, '').toUpperCase() : '';
+
+    if (!license_plate && !vinNormalized) {
+      return res.status(400).json({ message: 'License plate or VIN required' });
     }
 
-    const normalized = normalizeLicensePlate(license_plate);
-    const cyrillic = toCyrillic(normalized);
+    const normalized = license_plate ? normalizeLicensePlate(license_plate) : '';
+    const cyrillic = normalized ? toCyrillic(normalized) : '';
 
     // Mock data for testing/demo purposes if D1/CSV fails for this specific plate
     // This is useful for development when the full registry is not available
@@ -265,11 +268,24 @@ exports.searchVehicle = async (req, res) => {
 
       const plateExpr = `upper(replace(replace(replace(replace(${schema.plate}, ' ', ''), '-', ''), '.', ''), '_', ''))`;
 
-      const row = await db
-        .prepare(
-          `SELECT ${selectColumns} FROM ${schema.table} WHERE ${schema.plate} = ? OR ${schema.plate} = ? OR ${plateExpr} = ? OR ${plateExpr} = ? LIMIT 1`
-        )
-        .get(cyrillic, normalized, cyrillic, normalized);
+      let row;
+
+      if (vinNormalized) {
+        if (!schema.vin) {
+          return res.status(503).json({
+            message: 'Registry schema does not support VIN lookup',
+          });
+        }
+        row = await db
+          .prepare(`SELECT ${selectColumns} FROM ${schema.table} WHERE ${schema.vin} = ? LIMIT 1`)
+          .get(vinNormalized);
+      } else {
+        row = await db
+          .prepare(
+            `SELECT ${selectColumns} FROM ${schema.table} WHERE ${schema.plate} = ? OR ${schema.plate} = ? OR ${plateExpr} = ? OR ${plateExpr} = ? LIMIT 1`
+          )
+          .get(cyrillic, normalized, cyrillic, normalized);
+      }
 
       if (row) {
         // Convert engine volume from cc to liters if needed (assuming capacity is in cc)
@@ -287,21 +303,33 @@ exports.searchVehicle = async (req, res) => {
         try {
           const digits = String(normalized).replace(/\D/g, '');
           const total = await db.prepare(`SELECT COUNT(*) as count FROM ${schema.table}`).get();
-          const matchExact = await db
-            .prepare(
-              `SELECT COUNT(*) as count FROM ${schema.table} WHERE ${schema.plate} = ? OR ${schema.plate} = ?`
-            )
-            .get(cyrillic, normalized);
-          const matchNormalized = await db
-            .prepare(
-              `SELECT COUNT(*) as count FROM ${schema.table} WHERE ${plateExpr} = ? OR ${plateExpr} = ?`
-            )
-            .get(cyrillic, normalized);
-          const like = await db
-            .prepare(
-              `SELECT ${schema.plate} as license_plate FROM ${schema.table} WHERE ${schema.plate} LIKE ? OR ${schema.plate} LIKE ? LIMIT 5`
-            )
-            .all(`%${normalized}%`, `%${cyrillic}%`);
+          const matchExact = vinNormalized
+            ? await db
+                .prepare(`SELECT COUNT(*) as count FROM ${schema.table} WHERE ${schema.vin} = ?`)
+                .get(vinNormalized)
+            : await db
+                .prepare(
+                  `SELECT COUNT(*) as count FROM ${schema.table} WHERE ${schema.plate} = ? OR ${schema.plate} = ?`
+                )
+                .get(cyrillic, normalized);
+
+          const matchNormalized = vinNormalized
+            ? await db
+                .prepare(`SELECT COUNT(*) as count FROM ${schema.table} WHERE ${schema.vin} = ?`)
+                .get(vinNormalized)
+            : await db
+                .prepare(
+                  `SELECT COUNT(*) as count FROM ${schema.table} WHERE ${plateExpr} = ? OR ${plateExpr} = ?`
+                )
+                .get(cyrillic, normalized);
+
+          const like = vinNormalized
+            ? []
+            : await db
+                .prepare(
+                  `SELECT ${schema.plate} as license_plate FROM ${schema.table} WHERE ${schema.plate} LIKE ? OR ${schema.plate} LIKE ? LIMIT 5`
+                )
+                .all(`%${normalized}%`, `%${cyrillic}%`);
 
           const likeDigits = digits
             ? await db
@@ -315,10 +343,11 @@ exports.searchVehicle = async (req, res) => {
             message: 'Vehicle not found',
             debug: {
               schema,
-              input: String(license_plate),
+              input: vinNormalized ? String(vinNormalized) : String(license_plate),
               normalized,
               cyrillic,
               digits,
+              vin: vinNormalized || null,
               total_rows: total?.count ?? null,
               match_exact_count: matchExact?.count ?? null,
               match_normalized_count: matchNormalized?.count ?? null,

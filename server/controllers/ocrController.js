@@ -413,20 +413,61 @@ function extractLicensePlateFromText(text) {
 
   if (normalized.length < 8) return null;
 
-  const isLetter = (ch) => ch >= 'A' && ch <= 'Z';
-  const isDigitOrO = (ch) => (ch >= '0' && ch <= '9') || ch === 'O';
+  const allowedLetters = new Set(['A', 'B', 'C', 'E', 'H', 'I', 'K', 'M', 'O', 'P', 'T', 'X', 'Y']);
+  const isAllowedLetter = (ch) => allowedLetters.has(ch);
+  const isDigit = (ch) => ch >= '0' && ch <= '9';
 
+  const fixLetter = (ch) => {
+    if (allowedLetters.has(ch)) return { ch, cost: 0 };
+    if (ch === '0') return { ch: 'O', cost: 1 };
+    if (ch === '1') return { ch: 'I', cost: 1 };
+    if (ch === '8') return { ch: 'B', cost: 1 };
+    return { ch, cost: 99 };
+  };
+
+  const fixDigit = (ch) => {
+    if (isDigit(ch)) return { ch, cost: 0 };
+    if (ch === 'O') return { ch: '0', cost: 1 };
+    if (ch === 'I') return { ch: '1', cost: 1 };
+    return { ch, cost: 99 };
+  };
+
+  const scoreCandidate = (candidate) => {
+    let cost = 0;
+    const s = candidate.split('');
+
+    const a0 = fixLetter(s[0]);
+    const a1 = fixLetter(s[1]);
+    const a6 = fixLetter(s[6]);
+    const a7 = fixLetter(s[7]);
+    if (a0.cost >= 99 || a1.cost >= 99 || a6.cost >= 99 || a7.cost >= 99) return null;
+
+    const d2 = fixDigit(s[2]);
+    const d3 = fixDigit(s[3]);
+    const d4 = fixDigit(s[4]);
+    const d5 = fixDigit(s[5]);
+    if (d2.cost >= 99 || d3.cost >= 99 || d4.cost >= 99 || d5.cost >= 99) return null;
+
+    cost += a0.cost + a1.cost + d2.cost + d3.cost + d4.cost + d5.cost + a6.cost + a7.cost;
+
+    const fixed = `${a0.ch}${a1.ch}${d2.ch}${d3.ch}${d4.ch}${d5.ch}${a6.ch}${a7.ch}`;
+    if (!/^[A-Z]{2}\d{4}[A-Z]{2}$/.test(fixed)) return null;
+    if (!isAllowedLetter(fixed[0]) || !isAllowedLetter(fixed[1])) return null;
+    if (!isAllowedLetter(fixed[6]) || !isAllowedLetter(fixed[7])) return null;
+    return { fixed, cost };
+  };
+
+  let best = null;
   for (let i = 0; i <= normalized.length - 8; i += 1) {
     const s = normalized.slice(i, i + 8);
-    if (!isLetter(s[0]) || !isLetter(s[1])) continue;
-    if (!isDigitOrO(s[2]) || !isDigitOrO(s[3]) || !isDigitOrO(s[4]) || !isDigitOrO(s[5])) continue;
-    if (!isLetter(s[6]) || !isLetter(s[7])) continue;
-
-    const fixed = `${s.slice(0, 2)}${s.slice(2, 6).replace(/O/g, '0')}${s.slice(6, 8)}`;
-    if (/^[A-Z]{2}\d{4}[A-Z]{2}$/.test(fixed)) return fixed;
+    const scored = scoreCandidate(s);
+    if (!scored) continue;
+    if (!best || scored.cost < best.cost) {
+      best = scored;
+      if (best.cost === 0) break;
+    }
   }
 
-  const direct = normalized.match(/[A-Z]{2}\d{4}[A-Z]{2}/g);
-  if (direct && direct[0]) return direct[0];
+  if (best?.fixed) return best.fixed;
   return null;
 }
