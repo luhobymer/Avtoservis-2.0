@@ -117,6 +117,7 @@ exports.parseLicensePlateFromImage = async (req, res) => {
     const imagePath = req.file.path;
     let preprocessedPath = null;
     let fullPreprocessedPath = null;
+    let binaryPreprocessedPath = null;
 
     if (Jimp) {
       try {
@@ -144,6 +145,43 @@ exports.parseLicensePlateFromImage = async (req, res) => {
       }
 
       try {
+        const img = await Jimp.read(imagePath);
+        const w = img.bitmap.width;
+        const h = img.bitmap.height;
+
+        const cropX = Math.max(0, Math.round(w * 0.12));
+        const cropY = Math.max(0, Math.round(h * 0.42));
+        const cropW = Math.min(w - cropX, Math.round(w * 0.76));
+        const cropH = Math.min(h - cropY, Math.round(h * 0.42));
+
+        img
+          .crop(cropX, cropY, cropW, cropH)
+          .resize(1200, Jimp.AUTO)
+          .greyscale()
+          .contrast(0.85)
+          .normalize()
+          .convolute([
+            [0, -1, 0],
+            [-1, 5, -1],
+            [0, -1, 0],
+          ]);
+
+        img.scan(0, 0, img.bitmap.width, img.bitmap.height, function (x, y, idx) {
+          const v = this.bitmap.data[idx];
+          const out = v > 170 ? 255 : 0;
+          this.bitmap.data[idx] = out;
+          this.bitmap.data[idx + 1] = out;
+          this.bitmap.data[idx + 2] = out;
+        });
+
+        binaryPreprocessedPath = `${imagePath}-bin.png`;
+        await img.writeAsync(binaryPreprocessedPath);
+      } catch (err) {
+        void err;
+        binaryPreprocessedPath = null;
+      }
+
+      try {
         const full = await Jimp.read(imagePath);
         full.resize(1400, Jimp.AUTO).greyscale().contrast(0.5).normalize();
         fullPreprocessedPath = `${imagePath}-full.png`;
@@ -154,10 +192,10 @@ exports.parseLicensePlateFromImage = async (req, res) => {
       }
     }
 
-    const ocrPaths = [preprocessedPath, fullPreprocessedPath, imagePath].filter(Boolean);
+    const ocrPaths = [binaryPreprocessedPath, preprocessedPath, fullPreprocessedPath, imagePath].filter(Boolean);
 
     const result = await withPlateWorker(async (worker) => {
-      const psmModes = ['7', '6', '11'];
+      const psmModes = ['7', '8', '6', '11'];
       let bestText = '';
       let bestPlate = null;
 
@@ -204,6 +242,12 @@ exports.parseLicensePlateFromImage = async (req, res) => {
 
     if (fullPreprocessedPath) {
       fs.unlink(fullPreprocessedPath, (err) => {
+        if (err) void err;
+      });
+    }
+
+    if (binaryPreprocessedPath) {
+      fs.unlink(binaryPreprocessedPath, (err) => {
         if (err) void err;
       });
     }
