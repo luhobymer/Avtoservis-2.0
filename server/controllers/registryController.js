@@ -1,6 +1,6 @@
 const path = require('path');
 const fs = require('fs');
-const { getRegistryDb } = require('../db/d1');
+const { getRegistryDb, getRegistryDbs } = require('../db/d1');
 
 let registrySchemaPromise = null;
 
@@ -70,6 +70,7 @@ async function detectRegistrySchema(db) {
       const schema = {
         table: tableName,
         plate: colPlate,
+        plateNormalized: pickFirstExisting(names, ['license_plate_normalized']),
         brand: pickFirstExisting(names, ['brand', 'brend', 'make', 'marka', 'марка']),
         model: pickFirstExisting(names, ['model', 'model1', 'model_name', 'модель']),
         vin: pickFirstExisting(names, ['vin', 'vin_code']),
@@ -247,126 +248,97 @@ exports.searchVehicle = async (req, res) => {
     }
 
     try {
-      const db = await getRegistryDb();
-      const schema = await detectRegistrySchema(db);
-      if (!schema) {
-        return res.status(503).json({
-          message: 'Registry DB is not configured or schema not found',
+      const shardDbs = await getRegistryDbs().catch(async () => [await getRegistryDb()]);
+      const debugEnabled = String(debug || '') === '1';
+      const debugAttempts = [];
+
+      for (let shardIndex = 0; shardIndex < shardDbs.length; shardIndex += 1) {
+        const db = shardDbs[shardIndex];
+        const schema = await detectRegistrySchema(db);
+        if (!schema) {
+          if (debugEnabled) {
+            debugAttempts.push({ shard: shardIndex + 1, schema: null, error: 'schema_not_found' });
+          }
+          continue;
+        }
+
+        const selectColumns = [
+          schema.brand ? `${schema.brand} as brand` : "'' as brand",
+          schema.model ? `${schema.model} as model` : "'' as model",
+          schema.vin ? `${schema.vin} as vin` : "'' as vin",
+          schema.year ? `${schema.year} as make_year` : 'NULL as make_year',
+          schema.color ? `${schema.color} as color` : "'' as color",
+          schema.fuel ? `${schema.fuel} as fuel_type` : "'' as fuel_type",
+          schema.capacity ? `${schema.capacity} as engine_volume` : 'NULL as engine_volume',
+          `${schema.plate} as license_plate`,
+        ].join(', ');
+
+        const plateExpr = `upper(replace(replace(replace(replace(${schema.plate}, ' ', ''), '-', ''), '.', ''), '_', ''))`;
+        const plateNormalizedExpr = schema.plateNormalized
+          ? `upper(replace(replace(replace(replace(${schema.plateNormalized}, ' ', ''), '-', ''), '.', ''), '_', ''))`
+          : null;
+
+        let row;
+        if (vinNormalized) {
+          if (schema.vin) {
+            row = await db
+              .prepare(
+                `SELECT ${selectColumns} FROM ${schema.table} WHERE ${schema.vin} = ? LIMIT 1`
+              )
+              .get(vinNormalized);
+          } else if (debugEnabled) {
+            debugAttempts.push({ shard: shardIndex + 1, schema, error: 'vin_not_supported' });
+          }
+        } else {
+          const whereParts = [
+            `${schema.plate} = ?`,
+            `${schema.plate} = ?`,
+            `${plateExpr} = ?`,
+            `${plateExpr} = ?`,
+          ];
+          const params = [cyrillic, normalized, cyrillic, normalized];
+
+          if (schema.plateNormalized) {
+            whereParts.push(`${schema.plateNormalized} = ?`);
+            whereParts.push(`${plateNormalizedExpr} = ?`);
+            params.push(normalized, normalized);
+          }
+
+          row = await db
+            .prepare(
+              `SELECT ${selectColumns} FROM ${schema.table} WHERE ${whereParts.join(' OR ')} LIMIT 1`
+            )
+            .get(...params);
+        }
+
+        if (row) {
+          if (row.engine_volume > 50) {
+            row.engine_volume = (row.engine_volume / 1000).toFixed(1);
+          }
+
+          return res.json({
+            ...row,
+            source: 'registry_d1',
+            shard: shardIndex + 1,
+          });
+        }
+
+        if (debugEnabled) {
+          debugAttempts.push({ shard: shardIndex + 1, schema, result: 'not_found' });
+        }
+      }
+
+      if (debugEnabled) {
+        return res.status(404).json({
+          message: 'Vehicle not found',
+          debug: {
+            input: vinNormalized ? String(vinNormalized) : String(license_plate),
+            normalized,
+            cyrillic,
+            vin: vinNormalized || null,
+            shards: debugAttempts,
+          },
         });
-      }
-
-      const selectColumns = [
-        schema.brand ? `${schema.brand} as brand` : "'' as brand",
-        schema.model ? `${schema.model} as model` : "'' as model",
-        schema.vin ? `${schema.vin} as vin` : "'' as vin",
-        schema.year ? `${schema.year} as make_year` : 'NULL as make_year',
-        schema.color ? `${schema.color} as color` : "'' as color",
-        schema.fuel ? `${schema.fuel} as fuel_type` : "'' as fuel_type",
-        schema.capacity ? `${schema.capacity} as engine_volume` : 'NULL as engine_volume',
-        `${schema.plate} as license_plate`,
-      ].join(', ');
-
-      const plateExpr = `upper(replace(replace(replace(replace(${schema.plate}, ' ', ''), '-', ''), '.', ''), '_', ''))`;
-
-      let row;
-
-      if (vinNormalized) {
-        if (!schema.vin) {
-          return res.status(503).json({
-            message: 'Registry schema does not support VIN lookup',
-          });
-        }
-        row = await db
-          .prepare(`SELECT ${selectColumns} FROM ${schema.table} WHERE ${schema.vin} = ? LIMIT 1`)
-          .get(vinNormalized);
-      } else {
-        row = await db
-          .prepare(
-            `SELECT ${selectColumns} FROM ${schema.table} WHERE ${schema.plate} = ? OR ${schema.plate} = ? OR ${plateExpr} = ? OR ${plateExpr} = ? LIMIT 1`
-          )
-          .get(cyrillic, normalized, cyrillic, normalized);
-      }
-
-      if (row) {
-        // Convert engine volume from cc to liters if needed (assuming capacity is in cc)
-        if (row.engine_volume > 50) {
-          row.engine_volume = (row.engine_volume / 1000).toFixed(1);
-        }
-
-        return res.json({
-          ...row,
-          source: 'registry_d1',
-        });
-      }
-
-      if (String(debug || '') === '1') {
-        try {
-          const digits = String(normalized).replace(/\D/g, '');
-          const total = await db.prepare(`SELECT COUNT(*) as count FROM ${schema.table}`).get();
-          const matchExact = vinNormalized
-            ? await db
-                .prepare(`SELECT COUNT(*) as count FROM ${schema.table} WHERE ${schema.vin} = ?`)
-                .get(vinNormalized)
-            : await db
-                .prepare(
-                  `SELECT COUNT(*) as count FROM ${schema.table} WHERE ${schema.plate} = ? OR ${schema.plate} = ?`
-                )
-                .get(cyrillic, normalized);
-
-          const matchNormalized = vinNormalized
-            ? await db
-                .prepare(`SELECT COUNT(*) as count FROM ${schema.table} WHERE ${schema.vin} = ?`)
-                .get(vinNormalized)
-            : await db
-                .prepare(
-                  `SELECT COUNT(*) as count FROM ${schema.table} WHERE ${plateExpr} = ? OR ${plateExpr} = ?`
-                )
-                .get(cyrillic, normalized);
-
-          const like = vinNormalized
-            ? []
-            : await db
-                .prepare(
-                  `SELECT ${schema.plate} as license_plate FROM ${schema.table} WHERE ${schema.plate} LIKE ? OR ${schema.plate} LIKE ? LIMIT 5`
-                )
-                .all(`%${normalized}%`, `%${cyrillic}%`);
-
-          const likeDigits = digits
-            ? await db
-                .prepare(
-                  `SELECT ${schema.plate} as license_plate FROM ${schema.table} WHERE ${schema.plate} LIKE ? LIMIT 5`
-                )
-                .all(`%${digits}%`)
-            : [];
-
-          return res.status(404).json({
-            message: 'Vehicle not found',
-            debug: {
-              schema,
-              input: vinNormalized ? String(vinNormalized) : String(license_plate),
-              normalized,
-              cyrillic,
-              digits,
-              vin: vinNormalized || null,
-              total_rows: total?.count ?? null,
-              match_exact_count: matchExact?.count ?? null,
-              match_normalized_count: matchNormalized?.count ?? null,
-              like_samples: (like || []).map((r) => r.license_plate).filter(Boolean),
-              like_digits_samples: (likeDigits || []).map((r) => r.license_plate).filter(Boolean),
-            },
-          });
-        } catch (dbgErr) {
-          return res.status(404).json({
-            message: 'Vehicle not found',
-            debug: {
-              schema,
-              input: String(license_plate),
-              normalized,
-              cyrillic,
-              debug_error: dbgErr && dbgErr.message ? String(dbgErr.message) : String(dbgErr),
-            },
-          });
-        }
       }
     } catch (d1Error) {
       const message = d1Error && d1Error.message ? String(d1Error.message) : String(d1Error);

@@ -325,21 +325,17 @@ exports.parseLicensePlateFromImage = async (req, res) => {
     }
 
     if (!result?.bestPlate) {
-      return res
-        .status(200)
-        .json({
-          licensePlate: null,
-          rawText: result?.bestText || '',
-          ...(debug ? { attempts: result?.attempts || [] } : {}),
-        });
-    }
-    return res
-      .status(200)
-      .json({
-        licensePlate: result.bestPlate,
+      return res.status(200).json({
+        licensePlate: null,
         rawText: result?.bestText || '',
         ...(debug ? { attempts: result?.attempts || [] } : {}),
       });
+    }
+    return res.status(200).json({
+      licensePlate: result.bestPlate,
+      rawText: result?.bestText || '',
+      ...(debug ? { attempts: result?.attempts || [] } : {}),
+    });
   } catch (err) {
     if (
       String(err?.code || '') === 'OCR_TIMEOUT' ||

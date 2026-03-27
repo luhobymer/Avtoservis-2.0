@@ -32,6 +32,9 @@ server/coverage/
 exports/
 Rubbish/
 
+reestr/
+reestrtz2024.zip
+
 *.bak
 *.tmp
 test.txt
@@ -57,3 +60,6 @@ tools/
 
 # Templates
 _rn_template/
+
+# Large registry CSV (import-only)
+reestrtz31.12.2025.legkovi.min.csv

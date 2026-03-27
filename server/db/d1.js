@@ -774,6 +774,34 @@ const getRegistryDb = async () => {
   return initDb(registryId);
 };
 
+const parseRegistryShardIds = () => {
+  const list = getEnv('CLOUDFLARE_D1_DATABASE_ID_REGISTRY_SHARDS');
+  if (list) {
+    const ids = list
+      .split(',')
+      .map((s) => String(s || '').trim())
+      .filter(Boolean);
+    return ids.length > 0 ? ids : [];
+  }
+
+  const ids = [];
+  const id1 = getEnv('CLOUDFLARE_D1_DATABASE_ID_REGISTRY');
+  if (id1) ids.push(id1);
+  for (let i = 2; i <= 16; i += 1) {
+    const v = getEnv(`CLOUDFLARE_D1_DATABASE_ID_REGISTRY_${i}`);
+    if (v) ids.push(v);
+  }
+  return ids;
+};
+
+const getRegistryDbs = async () => {
+  const ids = parseRegistryShardIds();
+  if (ids.length === 0) {
+    throw new Error('CLOUDFLARE_D1_DATABASE_ID_REGISTRY is not configured');
+  }
+  return ids.map((id) => initDb(id));
+};
+
 const resetDb = async () => {
   if (dbInstancePromise && typeof dbInstancePromise.close === 'function') {
     try {
@@ -805,6 +833,7 @@ const getExistingColumn = async (tableName, candidates) => {
 module.exports = {
   getDb,
   getRegistryDb,
+  getRegistryDbs,
   resetDb,
   getExistingColumn,
 };
