@@ -240,61 +240,73 @@ exports.parseLicensePlateFromImage = async (req, res) => {
       { label: 'orig', path: imagePath },
     ].filter((x) => Boolean(x.path));
 
-    const result = await withPlateWorker(async (worker) => {
-      const psmModes = ['7', '8', '6', '11'];
-      let bestText = '';
-      let bestPlate = null;
-      const attempts = [];
+    const result = await withTimeout(
+      withPlateWorker(async (worker) => {
+        const psmModes = ['7', '8'];
+        const perAttemptTimeoutMs = 20000;
+        const overallTimeoutMs = 60000;
+        const startedAt = Date.now();
+        let bestText = '';
+        let bestPlate = null;
+        const attempts = [];
 
-      for (const input of ocrInputs) {
-        for (const psm of psmModes) {
-          try {
+        for (const input of ocrInputs) {
+          for (const psm of psmModes) {
             try {
-              await worker.setParameters({ tessedit_pageseg_mode: psm });
-            } catch (_) {
-              void _;
-            }
+              if (Date.now() - startedAt > overallTimeoutMs) {
+                const err = new Error('OCR timeout');
+                err.code = 'OCR_TIMEOUT';
+                throw err;
+              }
+              try {
+                await worker.setParameters({ tessedit_pageseg_mode: psm });
+              } catch (_) {
+                void _;
+              }
 
-            const {
-              data: { text },
-            } = await withTimeout(worker.recognize(input.path), 90000, () => {
-              void resetPlateWorker();
-            });
-            bestText = text || bestText;
-            const plate = extractLicensePlateFromText(text);
-
-            if (debug) {
-              attempts.push({
-                label: input.label,
-                psm,
-                plate: plate || null,
-                rawText: String(text || '').slice(0, 1000),
+              const {
+                data: { text },
+              } = await withTimeout(worker.recognize(input.path), perAttemptTimeoutMs, () => {
+                void resetPlateWorker();
               });
-            }
-            if (plate) {
-              bestPlate = plate;
               bestText = text || bestText;
-              break;
-            }
-          } catch (err) {
-            void err;
+              const plate = extractLicensePlateFromText(text);
 
-            if (debug) {
-              attempts.push({
-                label: input.label,
-                psm,
-                plate: null,
-                rawText: '',
-                error: String(err?.message || err),
-              });
+              if (debug) {
+                attempts.push({
+                  label: input.label,
+                  psm,
+                  plate: plate || null,
+                  rawText: text || '',
+                });
+              }
+
+              if (plate) {
+                bestPlate = plate;
+                break;
+              }
+            } catch (err) {
+              if (debug) {
+                attempts.push({
+                  label: input.label,
+                  psm,
+                  plate: null,
+                  rawText: '',
+                  error: String(err?.message || err),
+                });
+              }
             }
           }
+          if (bestPlate) break;
         }
-        if (bestPlate) break;
-      }
 
-      return { bestPlate, bestText, attempts };
-    });
+        return { bestPlate, bestText, attempts };
+      }),
+      65000,
+      () => {
+        void resetPlateWorker();
+      }
+    );
 
     fs.unlink(imagePath, (err) => {
       if (err) console.error('Failed to delete temp file:', err);
