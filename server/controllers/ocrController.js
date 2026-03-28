@@ -1,10 +1,44 @@
 const { createWorker } = require('tesseract.js');
 const fs = require('fs');
-let Jimp;
-try {
-  Jimp = require('jimp');
-} catch (_) {
-  Jimp = null;
+
+let jimpResolved = null;
+let jimpResolvePromise = null;
+let jimpResolveError = null;
+
+async function getJimp() {
+  if (jimpResolvePromise) return jimpResolvePromise;
+  jimpResolvePromise = (async () => {
+    try {
+      const mod = await import('jimp');
+      const resolved = mod?.default || mod?.Jimp || mod;
+      if (resolved && typeof resolved.read === 'function') {
+        jimpResolved = resolved;
+        jimpResolveError = null;
+        return jimpResolved;
+      }
+      jimpResolved = null;
+      jimpResolveError = 'Jimp module loaded but has no read()';
+      return null;
+    } catch (err) {
+      try {
+        const mod = require('jimp');
+        const resolved = mod?.default || mod?.Jimp || mod;
+        if (resolved && typeof resolved.read === 'function') {
+          jimpResolved = resolved;
+          jimpResolveError = null;
+          return jimpResolved;
+        }
+        jimpResolved = null;
+        jimpResolveError = 'Jimp require() succeeded but has no read()';
+        return null;
+      } catch (requireErr) {
+        jimpResolved = null;
+        jimpResolveError = String(requireErr?.message || err?.message || requireErr || err);
+        return null;
+      }
+    }
+  })();
+  return jimpResolvePromise;
 }
 
 let plateWorkerPromise = null;
@@ -121,6 +155,8 @@ exports.parseLicensePlateFromImage = async (req, res) => {
     let fullPreprocessedPath = null;
     let binaryPreprocessedPath = null;
     let bottomPreprocessedPath = null;
+
+    const Jimp = await getJimp();
 
     if (Jimp) {
       try {
@@ -336,17 +372,36 @@ exports.parseLicensePlateFromImage = async (req, res) => {
       });
     }
 
+    const debugMeta = debug
+      ? {
+          meta: {
+            node: process.version,
+            jimp: Boolean(Jimp),
+            jimpError: jimpResolveError,
+            inputs: {
+              bottom: Boolean(bottomPreprocessedPath),
+              binary: Boolean(binaryPreprocessedPath),
+              plate: Boolean(preprocessedPath),
+              full: Boolean(fullPreprocessedPath),
+              orig: true,
+            },
+          },
+        }
+      : {};
+
     if (!result?.bestPlate) {
       return res.status(200).json({
         licensePlate: null,
         rawText: result?.bestText || '',
         ...(debug ? { attempts: result?.attempts || [] } : {}),
+        ...debugMeta,
       });
     }
     return res.status(200).json({
       licensePlate: result.bestPlate,
       rawText: result?.bestText || '',
       ...(debug ? { attempts: result?.attempts || [] } : {}),
+      ...debugMeta,
     });
   } catch (err) {
     if (
