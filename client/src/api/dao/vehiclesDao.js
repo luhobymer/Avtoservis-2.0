@@ -302,6 +302,7 @@ export async function recognizeLicensePlateFromPhoto(file) {
   const controller = new AbortController();
   const timeoutMs = 120000;
   const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
+  const startedAt = Date.now();
 
   let response;
   try {
@@ -315,7 +316,30 @@ export async function recognizeLicensePlateFromPhoto(file) {
     });
   } catch (err) {
     if (err?.name === 'AbortError') {
+      if (ocrDebug) {
+        try {
+          window.__OCR_DEBUG_PLATE__ = {
+            clientError: 'OCR timeout',
+            requestUrl: url,
+            timeoutMs,
+            elapsedMs: Date.now() - startedAt,
+          };
+        } catch (debugErr) {
+          void debugErr;
+        }
+      }
       throw new Error('OCR timeout');
+    }
+    if (ocrDebug) {
+      try {
+        window.__OCR_DEBUG_PLATE__ = {
+          clientError: String(err?.message || err),
+          requestUrl: url,
+          elapsedMs: Date.now() - startedAt,
+        };
+      } catch (debugErr) {
+        void debugErr;
+      }
     }
     throw err;
   } finally {
@@ -324,8 +348,10 @@ export async function recognizeLicensePlateFromPhoto(file) {
 
   if (!response.ok) {
     let message = 'OCR plate failed';
+    let debugBody = null;
     try {
       const body = await response.json();
+      debugBody = body;
       if (body && typeof body.message === 'string' && body.message.trim()) {
         message = body.message;
       } else if (body && typeof body.error === 'string' && body.error.trim()) {
@@ -333,6 +359,19 @@ export async function recognizeLicensePlateFromPhoto(file) {
       }
     } catch (err) {
       void err;
+    }
+    if (ocrDebug) {
+      try {
+        window.__OCR_DEBUG_PLATE__ = {
+          httpError: message,
+          status: response.status,
+          requestUrl: url,
+          elapsedMs: Date.now() - startedAt,
+          body: debugBody,
+        };
+      } catch (debugErr) {
+        void debugErr;
+      }
     }
     throw new Error(message);
   }
