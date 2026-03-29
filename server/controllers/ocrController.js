@@ -41,6 +41,34 @@ async function getJimp() {
   return jimpResolvePromise;
 }
 
+function getResizeAutoValue(Jimp) {
+  return Jimp?.AUTO ?? Jimp?.RESIZE_AUTO ?? null;
+}
+
+function resizeKeepAspect(img, targetW, Jimp) {
+  const auto = getResizeAutoValue(Jimp);
+  if (auto != null) {
+    return img.resize(targetW, auto);
+  }
+  const w = img.bitmap?.width || 1;
+  const h = img.bitmap?.height || 1;
+  const nextH = Math.max(1, Math.round((h / w) * targetW));
+  return img.resize(targetW, nextH);
+}
+
+async function writeImage(img, outPath) {
+  if (typeof img.writeAsync === 'function') {
+    await img.writeAsync(outPath);
+    return;
+  }
+  await new Promise((resolve, reject) => {
+    img.write(outPath, (err) => {
+      if (err) reject(err);
+      else resolve();
+    });
+  });
+}
+
 let plateWorkerPromise = null;
 let plateWorkerBusy = Promise.resolve();
 let plateWorkerInstance = null;
@@ -155,6 +183,12 @@ exports.parseLicensePlateFromImage = async (req, res) => {
     let fullPreprocessedPath = null;
     let binaryPreprocessedPath = null;
     let bottomPreprocessedPath = null;
+    const preprocessErrors = {
+      plate: null,
+      binary: null,
+      bottom: null,
+      full: null,
+    };
 
     const Jimp = await getJimp();
 
@@ -169,17 +203,14 @@ exports.parseLicensePlateFromImage = async (req, res) => {
         const cropW = Math.min(w - cropX, Math.round(w * 0.64));
         const cropH = Math.min(h - cropY, Math.round(h * 0.35));
 
-        img
-          .crop(cropX, cropY, cropW, cropH)
-          .resize(900, Jimp.AUTO)
-          .greyscale()
-          .contrast(0.6)
-          .normalize();
+        img.crop(cropX, cropY, cropW, cropH);
+        resizeKeepAspect(img, 900, Jimp);
+        img.greyscale().contrast(0.6).normalize();
 
         preprocessedPath = `${imagePath}-plate.png`;
-        await img.writeAsync(preprocessedPath);
+        await writeImage(img, preprocessedPath);
       } catch (err) {
-        void err;
+        preprocessErrors.plate = String(err?.message || err);
         preprocessedPath = null;
       }
 
@@ -194,8 +225,9 @@ exports.parseLicensePlateFromImage = async (req, res) => {
         const cropH = Math.min(h - cropY, Math.round(h * 0.42));
 
         img
-          .crop(cropX, cropY, cropW, cropH)
-          .resize(1200, Jimp.AUTO)
+          .crop(cropX, cropY, cropW, cropH);
+        resizeKeepAspect(img, 1200, Jimp);
+        img
           .greyscale()
           .contrast(0.85)
           .normalize()
@@ -214,9 +246,9 @@ exports.parseLicensePlateFromImage = async (req, res) => {
         });
 
         binaryPreprocessedPath = `${imagePath}-bin.png`;
-        await img.writeAsync(binaryPreprocessedPath);
+        await writeImage(img, binaryPreprocessedPath);
       } catch (err) {
-        void err;
+        preprocessErrors.binary = String(err?.message || err);
         binaryPreprocessedPath = null;
       }
 
@@ -231,8 +263,9 @@ exports.parseLicensePlateFromImage = async (req, res) => {
         const cropH = Math.min(h - cropY, Math.round(h * 0.38));
 
         img
-          .crop(cropX, cropY, cropW, cropH)
-          .resize(1400, Jimp.AUTO)
+          .crop(cropX, cropY, cropW, cropH);
+        resizeKeepAspect(img, 1400, Jimp);
+        img
           .greyscale()
           .contrast(0.9)
           .normalize()
@@ -251,19 +284,20 @@ exports.parseLicensePlateFromImage = async (req, res) => {
         });
 
         bottomPreprocessedPath = `${imagePath}-bottom.png`;
-        await img.writeAsync(bottomPreprocessedPath);
+        await writeImage(img, bottomPreprocessedPath);
       } catch (err) {
-        void err;
+        preprocessErrors.bottom = String(err?.message || err);
         bottomPreprocessedPath = null;
       }
 
       try {
         const full = await Jimp.read(imagePath);
-        full.resize(1400, Jimp.AUTO).greyscale().contrast(0.5).normalize();
+        resizeKeepAspect(full, 1400, Jimp);
+        full.greyscale().contrast(0.5).normalize();
         fullPreprocessedPath = `${imagePath}-full.png`;
-        await full.writeAsync(fullPreprocessedPath);
+        await writeImage(full, fullPreprocessedPath);
       } catch (err) {
-        void err;
+        preprocessErrors.full = String(err?.message || err);
         fullPreprocessedPath = null;
       }
     }
@@ -385,6 +419,7 @@ exports.parseLicensePlateFromImage = async (req, res) => {
               full: Boolean(fullPreprocessedPath),
               orig: true,
             },
+            preprocessErrors,
           },
         }
       : {};
