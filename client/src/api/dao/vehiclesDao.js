@@ -294,7 +294,9 @@ export async function recognizeLicensePlateFromPhoto(file) {
 
   const ocrDebug =
     typeof window !== 'undefined' &&
-    (window.location?.search?.includes('ocrDebug=1') || localStorage.getItem('ocr_debug_plate') === '1');
+    (window.location?.search?.includes('ocrDebug=1') ||
+      window.location?.hash?.includes('ocrDebug=1') ||
+      localStorage.getItem('ocr_debug_plate') === '1');
   const url = ocrDebug ? resolveUrl('/api/ocr/plate?debug=1') : resolveUrl('/api/ocr/plate');
 
   const controller = new AbortController();
