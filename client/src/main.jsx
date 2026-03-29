@@ -53,8 +53,7 @@ i18n.init().then(() => {
   try {
     root.render(
       <StrictMode>
-        <BrowserRouter
-          future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
           <AuthProvider>
             <App />
           </AuthProvider>
