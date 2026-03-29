@@ -1,4 +1,4 @@
-import { precacheAndRoute, matchPrecache } from 'workbox-precaching';
+import { precacheAndRoute, matchPrecache, createHandlerBoundToURL } from 'workbox-precaching';
 import { registerRoute, setCatchHandler } from 'workbox-routing';
 import { StaleWhileRevalidate, CacheFirst, NetworkFirst } from 'workbox-strategies';
 import { ExpirationPlugin } from 'workbox-expiration';
@@ -60,16 +60,14 @@ registerRoute(
   })
 );
 
+const appShellHandler = createHandlerBoundToURL('/index.html');
+
 registerRoute(
-  ({ request }) => request.mode === 'navigate',
-  new NetworkFirst({
-    cacheName: 'html-pages',
-    plugins: [
-      new CacheableResponsePlugin({
-        statuses: [0, 200]
-      })
-    ]
-  })
+  ({ request, url }) =>
+    request.mode === 'navigate' &&
+    !url.pathname.startsWith('/api') &&
+    !url.pathname.startsWith('/assets'),
+  appShellHandler
 );
 
 self.addEventListener('push', (event) => {
