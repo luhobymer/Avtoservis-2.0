@@ -41,18 +41,19 @@ async function getJimp() {
   return jimpResolvePromise;
 }
 
-function getResizeAutoValue(Jimp) {
-  return Jimp?.AUTO ?? Jimp?.RESIZE_AUTO ?? null;
-}
-
-function resizeKeepAspect(img, targetW, Jimp) {
-  const auto = getResizeAutoValue(Jimp);
-  if (auto != null) {
-    return img.resize(targetW, auto);
-  }
+function resizeKeepAspect(img, targetW) {
   const w = img.bitmap?.width || 1;
   const h = img.bitmap?.height || 1;
   const nextH = Math.max(1, Math.round((h / w) * targetW));
+
+  // Jimp v1+ expects an object: resize({ w, h })
+  try {
+    return img.resize({ w: targetW, h: nextH });
+  } catch (err) {
+    void err;
+  }
+
+  // Legacy Jimp: resize(w, h)
   return img.resize(targetW, nextH);
 }
 
@@ -204,7 +205,7 @@ exports.parseLicensePlateFromImage = async (req, res) => {
         const cropH = Math.min(h - cropY, Math.round(h * 0.35));
 
         img.crop(cropX, cropY, cropW, cropH);
-        resizeKeepAspect(img, 900, Jimp);
+        resizeKeepAspect(img, 900);
         img.greyscale().contrast(0.6).normalize();
 
         preprocessedPath = `${imagePath}-plate.png`;
@@ -224,9 +225,8 @@ exports.parseLicensePlateFromImage = async (req, res) => {
         const cropW = Math.min(w - cropX, Math.round(w * 0.76));
         const cropH = Math.min(h - cropY, Math.round(h * 0.42));
 
-        img
-          .crop(cropX, cropY, cropW, cropH);
-        resizeKeepAspect(img, 1200, Jimp);
+        img.crop(cropX, cropY, cropW, cropH);
+        resizeKeepAspect(img, 1200);
         img
           .greyscale()
           .contrast(0.85)
@@ -262,9 +262,8 @@ exports.parseLicensePlateFromImage = async (req, res) => {
         const cropW = Math.min(w - cropX, Math.round(w * 0.88));
         const cropH = Math.min(h - cropY, Math.round(h * 0.38));
 
-        img
-          .crop(cropX, cropY, cropW, cropH);
-        resizeKeepAspect(img, 1400, Jimp);
+        img.crop(cropX, cropY, cropW, cropH);
+        resizeKeepAspect(img, 1400);
         img
           .greyscale()
           .contrast(0.9)
@@ -292,7 +291,7 @@ exports.parseLicensePlateFromImage = async (req, res) => {
 
       try {
         const full = await Jimp.read(imagePath);
-        resizeKeepAspect(full, 1400, Jimp);
+        resizeKeepAspect(full, 1400);
         full.greyscale().contrast(0.5).normalize();
         fullPreprocessedPath = `${imagePath}-full.png`;
         await writeImage(full, fullPreprocessedPath);
