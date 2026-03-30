@@ -3,7 +3,10 @@ import axios from 'axios';
 
 const AuthContext = createContext();
 
-const baseURL = import.meta.env.VITE_API_BASE_URL || '';
+const DEFAULT_API_BASE_URL = 'https://avtoservis-server.onrender.com';
+const baseURL = (import.meta.env.VITE_API_BASE_URL || DEFAULT_API_BASE_URL)
+  .trim()
+  .replace(/\/+$/, '');
 const tokenStorageKey = 'auth_token';
 const refreshTokenStorageKey = 'refresh_token';
 

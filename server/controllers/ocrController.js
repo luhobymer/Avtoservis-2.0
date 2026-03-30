@@ -108,6 +108,26 @@ function withTimeout(promise, ms, onTimeout) {
   ]);
 }
 
+function withTimeoutCustom(promise, ms, { code, message }, onTimeout) {
+  let timer;
+  const timeoutPromise = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      try {
+        if (typeof onTimeout === 'function') onTimeout();
+      } catch (_) {
+        void _;
+      }
+      const err = new Error(message || 'timeout');
+      err.code = code || 'TIMEOUT';
+      reject(err);
+    }, ms);
+  });
+  return Promise.race([
+    Promise.resolve(promise).finally(() => clearTimeout(timer)),
+    timeoutPromise,
+  ]);
+}
+
 async function getPlateWorker() {
   if (plateWorkerPromise) return plateWorkerPromise;
   plateWorkerWarming = true;
@@ -221,111 +241,118 @@ exports.parseLicensePlateFromImage = async (req, res) => {
     const Jimp = await getJimp();
 
     if (Jimp) {
-      try {
-        const img = await Jimp.read(imagePath);
-        const w = img.bitmap.width;
-        const h = img.bitmap.height;
+      const preprocessTimeoutMs = 15000;
+      await withTimeoutCustom(
+        (async () => {
+          try {
+            const img = await Jimp.read(imagePath);
+            const w = img.bitmap.width;
+            const h = img.bitmap.height;
 
-        const cropX = Math.max(0, Math.round(w * 0.18));
-        const cropY = Math.max(0, Math.round(h * 0.4));
-        const cropW = Math.min(w - cropX, Math.round(w * 0.64));
-        const cropH = Math.min(h - cropY, Math.round(h * 0.35));
+            const cropX = Math.max(0, Math.round(w * 0.18));
+            const cropY = Math.max(0, Math.round(h * 0.4));
+            const cropW = Math.min(w - cropX, Math.round(w * 0.64));
+            const cropH = Math.min(h - cropY, Math.round(h * 0.35));
 
-        img.crop(cropX, cropY, cropW, cropH);
-        resizeKeepAspect(img, 900);
-        img.greyscale().contrast(0.6).normalize();
+            img.crop(cropX, cropY, cropW, cropH);
+            resizeKeepAspect(img, 900);
+            img.greyscale().contrast(0.6).normalize();
 
-        preprocessedPath = `${imagePath}-plate.png`;
-        await writeImage(img, preprocessedPath);
-      } catch (err) {
-        preprocessErrors.plate = String(err?.message || err);
-        preprocessedPath = null;
-      }
+            preprocessedPath = `${imagePath}-plate.png`;
+            await writeImage(img, preprocessedPath);
+          } catch (err) {
+            preprocessErrors.plate = String(err?.message || err);
+            preprocessedPath = null;
+          }
 
-      try {
-        const img = await Jimp.read(imagePath);
-        const w = img.bitmap.width;
-        const h = img.bitmap.height;
+          try {
+            const img = await Jimp.read(imagePath);
+            const w = img.bitmap.width;
+            const h = img.bitmap.height;
 
-        const cropX = Math.max(0, Math.round(w * 0.12));
-        const cropY = Math.max(0, Math.round(h * 0.42));
-        const cropW = Math.min(w - cropX, Math.round(w * 0.76));
-        const cropH = Math.min(h - cropY, Math.round(h * 0.42));
+            const cropX = Math.max(0, Math.round(w * 0.12));
+            const cropY = Math.max(0, Math.round(h * 0.42));
+            const cropW = Math.min(w - cropX, Math.round(w * 0.76));
+            const cropH = Math.min(h - cropY, Math.round(h * 0.42));
 
-        img.crop(cropX, cropY, cropW, cropH);
-        resizeKeepAspect(img, 1200);
-        img
-          .greyscale()
-          .contrast(0.85)
-          .normalize()
-          .convolute([
-            [0, -1, 0],
-            [-1, 5, -1],
-            [0, -1, 0],
-          ]);
+            img.crop(cropX, cropY, cropW, cropH);
+            resizeKeepAspect(img, 1200);
+            img
+              .greyscale()
+              .contrast(0.85)
+              .normalize()
+              .convolute([
+                [0, -1, 0],
+                [-1, 5, -1],
+                [0, -1, 0],
+              ]);
 
-        img.scan(0, 0, img.bitmap.width, img.bitmap.height, function (x, y, idx) {
-          const v = this.bitmap.data[idx];
-          const out = v > 170 ? 255 : 0;
-          this.bitmap.data[idx] = out;
-          this.bitmap.data[idx + 1] = out;
-          this.bitmap.data[idx + 2] = out;
-        });
+            img.scan(0, 0, img.bitmap.width, img.bitmap.height, function (x, y, idx) {
+              const v = this.bitmap.data[idx];
+              const out = v > 170 ? 255 : 0;
+              this.bitmap.data[idx] = out;
+              this.bitmap.data[idx + 1] = out;
+              this.bitmap.data[idx + 2] = out;
+            });
 
-        binaryPreprocessedPath = `${imagePath}-bin.png`;
-        await writeImage(img, binaryPreprocessedPath);
-      } catch (err) {
-        preprocessErrors.binary = String(err?.message || err);
-        binaryPreprocessedPath = null;
-      }
+            binaryPreprocessedPath = `${imagePath}-bin.png`;
+            await writeImage(img, binaryPreprocessedPath);
+          } catch (err) {
+            preprocessErrors.binary = String(err?.message || err);
+            binaryPreprocessedPath = null;
+          }
 
-      try {
-        const img = await Jimp.read(imagePath);
-        const w = img.bitmap.width;
-        const h = img.bitmap.height;
+          try {
+            const img = await Jimp.read(imagePath);
+            const w = img.bitmap.width;
+            const h = img.bitmap.height;
 
-        const cropX = Math.max(0, Math.round(w * 0.06));
-        const cropY = Math.max(0, Math.round(h * 0.56));
-        const cropW = Math.min(w - cropX, Math.round(w * 0.88));
-        const cropH = Math.min(h - cropY, Math.round(h * 0.38));
+            const cropX = Math.max(0, Math.round(w * 0.06));
+            const cropY = Math.max(0, Math.round(h * 0.56));
+            const cropW = Math.min(w - cropX, Math.round(w * 0.88));
+            const cropH = Math.min(h - cropY, Math.round(h * 0.38));
 
-        img.crop(cropX, cropY, cropW, cropH);
-        resizeKeepAspect(img, 1400);
-        img
-          .greyscale()
-          .contrast(0.9)
-          .normalize()
-          .convolute([
-            [0, -1, 0],
-            [-1, 5, -1],
-            [0, -1, 0],
-          ]);
+            img.crop(cropX, cropY, cropW, cropH);
+            resizeKeepAspect(img, 1400);
+            img
+              .greyscale()
+              .contrast(0.9)
+              .normalize()
+              .convolute([
+                [0, -1, 0],
+                [-1, 5, -1],
+                [0, -1, 0],
+              ]);
 
-        img.scan(0, 0, img.bitmap.width, img.bitmap.height, function (x, y, idx) {
-          const v = this.bitmap.data[idx];
-          const out = v > 165 ? 255 : 0;
-          this.bitmap.data[idx] = out;
-          this.bitmap.data[idx + 1] = out;
-          this.bitmap.data[idx + 2] = out;
-        });
+            img.scan(0, 0, img.bitmap.width, img.bitmap.height, function (x, y, idx) {
+              const v = this.bitmap.data[idx];
+              const out = v > 165 ? 255 : 0;
+              this.bitmap.data[idx] = out;
+              this.bitmap.data[idx + 1] = out;
+              this.bitmap.data[idx + 2] = out;
+            });
 
-        bottomPreprocessedPath = `${imagePath}-bottom.png`;
-        await writeImage(img, bottomPreprocessedPath);
-      } catch (err) {
-        preprocessErrors.bottom = String(err?.message || err);
-        bottomPreprocessedPath = null;
-      }
+            bottomPreprocessedPath = `${imagePath}-bottom.png`;
+            await writeImage(img, bottomPreprocessedPath);
+          } catch (err) {
+            preprocessErrors.bottom = String(err?.message || err);
+            bottomPreprocessedPath = null;
+          }
 
-      try {
-        const full = await Jimp.read(imagePath);
-        resizeKeepAspect(full, 1400);
-        full.greyscale().contrast(0.5).normalize();
-        fullPreprocessedPath = `${imagePath}-full.png`;
-        await writeImage(full, fullPreprocessedPath);
-      } catch (err) {
-        preprocessErrors.full = String(err?.message || err);
-        fullPreprocessedPath = null;
-      }
+          try {
+            const full = await Jimp.read(imagePath);
+            resizeKeepAspect(full, 1400);
+            full.greyscale().contrast(0.5).normalize();
+            fullPreprocessedPath = `${imagePath}-full.png`;
+            await writeImage(full, fullPreprocessedPath);
+          } catch (err) {
+            preprocessErrors.full = String(err?.message || err);
+            fullPreprocessedPath = null;
+          }
+        })(),
+        preprocessTimeoutMs,
+        { code: 'OCR_PREPROCESS_TIMEOUT', message: 'OCR preprocess timeout' }
+      );
     }
 
     const ocrInputs = [
@@ -480,6 +507,10 @@ exports.parseLicensePlateFromImage = async (req, res) => {
 
     if (code === 'OCR_BUSY') {
       return res.status(503).json({ message: 'OCR busy, please retry' });
+    }
+
+    if (code === 'OCR_PREPROCESS_TIMEOUT') {
+      return res.status(503).json({ message: 'OCR preprocess timeout, please retry', error: msg });
     }
 
     if (msgLower.includes('warming')) {

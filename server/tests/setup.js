@@ -25,7 +25,7 @@ global.console = {
 };
 
 // Налаштування таймаутів
-jest.setTimeout(10000);
+jest.setTimeout(20000);
 
 // Очищення моків після кожного тесту
 afterEach(() => {
