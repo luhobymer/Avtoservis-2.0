@@ -671,7 +671,38 @@ const VehicleDetailsContent = () => {
     setLookupError(null);
 
     try {
-      const registry = await lookupRegistryByLicensePlate(formData.licensePlate);
+      const normalizedPlate = String(formData.licensePlate || '').trim().toUpperCase();
+
+      try {
+        const lookupUserId = isMasterUser && ownerId ? String(ownerId) : '';
+        const local = await getByLicensePlate(
+          normalizedPlate,
+          lookupUserId ? { userId: lookupUserId } : undefined
+        );
+        if (local && (local.brand || local.make || local.model || local.vin)) {
+          setFormData((prev) => {
+            const next = { ...prev };
+            const isEmpty = (value) => value === '' || value === null || value === undefined;
+            if (isEmpty(next.brand) && (local.brand || local.make)) next.brand = local.brand || local.make;
+            if (isEmpty(next.model) && local.model) next.model = local.model;
+            if (isEmpty(next.year) && local.year) next.year = String(local.year);
+            if (isEmpty(next.vin) && local.vin) next.vin = local.vin;
+            if (isEmpty(next.engineType) && local.engineType) next.engineType = local.engineType;
+            if (isEmpty(next.transmission) && local.transmission) next.transmission = local.transmission;
+            if (isEmpty(next.engineVolume) && local.engineVolume) next.engineVolume = String(local.engineVolume);
+            if (isEmpty(next.color) && local.color) next.color = local.color;
+            if (isEmpty(next.mileage) && local.mileage != null) next.mileage = String(local.mileage);
+            if (isEmpty(next.photoUrl) && local.photoUrl) next.photoUrl = local.photoUrl;
+            if (local.licensePlate) next.licensePlate = local.licensePlate;
+            return next;
+          });
+          return;
+        }
+      } catch (dbErr) {
+        void dbErr;
+      }
+
+      const registry = await lookupRegistryByLicensePlate(normalizedPlate);
       const rawBrand = registry?.brand || registry?.make || '';
       const rawModel = registry?.model || '';
       const brandKey = rawBrand
@@ -689,7 +720,7 @@ const VehicleDetailsContent = () => {
       const licenseValue =
         registry?.n_reg_new ||
         registry?.license_plate_normalized ||
-        formData.licensePlate;
+        normalizedPlate;
       
       let engineType = '';
       const fuelRaw = String(registry?.fuel_type || '').toUpperCase();
