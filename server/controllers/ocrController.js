@@ -73,11 +73,13 @@ async function writeImage(img, outPath) {
 let plateWorkerPromise = null;
 let plateWorkerBusy = Promise.resolve();
 let plateWorkerInstance = null;
+let plateWorkerWarming = false;
 
 async function resetPlateWorker() {
   const instance = plateWorkerInstance;
   plateWorkerInstance = null;
   plateWorkerPromise = null;
+  plateWorkerWarming = false;
   if (!instance) return;
   try {
     await instance.terminate();
@@ -108,6 +110,7 @@ function withTimeout(promise, ms, onTimeout) {
 
 async function getPlateWorker() {
   if (plateWorkerPromise) return plateWorkerPromise;
+  plateWorkerWarming = true;
   plateWorkerPromise = (async () => {
     const worker = await createWorker('ukr+eng');
     plateWorkerInstance = worker;
@@ -119,9 +122,18 @@ async function getPlateWorker() {
     } catch (_) {
       void _;
     }
+    plateWorkerWarming = false;
     return worker;
   })();
   return plateWorkerPromise;
+}
+
+async function ensurePlateWorkerReady(timeoutMs = 15000) {
+  if (plateWorkerInstance) return plateWorkerInstance;
+  const promise = getPlateWorker();
+  return await withTimeout(promise, timeoutMs, () => {
+    void resetPlateWorker();
+  });
 }
 
 async function withPlateWorker(fn) {
@@ -131,13 +143,28 @@ async function withPlateWorker(fn) {
   });
   const prev = plateWorkerBusy;
   plateWorkerBusy = prev.then(() => next);
-  await prev;
   try {
-    const worker = await getPlateWorker();
+    await withTimeout(prev, 5000);
+  } catch (_) {
+    const err = new Error('OCR busy');
+    err.code = 'OCR_BUSY';
+    throw err;
+  }
+  try {
+    const worker = await ensurePlateWorkerReady(15000);
     return await fn(worker);
   } finally {
     release();
   }
+}
+
+// Best-effort warmup to reduce Render cold-start latency
+try {
+  setTimeout(() => {
+    void ensurePlateWorkerReady(15000).catch(() => undefined);
+  }, 0);
+} catch (_) {
+  void _;
 }
 
 exports.parsePartsFromImage = async (req, res) => {
@@ -309,11 +336,15 @@ exports.parseLicensePlateFromImage = async (req, res) => {
       { label: 'orig', path: imagePath },
     ].filter((x) => Boolean(x.path));
 
+    if (plateWorkerWarming && !plateWorkerInstance) {
+      return res.status(503).json({ message: 'OCR warming up, please retry' });
+    }
+
     const result = await withTimeout(
       withPlateWorker(async (worker) => {
-        const psmModes = ['7', '8'];
-        const perAttemptTimeoutMs = 20000;
-        const overallTimeoutMs = 60000;
+        const psmModes = ['7'];
+        const perAttemptTimeoutMs = 12000;
+        const overallTimeoutMs = 25000;
         const startedAt = Date.now();
         let bestText = '';
         let bestPlate = null;
@@ -371,7 +402,7 @@ exports.parseLicensePlateFromImage = async (req, res) => {
 
         return { bestPlate, bestText, attempts };
       }),
-      65000,
+      30000,
       () => {
         void resetPlateWorker();
       }
@@ -438,14 +469,27 @@ exports.parseLicensePlateFromImage = async (req, res) => {
       ...debugMeta,
     });
   } catch (err) {
-    if (
-      String(err?.code || '') === 'OCR_TIMEOUT' ||
-      String(err?.message || '')
-        .toLowerCase()
-        .includes('timeout')
-    ) {
-      return res.status(504).json({ message: 'OCR timeout', error: err.message });
+    const code = String(err?.code || '');
+    const msg = String(err?.message || '');
+    const msgLower = msg.toLowerCase();
+
+    if (code === 'OCR_TIMEOUT' || msgLower.includes('ocr timeout')) {
+      void resetPlateWorker();
+      return res.status(504).json({ message: 'OCR timeout', error: msg });
     }
+
+    if (code === 'OCR_BUSY') {
+      return res.status(503).json({ message: 'OCR busy, please retry' });
+    }
+
+    if (msgLower.includes('warming')) {
+      return res.status(503).json({ message: 'OCR warming up, please retry' });
+    }
+
+    if (msgLower.includes('timeout')) {
+      return res.status(503).json({ message: 'OCR busy, please retry' });
+    }
+
     console.error('OCR Plate Error:', err);
     res.status(500).json({ message: 'Помилка розпізнавання тексту', error: err.message });
   }
