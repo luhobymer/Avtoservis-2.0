@@ -57,6 +57,18 @@ function resizeKeepAspect(img, targetW) {
   return img.resize(targetW, nextH);
 }
 
+function cropCompat(img, x, y, w, h) {
+  // Jimp v1+ expects an object: crop({ x, y, w, h })
+  try {
+    return img.crop({ x, y, w, h });
+  } catch (err) {
+    void err;
+  }
+
+  // Legacy Jimp: crop(x, y, w, h)
+  return img.crop(x, y, w, h);
+}
+
 async function writeImage(img, outPath) {
   if (typeof img.writeAsync === 'function') {
     await img.writeAsync(outPath);
@@ -244,11 +256,10 @@ exports.parseLicensePlateFromImage = async (req, res) => {
       const preprocessTimeoutMs = 12000;
       const readTimeoutMs = 5000;
       try {
-        const base = await withTimeoutCustom(
-          Jimp.read(imagePath),
-          readTimeoutMs,
-          { code: 'OCR_PREPROCESS_READ_TIMEOUT', message: 'OCR preprocess read timeout' }
-        );
+        const base = await withTimeoutCustom(Jimp.read(imagePath), readTimeoutMs, {
+          code: 'OCR_PREPROCESS_READ_TIMEOUT',
+          message: 'OCR preprocess read timeout',
+        });
 
         await withTimeoutCustom(
           (async () => {
@@ -262,7 +273,7 @@ exports.parseLicensePlateFromImage = async (req, res) => {
               const cropW = Math.min(w - cropX, Math.round(w * 0.64));
               const cropH = Math.min(h - cropY, Math.round(h * 0.35));
 
-              img.crop(cropX, cropY, cropW, cropH);
+              cropCompat(img, cropX, cropY, cropW, cropH);
               resizeKeepAspect(img, 900);
               img.greyscale().contrast(0.6).normalize();
 
@@ -283,7 +294,7 @@ exports.parseLicensePlateFromImage = async (req, res) => {
               const cropW = Math.min(w - cropX, Math.round(w * 0.76));
               const cropH = Math.min(h - cropY, Math.round(h * 0.42));
 
-              img.crop(cropX, cropY, cropW, cropH);
+              cropCompat(img, cropX, cropY, cropW, cropH);
               resizeKeepAspect(img, 1100);
               img
                 .greyscale()
@@ -320,7 +331,7 @@ exports.parseLicensePlateFromImage = async (req, res) => {
               const cropW = Math.min(w - cropX, Math.round(w * 0.88));
               const cropH = Math.min(h - cropY, Math.round(h * 0.38));
 
-              img.crop(cropX, cropY, cropW, cropH);
+              cropCompat(img, cropX, cropY, cropW, cropH);
               resizeKeepAspect(img, 1200);
               img
                 .greyscale()
