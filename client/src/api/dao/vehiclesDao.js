@@ -126,7 +126,7 @@ async function prepareImageForOcr(file) {
   }
 
   const shouldReencode =
-    file.size > 2 * 1024 * 1024 || type.includes('heic') || type.includes('heif');
+    file.size > 0 || type.includes('heic') || type.includes('heif');
   if (!shouldReencode || typeof document === 'undefined') {
     return file;
   }
