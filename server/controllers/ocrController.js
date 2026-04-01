@@ -176,7 +176,7 @@ async function withPlateWorker(fn) {
   const prev = plateWorkerBusy;
   plateWorkerBusy = prev.then(() => next);
   try {
-    await withTimeout(prev, 30000);
+    await withTimeout(prev, 120000);
   } catch (_) {
     const err = new Error('OCR busy');
     err.code = 'OCR_BUSY';
@@ -928,6 +928,8 @@ function extractLicensePlateFromText(text) {
     if (ch === '0') return { ch: 'O', cost: 1 };
     if (ch === '1') return { ch: 'I', cost: 1 };
     if (ch === '8') return { ch: 'B', cost: 1 };
+    if (ch === '6') return { ch: 'B', cost: 2 };
+    if (ch === '2') return { ch: 'Z', cost: 3 };
     return { ch, cost: 99 };
   };
 
@@ -935,6 +937,12 @@ function extractLicensePlateFromText(text) {
     if (isDigit(ch)) return { ch, cost: 0 };
     if (ch === 'O') return { ch: '0', cost: 1 };
     if (ch === 'I') return { ch: '1', cost: 1 };
+    if (ch === 'Z') return { ch: '2', cost: 1 };
+    if (ch === 'S') return { ch: '5', cost: 1 };
+    if (ch === 'B') return { ch: '8', cost: 1 };
+    if (ch === 'G') return { ch: '6', cost: 2 };
+    if (ch === 'Q') return { ch: '0', cost: 2 };
+    if (ch === 'D') return { ch: '0', cost: 2 };
     return { ch, cost: 99 };
   };
 

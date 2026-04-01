@@ -115,6 +115,69 @@ const mapVehicle = (v) => ({
 
 const vehicleByPlateCache = new Map();
 
+async function prepareImageForOcr(file) {
+  if (!file || typeof File === 'undefined' || !(file instanceof File)) {
+    return file;
+  }
+
+  const type = String(file.type || '').toLowerCase();
+  if (!type.startsWith('image/')) {
+    return file;
+  }
+
+  const shouldReencode =
+    file.size > 4 * 1024 * 1024 || type.includes('heic') || type.includes('heif');
+  if (!shouldReencode || typeof document === 'undefined') {
+    return file;
+  }
+
+  try {
+    const objectUrl = URL.createObjectURL(file);
+    const image = await new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error('Image decode failed'));
+      img.src = objectUrl;
+    });
+    URL.revokeObjectURL(objectUrl);
+
+    const width = Number(image.width || 0);
+    const height = Number(image.height || 0);
+    if (!width || !height) {
+      return file;
+    }
+
+    const maxSide = 1800;
+    const ratio = Math.min(1, maxSide / Math.max(width, height));
+    const targetW = Math.max(1, Math.round(width * ratio));
+    const targetH = Math.max(1, Math.round(height * ratio));
+
+    const canvas = document.createElement('canvas');
+    canvas.width = targetW;
+    canvas.height = targetH;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      return file;
+    }
+    ctx.drawImage(image, 0, 0, targetW, targetH);
+
+    const blob = await new Promise((resolve) => {
+      canvas.toBlob((b) => resolve(b), 'image/jpeg', 0.88);
+    });
+
+    if (!blob || !blob.size) {
+      return file;
+    }
+
+    const originalName = String(file.name || 'plate');
+    const baseName = originalName.replace(/\.[^/.]+$/, '') || 'plate';
+    return new File([blob], `${baseName}.jpg`, { type: 'image/jpeg' });
+  } catch (err) {
+    void err;
+    return file;
+  }
+}
+
 function normalizeListPayload(payload) {
   if (!payload) return [];
   if (Array.isArray(payload)) return payload;
@@ -259,7 +322,9 @@ export async function getByLicensePlate(licensePlate, options = {}) {
 
   const payload = await requestJson(url);
   const mapped = payload ? mapVehicle(payload) : null;
-  vehicleByPlateCache.set(key, mapped);
+  if (mapped) {
+    vehicleByPlateCache.set(key, mapped);
+  }
   return mapped;
 }
 
@@ -294,8 +359,9 @@ export async function uploadPhoto(file) {
 
 export async function recognizeLicensePlateFromPhoto(file) {
   const token = localStorage.getItem('auth_token');
+  const preparedFile = await prepareImageForOcr(file);
   const formData = new FormData();
-  formData.append('image', file);
+  formData.append('image', preparedFile || file);
 
   const ocrDebug =
     typeof window !== 'undefined' &&
@@ -308,7 +374,6 @@ export async function recognizeLicensePlateFromPhoto(file) {
   const startedAt = Date.now();
 
   const maxRetries = 2;
-  let lastHttpStatus = null;
   let lastHttpBody = null;
 
   let response;
@@ -326,7 +391,6 @@ export async function recognizeLicensePlateFromPhoto(file) {
       });
 
       if (!response.ok) {
-        lastHttpStatus = response.status;
         try {
           lastHttpBody = await response.json();
         } catch (err) {

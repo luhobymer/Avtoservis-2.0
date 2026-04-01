@@ -131,6 +131,192 @@ const VehicleDetailsContent = () => {
   const [plateOcrDebug, setPlateOcrDebug] = useState(null);
   const [tabValue, setTabValue] = useState(0);
 
+  const normalizeLookupText = (value) => {
+    const translitMap = {
+      а: 'a',
+      б: 'b',
+      в: 'v',
+      г: 'h',
+      ґ: 'g',
+      д: 'd',
+      е: 'e',
+      є: 'ye',
+      ж: 'zh',
+      з: 'z',
+      и: 'y',
+      і: 'i',
+      ї: 'yi',
+      й: 'y',
+      к: 'k',
+      л: 'l',
+      м: 'm',
+      н: 'n',
+      о: 'o',
+      п: 'p',
+      р: 'r',
+      с: 's',
+      т: 't',
+      у: 'u',
+      ф: 'f',
+      х: 'kh',
+      ц: 'ts',
+      ч: 'ch',
+      ш: 'sh',
+      щ: 'shch',
+      ь: '',
+      ю: 'yu',
+      я: 'ya',
+      э: 'e',
+      ё: 'yo',
+      ъ: '',
+      ы: 'y',
+    };
+    return String(value || '')
+      .toLowerCase()
+      .split('')
+      .map((ch) => translitMap[ch] ?? ch)
+      .join('')
+      .replace(/[^a-z0-9]/g, '');
+  };
+
+  const findBrandKey = (rawBrand) => {
+    const source = normalizeLookupText(rawBrand);
+    if (!source) return '';
+    const brands = Object.keys(brandModelYears);
+    const exact = brands.find((brand) => normalizeLookupText(brand) === source);
+    if (exact) return exact;
+    const partial = brands.find((brand) => {
+      const normalizedBrand = normalizeLookupText(brand);
+      return normalizedBrand.includes(source) || source.includes(normalizedBrand);
+    });
+    return partial || '';
+  };
+
+  const findModelKey = (brandKey, rawModel) => {
+    if (!brandKey || !rawModel || !brandModelYears[brandKey]) return '';
+    const source = normalizeLookupText(rawModel);
+    if (!source) return '';
+    const models = Object.keys(brandModelYears[brandKey] || {});
+    const exact = models.find((model) => normalizeLookupText(model) === source);
+    if (exact) return exact;
+    const partial = models.find((model) => {
+      const normalizedModel = normalizeLookupText(model);
+      return normalizedModel.includes(source) || source.includes(normalizedModel);
+    });
+    return partial || '';
+  };
+
+  const mapEngineType = (fuelValue) => {
+    const fuelRaw = String(fuelValue || '').toUpperCase();
+    if (fuelRaw.includes('BENZINE') || fuelRaw.includes('PETROL') || fuelRaw.includes('БЕНЗИН')) return 'petrol';
+    if (fuelRaw.includes('DIESEL') || fuelRaw.includes('ДИЗЕЛ')) return 'diesel';
+    if (fuelRaw.includes('GAS') || fuelRaw.includes('ГАЗ')) return 'gas';
+    if (fuelRaw.includes('ELECTRO') || fuelRaw.includes('ELECTRIC') || fuelRaw.includes('ЕЛЕКТРО')) return 'electric';
+    if (fuelRaw.includes('HYBRID') || fuelRaw.includes('ГІБРИД')) return 'hybrid';
+    return '';
+  };
+
+  const mapColorKey = (rawColor) => {
+    const colorRaw = String(rawColor || '').toLowerCase().trim();
+    if (!colorRaw) return '';
+    const validColors = ['black', 'white', 'gray', 'silver', 'red', 'blue', 'green', 'yellow', 'brown', 'orange', 'purple', 'beige'];
+    const colorMap = {
+      'чорний': 'black',
+      black: 'black',
+      'білий': 'white',
+      white: 'white',
+      'сірий': 'gray',
+      gray: 'gray',
+      'срібний': 'silver',
+      'сріблястий': 'silver',
+      silver: 'silver',
+      'червоний': 'red',
+      red: 'red',
+      'синій': 'blue',
+      blue: 'blue',
+      'зелений': 'green',
+      green: 'green',
+      'жовтий': 'yellow',
+      yellow: 'yellow',
+      'коричневий': 'brown',
+      brown: 'brown',
+      'оранжевий': 'orange',
+      'помаранчевий': 'orange',
+      orange: 'orange',
+      'фіолетовий': 'purple',
+      purple: 'purple',
+      'бежевий': 'beige',
+      beige: 'beige'
+    };
+    if (validColors.includes(colorRaw)) return colorRaw;
+    return colorMap[colorRaw] || '';
+  };
+
+  const mergeLocalVehicleToForm = (prev, localData) => {
+    const next = { ...prev };
+    const isEmpty = (value) => value === '' || value === null || value === undefined;
+    const localBrandRaw = localData?.brand || localData?.make || '';
+    const localBrand = findBrandKey(localBrandRaw);
+    const localModel = findModelKey(localBrand, localData?.model || '');
+
+    if (isEmpty(next.brand) && localBrand) next.brand = localBrand;
+    if (isEmpty(next.model) && localModel) next.model = localModel;
+    if (isEmpty(next.year) && localData?.year) next.year = String(localData.year);
+    if (isEmpty(next.vin) && localData?.vin) next.vin = localData.vin;
+    if (isEmpty(next.engineType) && localData?.engineType) next.engineType = localData.engineType;
+    if (isEmpty(next.transmission) && localData?.transmission) next.transmission = localData.transmission;
+    if (isEmpty(next.engineVolume) && localData?.engineVolume) next.engineVolume = String(localData.engineVolume);
+    if (isEmpty(next.color) && localData?.color) next.color = mapColorKey(localData.color) || String(localData.color);
+    if (isEmpty(next.mileage) && localData?.mileage != null) next.mileage = String(localData.mileage);
+    if (isEmpty(next.photoUrl) && localData?.photoUrl) next.photoUrl = localData.photoUrl;
+    if (localData?.licensePlate) next.licensePlate = String(localData.licensePlate);
+    return next;
+  };
+
+  const mergeRegistryVehicleToForm = (prev, registryData, recognizedPlate) => {
+    const next = { ...prev };
+    const isEmpty = (value) => value === '' || value === null || value === undefined;
+    const rawBrand = registryData?.brand || registryData?.make || '';
+    const rawModel = registryData?.model || '';
+    const brandKey = findBrandKey(rawBrand);
+    const modelKey = findModelKey(brandKey, rawModel);
+    const registryYear = registryData?.make_year || registryData?.year || null;
+    const licenseValue =
+      registryData?.n_reg_new ||
+      registryData?.license_plate_normalized ||
+      registryData?.license_plate ||
+      registryData?.licensePlate ||
+      recognizedPlate ||
+      '';
+    const engineType = mapEngineType(registryData?.fuel_type || registryData?.fuel);
+    const colorKey = mapColorKey(registryData?.color);
+
+    if (brandKey) next.brand = brandKey;
+    if (modelKey) next.model = modelKey;
+    if (registryYear) {
+      const yearNumber = Number(registryYear);
+      if (
+        brandKey &&
+        modelKey &&
+        Number.isFinite(yearNumber) &&
+        Array.isArray(brandModelYears?.[brandKey]?.[modelKey]) &&
+        brandModelYears[brandKey][modelKey].includes(yearNumber)
+      ) {
+        next.year = yearNumber;
+      } else if (isEmpty(next.year)) {
+        next.year = String(registryYear);
+      }
+    }
+    if (isEmpty(next.vin) && registryData?.vin) next.vin = registryData.vin;
+    if (colorKey) next.color = colorKey;
+    if (licenseValue) next.licensePlate = String(licenseValue);
+    if (isEmpty(next.engineType) && engineType) next.engineType = engineType;
+    if (isEmpty(next.engineVolume) && registryData?.engine_volume != null && registryData?.engine_volume !== '') {
+      next.engineVolume = String(registryData.engine_volume);
+    }
+    return next;
+  };
+
   // Initialize tab from URL query params
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -462,7 +648,7 @@ const VehicleDetailsContent = () => {
 
           setFormData((prev) => ({
             ...prev,
-            licensePlate: prev.licensePlate ? prev.licensePlate : normalizedPlate,
+            licensePlate: normalizedPlate,
           }));
 
           try {
@@ -475,25 +661,7 @@ const VehicleDetailsContent = () => {
               );
               if (local && (local.brand || local.make || local.model || local.vin)) {
                 filledFromDb = true;
-                setFormData((prev) => {
-                  const next = { ...prev };
-
-                  const isEmpty = (value) => value === '' || value === null || value === undefined;
-
-                  if (isEmpty(next.brand) && (local.brand || local.make)) next.brand = local.brand || local.make;
-                  if (isEmpty(next.model) && local.model) next.model = local.model;
-                  if (isEmpty(next.year) && local.year) next.year = String(local.year);
-                  if (isEmpty(next.vin) && local.vin) next.vin = local.vin;
-                  if (isEmpty(next.engineType) && local.engineType) next.engineType = local.engineType;
-                  if (isEmpty(next.transmission) && local.transmission) next.transmission = local.transmission;
-                  if (isEmpty(next.engineVolume) && local.engineVolume) next.engineVolume = String(local.engineVolume);
-                  if (isEmpty(next.color) && local.color) next.color = local.color;
-                  if (isEmpty(next.mileage) && local.mileage != null) next.mileage = String(local.mileage);
-                  if (isEmpty(next.photoUrl) && local.photoUrl) next.photoUrl = local.photoUrl;
-                  if (isEmpty(next.licensePlate) && local.licensePlate) next.licensePlate = local.licensePlate;
-
-                  return next;
-                });
+                setFormData((prev) => mergeLocalVehicleToForm(prev, local));
               }
             } catch (dbErr) {
               void dbErr;
@@ -501,54 +669,7 @@ const VehicleDetailsContent = () => {
 
             if (!filledFromDb) {
               const registry = await lookupRegistryByLicensePlate(normalizedPlate);
-              const rawBrand = registry?.brand || registry?.make || '';
-              const rawModel = registry?.model || '';
-              const registryYear = registry?.make_year || registry?.year || null;
-
-              const brandKey = rawBrand
-                ? Object.keys(brandModelYears).find(
-                    (b) => String(b).toLowerCase() === String(rawBrand).toLowerCase()
-                  ) || ''
-                : '';
-              const modelKey =
-                brandKey && rawModel && brandModelYears[brandKey]
-                  ? Object.keys(brandModelYears[brandKey]).find(
-                      (m) => String(m).toLowerCase() === String(rawModel).toLowerCase()
-                    ) || ''
-                  : '';
-
-              setFormData((prev) => {
-                const next = { ...prev };
-
-                const isEmpty = (value) => value === '' || value === null || value === undefined;
-
-                const licenseValue =
-                  registry?.n_reg_new ||
-                  registry?.license_plate_normalized ||
-                  registry?.license_plate ||
-                  registry?.licensePlate ||
-                  '';
-
-                let engineType = '';
-                const fuelRaw = String(registry?.fuel_type || registry?.fuel || '').toUpperCase();
-                if (fuelRaw.includes('BENZINE') || fuelRaw.includes('PETROL') || fuelRaw.includes('БЕНЗИН')) engineType = 'petrol';
-                else if (fuelRaw.includes('DIESEL') || fuelRaw.includes('ДИЗЕЛ')) engineType = 'diesel';
-                else if (fuelRaw.includes('GAS') || fuelRaw.includes('ГАЗ')) engineType = 'gas';
-                else if (fuelRaw.includes('ELECTRO') || fuelRaw.includes('ELECTRIC') || fuelRaw.includes('ЕЛЕКТРО')) engineType = 'electric';
-                else if (fuelRaw.includes('HYBRID') || fuelRaw.includes('ГІБРИД')) engineType = 'hybrid';
-
-                if (isEmpty(next.brand) && brandKey) next.brand = brandKey;
-                if (isEmpty(next.model) && modelKey) next.model = modelKey;
-                if (isEmpty(next.year) && registryYear) next.year = String(registryYear);
-                if (isEmpty(next.vin) && registry?.vin) next.vin = registry.vin;
-                if (isEmpty(next.color) && registry?.color) next.color = String(registry.color);
-                if (isEmpty(next.licensePlate) && licenseValue) next.licensePlate = String(licenseValue);
-                if (isEmpty(next.engineType) && engineType) next.engineType = engineType;
-                if (isEmpty(next.engineVolume) && registry?.engine_volume != null && registry?.engine_volume !== '') {
-                  next.engineVolume = String(registry.engine_volume);
-                }
-                return next;
-              });
+              setFormData((prev) => mergeRegistryVehicleToForm(prev, registry, normalizedPlate));
             }
           } catch (err) {
             void err;
@@ -685,22 +806,7 @@ const VehicleDetailsContent = () => {
           lookupUserId ? { userId: lookupUserId } : undefined
         );
         if (local && (local.brand || local.make || local.model || local.vin)) {
-          setFormData((prev) => {
-            const next = { ...prev };
-            const isEmpty = (value) => value === '' || value === null || value === undefined;
-            if (isEmpty(next.brand) && (local.brand || local.make)) next.brand = local.brand || local.make;
-            if (isEmpty(next.model) && local.model) next.model = local.model;
-            if (isEmpty(next.year) && local.year) next.year = String(local.year);
-            if (isEmpty(next.vin) && local.vin) next.vin = local.vin;
-            if (isEmpty(next.engineType) && local.engineType) next.engineType = local.engineType;
-            if (isEmpty(next.transmission) && local.transmission) next.transmission = local.transmission;
-            if (isEmpty(next.engineVolume) && local.engineVolume) next.engineVolume = String(local.engineVolume);
-            if (isEmpty(next.color) && local.color) next.color = local.color;
-            if (isEmpty(next.mileage) && local.mileage != null) next.mileage = String(local.mileage);
-            if (isEmpty(next.photoUrl) && local.photoUrl) next.photoUrl = local.photoUrl;
-            if (local.licensePlate) next.licensePlate = local.licensePlate;
-            return next;
-          });
+          setFormData((prev) => mergeLocalVehicleToForm(prev, local));
           return;
         }
       } catch (dbErr) {
@@ -708,78 +814,7 @@ const VehicleDetailsContent = () => {
       }
 
       const registry = await lookupRegistryByLicensePlate(normalizedPlate);
-      const rawBrand = registry?.brand || registry?.make || '';
-      const rawModel = registry?.model || '';
-      const brandKey = rawBrand
-        ? Object.keys(brandModelYears).find(
-            (key) => key.toLowerCase() === String(rawBrand).toLowerCase()
-          )
-        : null;
-      const modelKey =
-        brandKey && rawModel
-          ? Object.keys(brandModelYears[brandKey]).find(
-              (key) => key.toLowerCase() === String(rawModel).toLowerCase()
-            )
-          : null;
-      const registryYear = registry?.make_year || registry?.year || null;
-      const licenseValue =
-        registry?.n_reg_new ||
-        registry?.license_plate_normalized ||
-        normalizedPlate;
-      
-      let engineType = '';
-      const fuelRaw = String(registry?.fuel_type || '').toUpperCase();
-      if (fuelRaw.includes('BENZINE') || fuelRaw.includes('PETROL') || fuelRaw.includes('БЕНЗИН')) engineType = 'petrol';
-      else if (fuelRaw.includes('DIESEL') || fuelRaw.includes('ДИЗЕЛЬ')) engineType = 'diesel';
-      else if (fuelRaw.includes('GAS') || fuelRaw.includes('ГАЗ')) engineType = 'gas';
-      else if (fuelRaw.includes('ELECTRO') || fuelRaw.includes('ELECTRIC') || fuelRaw.includes('ЕЛЕКТРО')) engineType = 'electric';
-      else if (fuelRaw.includes('HYBRID') || fuelRaw.includes('ГІБРИД')) engineType = 'hybrid';
-
-      let colorKey = '';
-      const colorRaw = String(registry?.color || '').toLowerCase();
-      const validColors = ['black', 'white', 'gray', 'silver', 'red', 'blue', 'green', 'yellow', 'brown', 'orange', 'purple', 'beige'];
-      
-      const colorMap = {
-        'чорний': 'black', 'black': 'black',
-        'білий': 'white', 'white': 'white',
-        'сірий': 'gray', 'gray': 'gray',
-        'срібний': 'silver', 'сріблястий': 'silver', 'silver': 'silver',
-        'червоний': 'red', 'red': 'red',
-        'синій': 'blue', 'blue': 'blue',
-        'зелений': 'green', 'green': 'green',
-        'жовтий': 'yellow', 'yellow': 'yellow',
-        'коричневий': 'brown', 'brown': 'brown',
-        'оранжевий': 'orange', 'помаранчевий': 'orange', 'orange': 'orange',
-        'фіолетовий': 'purple', 'purple': 'purple',
-        'бежевий': 'beige', 'beige': 'beige'
-      };
-
-      if (validColors.includes(colorRaw)) {
-        colorKey = colorRaw;
-      } else if (colorMap[colorRaw]) {
-        colorKey = colorMap[colorRaw];
-      }
-
-      setFormData((prev) => {
-        const next = { ...prev };
-        if (brandKey) next.brand = brandKey;
-        if (modelKey) next.model = modelKey;
-        if (
-          brandKey &&
-          modelKey &&
-          registryYear &&
-          brandModelYears[brandKey][modelKey].includes(Number(registryYear))
-        ) {
-          next.year = Number(registryYear);
-        }
-        if (registry?.vin) next.vin = registry.vin;
-        if (colorKey) next.color = colorKey;
-        if (licenseValue) next.licensePlate = licenseValue;
-        if (engineType) next.engineType = engineType;
-        if (registry?.engine_volume) next.engineVolume = registry.engine_volume;
-        
-        return next;
-      });
+      setFormData((prev) => mergeRegistryVehicleToForm(prev, registry, normalizedPlate));
     } catch (err) {
       setLookupError(t('vehicle.lookupFailed', 'Не вдалося знайти дані за номером'));
     } finally {
