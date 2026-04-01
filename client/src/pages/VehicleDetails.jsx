@@ -661,7 +661,10 @@ const VehicleDetailsContent = () => {
               setFormData((prev) => mergeRegistryVehicleToForm(prev, registry, normalizedPlate));
             }
           } catch (err) {
-            void err;
+            const msg = String(err?.message || '').trim();
+            if (msg) {
+              setLookupError(msg);
+            }
           }
         } catch (err) {
           const rawMessage = String(err?.message || '');

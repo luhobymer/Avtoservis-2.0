@@ -369,10 +369,10 @@ export async function recognizeLicensePlateFromPhoto(file) {
       window.location?.hash?.includes('ocrDebug=1'));
   const url = ocrDebug ? resolveUrl('/api/ocr/plate?debug=1') : resolveUrl('/api/ocr/plate');
   const sleep = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
-  const timeoutMs = 60000;
+  const timeoutMs = 30000;
   const startedAt = Date.now();
 
-  const maxRetries = 3;
+  const maxRetries = 1;
   let lastHttpBody = null;
 
   let response;
