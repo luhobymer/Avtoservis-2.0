@@ -125,6 +125,14 @@ const getVehicleLicensePlate = (vehicle, licenseColumn) => {
   );
 };
 
+const findVehicleByNormalizedPlate = (vehicles, licenseColumn, plate) => {
+  const target = normalizeLicensePlate(plate);
+  return (vehicles || []).find((vehicle) => {
+    const candidate = getVehicleLicensePlate(vehicle, licenseColumn);
+    return normalizeLicensePlate(candidate) === target;
+  });
+};
+
 const parseServiceIdFromAppointment = (appointment) => {
   if (appointment && appointment.service_id) return String(appointment.service_id);
   const raw = appointment && appointment.service_ids ? String(appointment.service_ids) : '';
@@ -788,9 +796,29 @@ exports.getVehicleByLicensePlate = async (req, res) => {
     const db = await getDb();
     const { licenseColumn, ownerColumn } = await getVehicleColumnInfo(db);
 
-    const vehicle = await db
+    let vehicle = await db
       .prepare(`SELECT * FROM vehicles WHERE ${ownerColumn} = ? AND ${licenseColumn} = ? LIMIT 1`)
       .get(targetUserId, plate);
+
+    if (!vehicle) {
+      const ownerVehicles = await db
+        .prepare(`SELECT * FROM vehicles WHERE ${ownerColumn} = ? AND ${licenseColumn} IS NOT NULL`)
+        .all(targetUserId);
+      vehicle = findVehicleByNormalizedPlate(ownerVehicles, licenseColumn, plate) || null;
+    }
+
+    if (!vehicle && isMaster) {
+      vehicle = await db
+        .prepare(`SELECT * FROM vehicles WHERE ${licenseColumn} = ? LIMIT 1`)
+        .get(plate);
+
+      if (!vehicle) {
+        const allVehicles = await db
+          .prepare(`SELECT * FROM vehicles WHERE ${licenseColumn} IS NOT NULL`)
+          .all();
+        vehicle = findVehicleByNormalizedPlate(allVehicles, licenseColumn, plate) || null;
+      }
+    }
 
     if (!vehicle) {
       return res.status(404).json({ message: 'Автомобіль не знайдено' });
