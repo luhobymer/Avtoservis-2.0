@@ -5,15 +5,15 @@ jest.mock('jimp', () => {
   throw new Error('Jimp disabled in tests');
 });
 
-const recognizeMock = jest.fn();
-const setParametersMock = jest.fn();
-const terminateMock = jest.fn();
+const mockRecognize = jest.fn();
+const mockSetParameters = jest.fn();
+const mockTerminate = jest.fn();
 
 jest.mock('tesseract.js', () => ({
   createWorker: jest.fn(async () => ({
-    setParameters: setParametersMock,
-    recognize: recognizeMock,
-    terminate: terminateMock,
+    setParameters: mockSetParameters,
+    recognize: mockRecognize,
+    terminate: mockTerminate,
   })),
 }));
 
@@ -24,13 +24,13 @@ describe('OCR Plate Route - integration (mocked tesseract)', () => {
     jwt.sign(payload, process.env.JWT_SECRET || 'test-secret', { expiresIn: '1h' });
 
   beforeEach(() => {
-    recognizeMock.mockReset();
-    setParametersMock.mockReset();
-    terminateMock.mockReset();
+    mockRecognize.mockReset();
+    mockSetParameters.mockReset();
+    mockTerminate.mockReset();
   });
 
   test('POST /api/ocr/plate returns licensePlate when OCR text contains a plate', async () => {
-    recognizeMock.mockResolvedValueOnce({ data: { text: 'KA 2878 IA' } });
+    mockRecognize.mockResolvedValueOnce({ data: { text: 'KA 2878 IA' } });
 
     const token = signToken({ id: 'u1', email: 'u1@example.com', role: 'client' });
 
@@ -42,11 +42,11 @@ describe('OCR Plate Route - integration (mocked tesseract)', () => {
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty('licensePlate', 'KA2878IA');
     expect(typeof res.body.rawText).toBe('string');
-    expect(recognizeMock).toHaveBeenCalled();
+    expect(mockRecognize).toHaveBeenCalled();
   });
 
   test('POST /api/ocr/plate?debug=1 returns debug attempts payload', async () => {
-    recognizeMock.mockResolvedValueOnce({ data: { text: 'AA1234BB' } });
+    mockRecognize.mockResolvedValueOnce({ data: { text: 'AA1234BB' } });
 
     const token = signToken({ id: 'u2', email: 'u2@example.com', role: 'client' });
 
