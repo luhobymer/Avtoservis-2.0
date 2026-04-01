@@ -176,7 +176,7 @@ async function withPlateWorker(fn) {
   const prev = plateWorkerBusy;
   plateWorkerBusy = prev.then(() => next);
   try {
-    await withTimeout(prev, 120000);
+    await withTimeout(prev, 45000);
   } catch (_) {
     const err = new Error('OCR busy');
     err.code = 'OCR_BUSY';
@@ -258,7 +258,7 @@ exports.parseLicensePlateFromImage = async (req, res) => {
     if (Jimp) {
       try {
         const preprocessStartedAt = Date.now();
-        const preprocessBudgetMs = 25000;
+        const preprocessBudgetMs = 15000;
         const readTimeoutMs = 10000;
 
         const remainingMs = () =>
@@ -456,8 +456,8 @@ exports.parseLicensePlateFromImage = async (req, res) => {
     const result = await withTimeout(
       withPlateWorker(async (worker) => {
         const psmModes = ['7', '6', '11'];
-        const perAttemptTimeoutMs = 12000;
-        const overallTimeoutMs = 25000;
+        const perAttemptTimeoutMs = 8000;
+        const overallTimeoutMs = 20000;
         const startedAt = Date.now();
         let bestText = '';
         let bestPlate = null;
@@ -515,7 +515,7 @@ exports.parseLicensePlateFromImage = async (req, res) => {
 
         return { bestPlate, bestText, attempts };
       }),
-      30000,
+      25000,
       () => {
         void resetPlateWorker();
       }

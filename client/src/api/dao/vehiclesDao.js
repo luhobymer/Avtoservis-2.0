@@ -126,7 +126,7 @@ async function prepareImageForOcr(file) {
   }
 
   const shouldReencode =
-    file.size > 4 * 1024 * 1024 || type.includes('heic') || type.includes('heif');
+    file.size > 2 * 1024 * 1024 || type.includes('heic') || type.includes('heif');
   if (!shouldReencode || typeof document === 'undefined') {
     return file;
   }
@@ -147,7 +147,7 @@ async function prepareImageForOcr(file) {
       return file;
     }
 
-    const maxSide = 1800;
+    const maxSide = 1400;
     const ratio = Math.min(1, maxSide / Math.max(width, height));
     const targetW = Math.max(1, Math.round(width * ratio));
     const targetH = Math.max(1, Math.round(height * ratio));
@@ -369,7 +369,7 @@ export async function recognizeLicensePlateFromPhoto(file) {
       window.location?.hash?.includes('ocrDebug=1'));
   const url = ocrDebug ? resolveUrl('/api/ocr/plate?debug=1') : resolveUrl('/api/ocr/plate');
   const sleep = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
-  const timeoutMs = 120000;
+  const timeoutMs = 60000;
   const startedAt = Date.now();
 
   const maxRetries = 3;
