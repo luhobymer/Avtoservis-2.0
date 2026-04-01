@@ -303,59 +303,85 @@ export async function recognizeLicensePlateFromPhoto(file) {
       window.location?.hash?.includes('ocrDebug=1') ||
       localStorage.getItem('ocr_debug_plate') === '1');
   const url = ocrDebug ? resolveUrl('/api/ocr/plate?debug=1') : resolveUrl('/api/ocr/plate');
-
-  const controller = new AbortController();
+  const sleep = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
   const timeoutMs = 120000;
-  const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
   const startedAt = Date.now();
 
+  const maxRetries = 2;
+  let lastHttpStatus = null;
+  let lastHttpBody = null;
+
   let response;
-  try {
-    response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        ...(token ? { Authorization: `Bearer ${token}` } : {})
-      },
-      body: formData,
-      signal: controller.signal,
-    });
-  } catch (err) {
-    if (err?.name === 'AbortError') {
+  for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: formData,
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        lastHttpStatus = response.status;
+        try {
+          lastHttpBody = await response.json();
+        } catch (err) {
+          void err;
+          lastHttpBody = null;
+        }
+
+        const message = String(lastHttpBody?.message || lastHttpBody?.error || '').toLowerCase();
+        const isBusy = response.status === 503 && message.includes('busy');
+
+        if (isBusy && attempt < maxRetries) {
+          await sleep(300 + attempt * 450);
+          continue;
+        }
+      }
+
+      break;
+    } catch (err) {
+      if (err?.name === 'AbortError') {
+        if (ocrDebug) {
+          try {
+            window.__OCR_DEBUG_PLATE__ = {
+              clientError: 'OCR timeout',
+              requestUrl: url,
+              timeoutMs,
+              elapsedMs: Date.now() - startedAt,
+            };
+          } catch (debugErr) {
+            void debugErr;
+          }
+        }
+        throw new Error('OCR timeout');
+      }
       if (ocrDebug) {
         try {
           window.__OCR_DEBUG_PLATE__ = {
-            clientError: 'OCR timeout',
+            clientError: String(err?.message || err),
             requestUrl: url,
-            timeoutMs,
             elapsedMs: Date.now() - startedAt,
           };
         } catch (debugErr) {
           void debugErr;
         }
       }
-      throw new Error('OCR timeout');
+      throw err;
+    } finally {
+      window.clearTimeout(timeoutId);
     }
-    if (ocrDebug) {
-      try {
-        window.__OCR_DEBUG_PLATE__ = {
-          clientError: String(err?.message || err),
-          requestUrl: url,
-          elapsedMs: Date.now() - startedAt,
-        };
-      } catch (debugErr) {
-        void debugErr;
-      }
-    }
-    throw err;
-  } finally {
-    window.clearTimeout(timeoutId);
   }
 
   if (!response.ok) {
     let message = 'OCR plate failed';
     let debugBody = null;
     try {
-      const body = await response.json();
+      const body = lastHttpBody ?? (await response.json());
       debugBody = body;
       if (body && typeof body.message === 'string' && body.message.trim()) {
         message = body.message;

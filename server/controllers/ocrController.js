@@ -176,7 +176,7 @@ async function withPlateWorker(fn) {
   const prev = plateWorkerBusy;
   plateWorkerBusy = prev.then(() => next);
   try {
-    await withTimeout(prev, 5000);
+    await withTimeout(prev, 30000);
   } catch (_) {
     const err = new Error('OCR busy');
     err.code = 'OCR_BUSY';
