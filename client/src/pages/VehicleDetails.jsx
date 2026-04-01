@@ -65,18 +65,7 @@ const VehicleDetailsContent = () => {
   const ocrDebugEnabled =
     typeof window !== 'undefined' &&
     (window.location?.search?.includes('ocrDebug=1') ||
-      window.location?.hash?.includes('ocrDebug=1') ||
-      localStorage.getItem('ocr_debug_plate') === '1');
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    if (!ocrDebugEnabled) return;
-    try {
-      localStorage.setItem('ocr_debug_plate', '1');
-    } catch (_) {
-      void _;
-    }
-  }, [ocrDebugEnabled]);
+      window.location?.hash?.includes('ocrDebug=1'));
 
   const isMasterUser =
     typeof isMaster === 'function'

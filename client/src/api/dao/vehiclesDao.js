@@ -366,14 +366,13 @@ export async function recognizeLicensePlateFromPhoto(file) {
   const ocrDebug =
     typeof window !== 'undefined' &&
     (window.location?.search?.includes('ocrDebug=1') ||
-      window.location?.hash?.includes('ocrDebug=1') ||
-      localStorage.getItem('ocr_debug_plate') === '1');
+      window.location?.hash?.includes('ocrDebug=1'));
   const url = ocrDebug ? resolveUrl('/api/ocr/plate?debug=1') : resolveUrl('/api/ocr/plate');
   const sleep = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
   const timeoutMs = 120000;
   const startedAt = Date.now();
 
-  const maxRetries = 2;
+  const maxRetries = 3;
   let lastHttpBody = null;
 
   let response;
@@ -399,10 +398,16 @@ export async function recognizeLicensePlateFromPhoto(file) {
         }
 
         const message = String(lastHttpBody?.message || lastHttpBody?.error || '').toLowerCase();
-        const isBusy = response.status === 503 && message.includes('busy');
+        const isRetryableStatus = response.status === 503 || response.status === 504;
+        const isRetryableMessage =
+          message.includes('busy') ||
+          message.includes('timeout') ||
+          message.includes('warming') ||
+          message.includes('preprocess');
+        const isRetryable = isRetryableStatus && isRetryableMessage;
 
-        if (isBusy && attempt < maxRetries) {
-          await sleep(300 + attempt * 450);
+        if (isRetryable && attempt < maxRetries) {
+          await sleep(500 + attempt * 700);
           continue;
         }
       }
@@ -410,6 +415,10 @@ export async function recognizeLicensePlateFromPhoto(file) {
       break;
     } catch (err) {
       if (err?.name === 'AbortError') {
+        if (attempt < maxRetries) {
+          await sleep(500 + attempt * 700);
+          continue;
+        }
         if (ocrDebug) {
           try {
             window.__OCR_DEBUG_PLATE__ = {
