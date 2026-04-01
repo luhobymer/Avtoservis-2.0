@@ -676,7 +676,7 @@ const VehicleDetailsContent = () => {
             }
           }
           if (rawMessage.toLowerCase().includes('ocr timeout') || rawMessage.toLowerCase().includes('timeout')) {
-            setLookupError(t('errors.ocrTimeout', 'Розпізнавання займає забагато часу. Спробуйте інше фото.'));
+            setLookupError(t('vehicle.plateNotRecognized', 'Не вдалося розпізнати номер на фото'));
           } else {
             setLookupError(rawMessage || t('errors.ocrFailed', 'Не вдалося розпізнати зображення'));
           }
