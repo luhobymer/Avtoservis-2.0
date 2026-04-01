@@ -310,6 +310,10 @@ exports.parseLicensePlateFromImage = async (req, res) => {
         }
 
         try {
+          if (remainingMs() < 6000) {
+            preprocessErrors.binary = 'OCR preprocess skipped';
+            throw new Error('OCR preprocess skipped');
+          }
           await runStep('binary', async () => {
             const img = base.clone();
             const w = img.bitmap.width;
@@ -352,12 +356,16 @@ exports.parseLicensePlateFromImage = async (req, res) => {
             await writeImage(img, binaryPreprocessedPath);
           });
         } catch (err) {
-          preprocessErrors.binary = String(err?.message || err);
+          preprocessErrors.binary = preprocessErrors.binary || String(err?.message || err);
           binaryPreprocessedPath = null;
         }
 
         if (debug) {
           try {
+            if (remainingMs() < 8000) {
+              preprocessErrors.bottom = 'OCR preprocess skipped';
+              throw new Error('OCR preprocess skipped');
+            }
             await runStep('bottom', async () => {
               const img = base.clone();
               const w = img.bitmap.width;
@@ -400,11 +408,15 @@ exports.parseLicensePlateFromImage = async (req, res) => {
               await writeImage(img, bottomPreprocessedPath);
             });
           } catch (err) {
-            preprocessErrors.bottom = String(err?.message || err);
+            preprocessErrors.bottom = preprocessErrors.bottom || String(err?.message || err);
             bottomPreprocessedPath = null;
           }
 
           try {
+            if (remainingMs() < 8000) {
+              preprocessErrors.full = 'OCR preprocess skipped';
+              throw new Error('OCR preprocess skipped');
+            }
             await runStep('full', async () => {
               const full = base.clone();
               resizeKeepAspect(full, 1200);
@@ -413,7 +425,7 @@ exports.parseLicensePlateFromImage = async (req, res) => {
               await writeImage(full, fullPreprocessedPath);
             });
           } catch (err) {
-            preprocessErrors.full = String(err?.message || err);
+            preprocessErrors.full = preprocessErrors.full || String(err?.message || err);
             fullPreprocessedPath = null;
           }
         }
@@ -443,7 +455,7 @@ exports.parseLicensePlateFromImage = async (req, res) => {
 
     const result = await withTimeout(
       withPlateWorker(async (worker) => {
-        const psmModes = ['7'];
+        const psmModes = ['7', '6', '11'];
         const perAttemptTimeoutMs = 12000;
         const overallTimeoutMs = 25000;
         const startedAt = Date.now();
