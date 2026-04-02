@@ -4,6 +4,8 @@ const crypto = require('crypto');
 
 let dbInstancePromise;
 
+let hasLoggedD1Env = false;
+
 const getEnv = (name) => {
   const value = process.env[name];
   return value && String(value).trim() ? String(value).trim() : null;
@@ -15,7 +17,35 @@ const getD1Config = (overrideDbId = null) => {
   }
   const accountId = getEnv('CLOUDFLARE_ACCOUNT_ID');
   const databaseId = overrideDbId || getEnv('CLOUDFLARE_D1_DATABASE_ID');
-  const apiToken = getEnv('CLOUDFLARE_API_TOKEN_D1') || getEnv('CLOUDFLARE_API_TOKEN');
+  const tokenD1 = getEnv('CLOUDFLARE_API_TOKEN_D1');
+  const tokenDefault = getEnv('CLOUDFLARE_API_TOKEN');
+  const apiToken = tokenD1 || tokenDefault;
+  const tokenSource = tokenD1 ? 'CLOUDFLARE_API_TOKEN_D1' : tokenDefault ? 'CLOUDFLARE_API_TOKEN' : null;
+
+  if (!hasLoggedD1Env && process.env.NODE_ENV === 'production') {
+    hasLoggedD1Env = true;
+    try {
+      const tokenPreview = apiToken ? String(apiToken) : '';
+      const tokenLen = tokenPreview.length;
+      const hasWhitespace = apiToken ? /\s/.test(tokenPreview) : false;
+      const tokenHash = apiToken
+        ? crypto.createHash('sha256').update(tokenPreview).digest('hex').slice(0, 12)
+        : null;
+      console.log('[D1] env', {
+        hasAccountId: Boolean(accountId),
+        hasDatabaseId: Boolean(databaseId),
+        tokenSource,
+        tokenLen,
+        hasWhitespace,
+        accountIdPrefix: accountId ? String(accountId).slice(0, 6) : null,
+        databaseIdPrefix: databaseId ? String(databaseId).slice(0, 6) : null,
+        tokenHash,
+      });
+    } catch (err) {
+      console.log('[D1] env log failed');
+      void err;
+    }
+  }
   if (!accountId || !databaseId || !apiToken) {
     return null;
   }
