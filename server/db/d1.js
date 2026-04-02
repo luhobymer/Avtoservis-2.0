@@ -35,10 +35,38 @@ const createD1Client = ({ accountId, databaseId, apiToken }) => {
       body: JSON.stringify({ sql, params }),
     });
 
-    const payload = await response.json();
+    let payload = null;
+    let rawText = null;
+    try {
+      payload = await response.json();
+    } catch (err) {
+      try {
+        rawText = await response.text();
+      } catch (_) {
+        void _;
+      }
+      const msg = rawText
+        ? `D1 query failed (http ${response.status}): ${rawText}`
+        : `D1 query failed (http ${response.status})`;
+      const error = new Error(msg);
+      error.status = response.status;
+      error.code = 'D1_BAD_RESPONSE';
+      throw error;
+    }
+
     if (!payload?.success) {
-      const error = payload?.errors?.[0]?.message || 'D1 query failed';
-      throw new Error(error);
+      const details = Array.isArray(payload?.errors) ? payload.errors : [];
+      const first = details[0] || null;
+      const cloudflareMessage = first?.message || null;
+      const cloudflareCode = first?.code || null;
+      const msgParts = ['D1 query failed'];
+      msgParts.push(`http ${response.status}`);
+      if (cloudflareMessage) msgParts.push(cloudflareMessage);
+      if (cloudflareCode) msgParts.push(`code ${cloudflareCode}`);
+      const error = new Error(msgParts.join(' | '));
+      error.status = response.status;
+      error.cloudflare = { code: cloudflareCode, message: cloudflareMessage };
+      throw error;
     }
     const result = Array.isArray(payload.result) ? payload.result[0] : payload.result;
     if (!result?.success) {

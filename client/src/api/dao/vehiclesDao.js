@@ -300,10 +300,35 @@ export async function lookupRegistryByLicensePlate(licensePlate) {
   if (!licensePlate) {
     throw new Error('License plate is required');
   }
-  const payload = await requestJson(
+
+  const token = localStorage.getItem('auth_token');
+  const url = resolveUrl(
     `/api/vehicle-registry?license_plate=${encodeURIComponent(licensePlate)}`
   );
-  return payload;
+  const response = await fetch(url, {
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  });
+
+  if (response.status === 404) {
+    return null;
+  }
+
+  if (!response.ok) {
+    let message = `Request failed with status ${response.status}`;
+    try {
+      const errorBody = await response.json();
+      if (errorBody && typeof errorBody.message === 'string' && errorBody.message.trim()) {
+        message = errorBody.message;
+      }
+    } catch (err) {
+      void err;
+    }
+    throw new Error(message);
+  }
+
+  return response.json();
 }
 
 export async function getByLicensePlate(licensePlate, options = {}) {
@@ -372,7 +397,7 @@ export async function recognizeLicensePlateFromPhoto(file) {
   const timeoutMs = 60000;
   const startedAt = Date.now();
 
-  const maxRetries = 1;
+  const maxRetries = 2;
   let lastHttpBody = null;
 
   let response;
@@ -407,7 +432,7 @@ export async function recognizeLicensePlateFromPhoto(file) {
         const isRetryable = isRetryableStatus && isRetryableMessage;
 
         if (isRetryable && attempt < maxRetries) {
-          await sleep(500 + attempt * 700);
+          await sleep(700 + attempt * 900);
           continue;
         }
       }
@@ -416,7 +441,7 @@ export async function recognizeLicensePlateFromPhoto(file) {
     } catch (err) {
       if (err?.name === 'AbortError') {
         if (attempt < maxRetries) {
-          await sleep(500 + attempt * 700);
+          await sleep(700 + attempt * 900);
           continue;
         }
         if (ocrDebug) {
