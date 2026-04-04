@@ -49,11 +49,37 @@ const getD1Config = (overrideDbId = null) => {
   if (!accountId || !databaseId || !apiToken) {
     return null;
   }
-  return { accountId, databaseId, apiToken };
+  return { accountId, databaseId, apiToken, tokenSource };
 };
 
-const createD1Client = ({ accountId, databaseId, apiToken }) => {
+const createD1Client = ({ accountId, databaseId, apiToken, tokenSource }) => {
   const baseUrl = `https://api.cloudflare.com/client/v4/accounts/${accountId}/d1/database/${databaseId}/query`;
+
+  const d1Env = (() => {
+    try {
+      const tokenPreview = apiToken ? String(apiToken) : '';
+      return {
+        tokenSource: tokenSource || null,
+        tokenLen: tokenPreview.length,
+        hasWhitespace: apiToken ? /\s/.test(tokenPreview) : false,
+        accountIdPrefix: accountId ? String(accountId).slice(0, 6) : null,
+        databaseIdPrefix: databaseId ? String(databaseId).slice(0, 6) : null,
+        tokenHash: apiToken
+          ? crypto.createHash('sha256').update(tokenPreview).digest('hex').slice(0, 12)
+          : null,
+      };
+    } catch (err) {
+      void err;
+      return {
+        tokenSource: tokenSource || null,
+        tokenLen: null,
+        hasWhitespace: null,
+        accountIdPrefix: accountId ? String(accountId).slice(0, 6) : null,
+        databaseIdPrefix: databaseId ? String(databaseId).slice(0, 6) : null,
+        tokenHash: null,
+      };
+    }
+  })();
 
   const query = async (sql, params = []) => {
     const response = await fetch(baseUrl, {
@@ -81,6 +107,7 @@ const createD1Client = ({ accountId, databaseId, apiToken }) => {
       const error = new Error(msg);
       error.status = response.status;
       error.code = 'D1_BAD_RESPONSE';
+      error.d1Env = d1Env;
       throw error;
     }
 
@@ -96,6 +123,7 @@ const createD1Client = ({ accountId, databaseId, apiToken }) => {
       const error = new Error(msgParts.join(' | '));
       error.status = response.status;
       error.cloudflare = { code: cloudflareCode, message: cloudflareMessage };
+      error.d1Env = d1Env;
       throw error;
     }
     const result = Array.isArray(payload.result) ? payload.result[0] : payload.result;
