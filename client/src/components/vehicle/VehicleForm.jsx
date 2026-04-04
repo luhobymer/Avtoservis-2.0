@@ -265,6 +265,14 @@ const VehicleForm = ({
               disabled={!formData.brand}
               required
             >
+              {formData.brand &&
+                formData.model &&
+                brandModelYears[formData.brand] &&
+                !Object.prototype.hasOwnProperty.call(brandModelYears[formData.brand], formData.model) && (
+                  <MenuItem key={`custom-model-${formData.model}`} value={formData.model}>
+                    {formData.model}
+                  </MenuItem>
+                )}
               {formData.brand && brandModelYears[formData.brand] && 
                 Object.keys(brandModelYears[formData.brand]).sort().map((model) => (
                   <MenuItem key={model} value={model}>{model}</MenuItem>
@@ -287,6 +295,15 @@ const VehicleForm = ({
               disabled={!formData.brand || !formData.model}
               required
             >
+              {formData.brand &&
+                formData.model &&
+                formData.year &&
+                Array.isArray(brandModelYears?.[formData.brand]?.[formData.model]) &&
+                !brandModelYears[formData.brand][formData.model].includes(Number(formData.year)) && (
+                  <MenuItem key={`custom-year-${formData.year}`} value={formData.year}>
+                    {formData.year}
+                  </MenuItem>
+                )}
               {formData.brand && formData.model && brandModelYears[formData.brand] && brandModelYears[formData.brand][formData.model] &&
                 brandModelYears[formData.brand][formData.model].map((year) => (
                   <MenuItem key={year} value={year}>{year}</MenuItem>

@@ -281,7 +281,11 @@ const VehicleDetailsContent = () => {
     const colorKey = mapColorKey(registryData?.color);
 
     if (brandKey) next.brand = brandKey;
-    if (modelKey) next.model = modelKey;
+    if (modelKey) {
+      next.model = modelKey;
+    } else if (isEmpty(next.model) && rawModel) {
+      next.model = String(rawModel).trim();
+    }
     if (registryYear) {
       const yearNumber = Number(registryYear);
       if (
@@ -291,7 +295,7 @@ const VehicleDetailsContent = () => {
         Array.isArray(brandModelYears?.[brandKey]?.[modelKey]) &&
         brandModelYears[brandKey][modelKey].includes(yearNumber)
       ) {
-        next.year = yearNumber;
+        next.year = String(yearNumber);
       } else if (isEmpty(next.year)) {
         next.year = String(registryYear);
       }
