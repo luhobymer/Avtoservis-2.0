@@ -183,7 +183,7 @@ async function withPlateWorker(fn) {
     throw err;
   }
   try {
-    const worker = await ensurePlateWorkerReady(15000);
+    const worker = await ensurePlateWorkerReady(25000);
     return await fn(worker);
   } finally {
     release();
@@ -258,8 +258,8 @@ exports.parseLicensePlateFromImage = async (req, res) => {
     if (Jimp) {
       try {
         const preprocessStartedAt = Date.now();
-        const preprocessBudgetMs = 25000;
-        const readTimeoutMs = 10000;
+        const preprocessBudgetMs = 45000;
+        const readTimeoutMs = 15000;
 
         const remainingMs = () =>
           Math.max(0, preprocessBudgetMs - (Date.now() - preprocessStartedAt));
@@ -456,8 +456,8 @@ exports.parseLicensePlateFromImage = async (req, res) => {
     const result = await withTimeout(
       withPlateWorker(async (worker) => {
         const psmModes = ['7', '6', '11'];
-        const perAttemptTimeoutMs = 12000;
-        const overallTimeoutMs = 25000;
+        const perAttemptTimeoutMs = 18000;
+        const overallTimeoutMs = 45000;
         const startedAt = Date.now();
         let bestText = '';
         let bestPlate = null;
@@ -515,7 +515,7 @@ exports.parseLicensePlateFromImage = async (req, res) => {
 
         return { bestPlate, bestText, attempts };
       }),
-      30000,
+      60000,
       () => {
         void resetPlateWorker();
       }
