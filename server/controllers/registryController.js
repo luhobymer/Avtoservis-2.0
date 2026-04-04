@@ -71,10 +71,28 @@ async function detectRegistrySchema(db) {
         table: tableName,
         plate: colPlate,
         plateNormalized: pickFirstExisting(names, ['license_plate_normalized']),
+        dReg: pickFirstExisting(names, [
+          'd_reg',
+          'D_REG',
+          'reg_date',
+          'registration_date',
+          'first_registration_date',
+          'first_reg_date',
+        ]),
         brand: pickFirstExisting(names, ['brand', 'brend', 'make', 'marka', 'марка']),
         model: pickFirstExisting(names, ['model', 'model1', 'model_name', 'модель']),
         vin: pickFirstExisting(names, ['vin', 'vin_code']),
-        year: pickFirstExisting(names, ['make_year', 'year', 'manufacture_year', 'рік']),
+        year: pickFirstExisting(names, [
+          'make_year',
+          'MAKE_YEAR',
+          'year',
+          'manufacture_year',
+          'production_year',
+          'year_prod',
+          'year_make',
+          'r_vypusku',
+          'рік',
+        ]),
         color: pickFirstExisting(names, ['color', 'colour', 'колір']),
         fuel: pickFirstExisting(names, ['fuel', 'fuel_type', 'паливо']),
         capacity: pickFirstExisting(names, [
@@ -263,6 +281,7 @@ exports.searchVehicle = async (req, res) => {
         }
 
         const selectColumns = [
+          schema.dReg ? `${schema.dReg} as d_reg` : "'' as d_reg",
           schema.brand ? `${schema.brand} as brand` : "'' as brand",
           schema.model ? `${schema.model} as model` : "'' as model",
           schema.vin ? `${schema.vin} as vin` : "'' as vin",
@@ -312,6 +331,13 @@ exports.searchVehicle = async (req, res) => {
         }
 
         if (row) {
+          if (!row.make_year && row.d_reg) {
+            const raw = String(row.d_reg || '').trim();
+            const m = raw.match(/(19\d{2}|20\d{2})/);
+            if (m) {
+              row.make_year = Number(m[1]);
+            }
+          }
           if (row.engine_volume > 50) {
             row.engine_volume = (row.engine_volume / 1000).toFixed(1);
           }
