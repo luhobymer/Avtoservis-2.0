@@ -419,13 +419,13 @@ export async function recognizeLicensePlateFromPhoto(file) {
   const warmupTimeoutMs = 45000;
   const startedAt = Date.now();
 
-  const maxRetries = 5;
+  const maxRetries = 8;
   let lastHttpBody = null;
 
   let response;
   await warmupApiConnection(4500);
   for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
-    const attemptTimeoutMs = attempt === 1 ? warmupTimeoutMs : timeoutMs;
+    const attemptTimeoutMs = attempt >= 1 ? warmupTimeoutMs : timeoutMs;
     const controller = new AbortController();
     const timeoutId = window.setTimeout(() => controller.abort(), attemptTimeoutMs);
     try {
@@ -459,7 +459,7 @@ export async function recognizeLicensePlateFromPhoto(file) {
         if (isRetryable && attempt < maxRetries) {
           if (isWarmingUp) {
             await warmupApiConnection(4500);
-            await sleep(1500 + attempt * 1200);
+            await sleep(2500 + attempt * 1500);
           } else {
             await sleep(700 + attempt * 900);
           }
