@@ -419,7 +419,7 @@ export async function recognizeLicensePlateFromPhoto(file) {
   const warmupTimeoutMs = 45000;
   const startedAt = Date.now();
 
-  const maxRetries = 2;
+  const maxRetries = 5;
   let lastHttpBody = null;
 
   let response;
@@ -447,6 +447,7 @@ export async function recognizeLicensePlateFromPhoto(file) {
         }
 
         const message = String(lastHttpBody?.message || lastHttpBody?.error || '').toLowerCase();
+        const isWarmingUp = message.includes('warming up') || message.includes('warming');
         const isRetryableStatus = response.status === 503 || response.status === 504;
         const isRetryableMessage =
           message.includes('busy') ||
@@ -456,7 +457,12 @@ export async function recognizeLicensePlateFromPhoto(file) {
         const isRetryable = isRetryableStatus && isRetryableMessage;
 
         if (isRetryable && attempt < maxRetries) {
-          await sleep(700 + attempt * 900);
+          if (isWarmingUp) {
+            await warmupApiConnection(4500);
+            await sleep(1500 + attempt * 1200);
+          } else {
+            await sleep(700 + attempt * 900);
+          }
           continue;
         }
       }
