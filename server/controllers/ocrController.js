@@ -242,6 +242,23 @@ exports.parseLicensePlateFromImage = async (req, res) => {
     const debug = String(req.query?.debug || '') === '1';
 
     const imagePath = req.file.path;
+
+    if (!plateWorkerInstance) {
+      try {
+        if (!plateWorkerWarming) {
+          void getPlateWorker().catch(() => undefined);
+        }
+      } catch (_) {
+        void _;
+      }
+
+      fs.unlink(imagePath, (err) => {
+        if (err) void err;
+      });
+
+      return res.status(503).json({ message: 'OCR warming up, please retry' });
+    }
+
     let preprocessedPath = null;
     let fullPreprocessedPath = null;
     let binaryPreprocessedPath = null;
@@ -475,10 +492,6 @@ exports.parseLicensePlateFromImage = async (req, res) => {
       { label: 'full', path: fullPreprocessedPath },
       { label: 'orig', path: imagePath },
     ].filter((x) => Boolean(x.path));
-
-    if (plateWorkerWarming && !plateWorkerInstance) {
-      return res.status(503).json({ message: 'OCR warming up, please retry' });
-    }
 
     const result = await withTimeout(
       withPlateWorker(async (worker) => {
