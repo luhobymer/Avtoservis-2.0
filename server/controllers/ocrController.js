@@ -86,12 +86,14 @@ let plateWorkerPromise = null;
 let plateWorkerBusy = Promise.resolve();
 let plateWorkerInstance = null;
 let plateWorkerWarming = false;
+let plateWorkerWarmupError = null;
 
 async function resetPlateWorker() {
   const instance = plateWorkerInstance;
   plateWorkerInstance = null;
   plateWorkerPromise = null;
   plateWorkerWarming = false;
+  plateWorkerWarmupError = null;
   if (!instance) return;
   try {
     await instance.terminate();
@@ -143,19 +145,29 @@ function withTimeoutCustom(promise, ms, { code, message }, onTimeout) {
 async function getPlateWorker() {
   if (plateWorkerPromise) return plateWorkerPromise;
   plateWorkerWarming = true;
+  plateWorkerWarmupError = null;
   plateWorkerPromise = (async () => {
-    const worker = await createWorker('ukr+eng');
-    plateWorkerInstance = worker;
     try {
-      await worker.setParameters({
-        tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789АВЕІКМНОРСТХУЇЄҐ',
-        preserve_interword_spaces: '1',
-      });
-    } catch (_) {
-      void _;
+      const worker = await createWorker('ukr+eng');
+      plateWorkerInstance = worker;
+      try {
+        await worker.setParameters({
+          tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789АВЕІКМНОРСТХУЇЄҐ',
+          preserve_interword_spaces: '1',
+        });
+      } catch (_) {
+        void _;
+      }
+      plateWorkerWarming = false;
+      plateWorkerWarmupError = null;
+      return worker;
+    } catch (err) {
+      plateWorkerWarmupError = String(err?.message || err);
+      plateWorkerInstance = null;
+      plateWorkerPromise = null;
+      plateWorkerWarming = false;
+      throw err;
     }
-    plateWorkerWarming = false;
-    return worker;
   })();
   return plateWorkerPromise;
 }
@@ -256,7 +268,19 @@ exports.parseLicensePlateFromImage = async (req, res) => {
         if (err) void err;
       });
 
-      return res.status(503).json({ message: 'OCR warming up, please retry' });
+      return res.status(503).json({
+        message: 'OCR warming up, please retry',
+        ...(debug
+          ? {
+              warmup: {
+                warming: Boolean(plateWorkerWarming),
+                hasInstance: Boolean(plateWorkerInstance),
+                hasPromise: Boolean(plateWorkerPromise),
+                lastError: plateWorkerWarmupError,
+              },
+            }
+          : {}),
+      });
     }
 
     let preprocessedPath = null;
