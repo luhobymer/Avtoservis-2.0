@@ -6,8 +6,29 @@ const API_BASE_URL = (
   .replace(/\/+$/, '');
 const resolveUrl = (url) => (url.startsWith('http') ? url : `${API_BASE_URL}${url}`);
 
+async function warmupApiConnection(timeoutMs = 5000) {
+  try {
+    const url = resolveUrl('/health');
+    if (!url || url === '/health') return;
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      await fetch(url, {
+        method: 'GET',
+        signal: controller.signal,
+        cache: 'no-store',
+      });
+    } finally {
+      window.clearTimeout(timeoutId);
+    }
+  } catch (_) {
+    void _;
+  }
+}
+
 async function requestJson(url, options = {}) {
   const token = localStorage.getItem('auth_token');
+  const headers = options.headers || {};
   const response = await fetch(resolveUrl(url), {
     method: options.method || 'GET',
     headers: {
@@ -402,6 +423,7 @@ export async function recognizeLicensePlateFromPhoto(file) {
   let lastHttpBody = null;
 
   let response;
+  await warmupApiConnection(4500);
   for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
     const attemptTimeoutMs = attempt === 1 ? warmupTimeoutMs : timeoutMs;
     const controller = new AbortController();
@@ -443,6 +465,7 @@ export async function recognizeLicensePlateFromPhoto(file) {
     } catch (err) {
       if (err?.name === 'AbortError') {
         if (attempt === 0 && maxRetries >= 1) {
+          await warmupApiConnection(4500);
           await sleep(900);
           continue;
         }
