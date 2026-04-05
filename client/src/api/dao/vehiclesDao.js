@@ -395,6 +395,7 @@ export async function recognizeLicensePlateFromPhoto(file) {
   const url = ocrDebug ? resolveUrl('/api/ocr/plate?debug=1') : resolveUrl('/api/ocr/plate');
   const sleep = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
   const timeoutMs = 28000;
+  const warmupTimeoutMs = 45000;
   const startedAt = Date.now();
 
   const maxRetries = 2;
@@ -402,8 +403,9 @@ export async function recognizeLicensePlateFromPhoto(file) {
 
   let response;
   for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+    const attemptTimeoutMs = attempt === 1 ? warmupTimeoutMs : timeoutMs;
     const controller = new AbortController();
-    const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
+    const timeoutId = window.setTimeout(() => controller.abort(), attemptTimeoutMs);
     try {
       response = await fetch(url, {
         method: 'POST',
@@ -440,6 +442,10 @@ export async function recognizeLicensePlateFromPhoto(file) {
       break;
     } catch (err) {
       if (err?.name === 'AbortError') {
+        if (attempt === 0 && maxRetries >= 1) {
+          await sleep(900);
+          continue;
+        }
         if (attempt < maxRetries) {
           await sleep(700 + attempt * 900);
           continue;
@@ -449,7 +455,7 @@ export async function recognizeLicensePlateFromPhoto(file) {
             window.__OCR_DEBUG_PLATE__ = {
               clientError: 'OCR timeout',
               requestUrl: url,
-              timeoutMs,
+              timeoutMs: attemptTimeoutMs,
               elapsedMs: Date.now() - startedAt,
             };
           } catch (debugErr) {

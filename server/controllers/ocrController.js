@@ -360,6 +360,33 @@ exports.parseLicensePlateFromImage = async (req, res) => {
           binaryPreprocessedPath = null;
         }
 
+        try {
+          if (remainingMs() < 6000) {
+            preprocessErrors.bottom = 'OCR preprocess skipped';
+            throw new Error('OCR preprocess skipped');
+          }
+          await runStep('bottom', async () => {
+            const img = base.clone();
+            const w = img.bitmap.width;
+            const h = img.bitmap.height;
+
+            const cropX = Math.max(0, Math.round(w * 0.05));
+            const cropY = Math.max(0, Math.round(h * 0.52));
+            const cropW = Math.min(w - cropX, Math.round(w * 0.90));
+            const cropH = Math.min(h - cropY, Math.round(h * 0.45));
+
+            cropCompat(img, cropX, cropY, cropW, cropH);
+            resizeKeepAspect(img, 900);
+            img.greyscale().contrast(0.85).normalize();
+
+            bottomPreprocessedPath = `${imagePath}-bottom.png`;
+            await writeImage(img, bottomPreprocessedPath);
+          });
+        } catch (err) {
+          preprocessErrors.bottom = preprocessErrors.bottom || String(err?.message || err);
+          bottomPreprocessedPath = null;
+        }
+
         if (debug) {
           try {
             if (remainingMs() < 8000) {
