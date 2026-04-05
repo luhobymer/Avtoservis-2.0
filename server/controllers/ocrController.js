@@ -87,6 +87,10 @@ let plateWorkerBusy = Promise.resolve();
 let plateWorkerInstance = null;
 let plateWorkerWarming = false;
 let plateWorkerWarmupError = null;
+let plateWorkerWarmupStartedAt = null;
+
+const PLATE_WORKER_WARMUP_TIMEOUT_MS = 25000;
+const PLATE_WORKER_WARMUP_STUCK_RESET_MS = 60000;
 
 async function resetPlateWorker() {
   const instance = plateWorkerInstance;
@@ -94,6 +98,7 @@ async function resetPlateWorker() {
   plateWorkerPromise = null;
   plateWorkerWarming = false;
   plateWorkerWarmupError = null;
+  plateWorkerWarmupStartedAt = null;
   if (!instance) return;
   try {
     await instance.terminate();
@@ -146,9 +151,20 @@ async function getPlateWorker() {
   if (plateWorkerPromise) return plateWorkerPromise;
   plateWorkerWarming = true;
   plateWorkerWarmupError = null;
+  plateWorkerWarmupStartedAt = Date.now();
   plateWorkerPromise = (async () => {
     try {
-      const worker = await createWorker('ukr+eng');
+      const worker = await withTimeoutCustom(
+        createWorker('ukr+eng'),
+        PLATE_WORKER_WARMUP_TIMEOUT_MS,
+        {
+          code: 'OCR_WARMUP_TIMEOUT',
+          message: 'OCR warmup timeout',
+        },
+        () => {
+          void resetPlateWorker();
+        }
+      );
       plateWorkerInstance = worker;
       try {
         await worker.setParameters({
@@ -166,6 +182,7 @@ async function getPlateWorker() {
       plateWorkerInstance = null;
       plateWorkerPromise = null;
       plateWorkerWarming = false;
+      plateWorkerWarmupStartedAt = null;
       throw err;
     }
   })();
@@ -256,6 +273,18 @@ exports.parseLicensePlateFromImage = async (req, res) => {
     const imagePath = req.file.path;
 
     if (!plateWorkerInstance) {
+      const warmupElapsedMs =
+        plateWorkerWarmupStartedAt && plateWorkerWarming
+          ? Date.now() - plateWorkerWarmupStartedAt
+          : null;
+
+      if (
+        plateWorkerWarming &&
+        typeof warmupElapsedMs === 'number' &&
+        warmupElapsedMs > PLATE_WORKER_WARMUP_STUCK_RESET_MS
+      ) {
+        void resetPlateWorker();
+      }
       try {
         if (!plateWorkerWarming) {
           void getPlateWorker().catch(() => undefined);
@@ -274,6 +303,7 @@ exports.parseLicensePlateFromImage = async (req, res) => {
           warming: Boolean(plateWorkerWarming),
           hasInstance: Boolean(plateWorkerInstance),
           hasPromise: Boolean(plateWorkerPromise),
+          elapsedMs: warmupElapsedMs,
           lastError: debug ? plateWorkerWarmupError : plateWorkerWarmupError,
         },
       });
@@ -648,7 +678,11 @@ exports.parseLicensePlateFromImage = async (req, res) => {
 
     if (code === 'OCR_TIMEOUT' || msgLower.includes('ocr timeout')) {
       void resetPlateWorker();
-      return res.status(504).json({ message: 'OCR timeout', error: msg });
+      return res.status(200).json({
+        licensePlate: null,
+        rawText: '',
+        error: 'OCR timeout',
+      });
     }
 
     if (code === 'OCR_BUSY') {
