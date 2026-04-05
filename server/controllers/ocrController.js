@@ -270,16 +270,12 @@ exports.parseLicensePlateFromImage = async (req, res) => {
 
       return res.status(503).json({
         message: 'OCR warming up, please retry',
-        ...(debug
-          ? {
-              warmup: {
-                warming: Boolean(plateWorkerWarming),
-                hasInstance: Boolean(plateWorkerInstance),
-                hasPromise: Boolean(plateWorkerPromise),
-                lastError: plateWorkerWarmupError,
-              },
-            }
-          : {}),
+        warmup: {
+          warming: Boolean(plateWorkerWarming),
+          hasInstance: Boolean(plateWorkerInstance),
+          hasPromise: Boolean(plateWorkerPromise),
+          lastError: debug ? plateWorkerWarmupError : plateWorkerWarmupError,
+        },
       });
     }
 
