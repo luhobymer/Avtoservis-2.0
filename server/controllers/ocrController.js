@@ -273,6 +273,10 @@ exports.parseLicensePlateFromImage = async (req, res) => {
     const imagePath = req.file.path;
 
     if (!plateWorkerInstance) {
+      if (plateWorkerWarming && !plateWorkerWarmupStartedAt) {
+        plateWorkerWarmupStartedAt = Date.now();
+      }
+
       const warmupElapsedMs =
         plateWorkerWarmupStartedAt && plateWorkerWarming
           ? Date.now() - plateWorkerWarmupStartedAt
@@ -286,7 +290,7 @@ exports.parseLicensePlateFromImage = async (req, res) => {
         void resetPlateWorker();
       }
       try {
-        if (!plateWorkerWarming) {
+        if (!plateWorkerWarming || (plateWorkerWarming && !plateWorkerPromise)) {
           void getPlateWorker().catch(() => undefined);
         }
       } catch (_) {
@@ -303,6 +307,7 @@ exports.parseLicensePlateFromImage = async (req, res) => {
           warming: Boolean(plateWorkerWarming),
           hasInstance: Boolean(plateWorkerInstance),
           hasPromise: Boolean(plateWorkerPromise),
+          startedAt: plateWorkerWarmupStartedAt,
           elapsedMs: warmupElapsedMs,
           lastError: debug ? plateWorkerWarmupError : plateWorkerWarmupError,
         },
