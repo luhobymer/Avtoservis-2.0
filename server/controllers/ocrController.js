@@ -277,12 +277,19 @@ exports.parseLicensePlateFromImage = async (req, res) => {
         plateWorkerWarmupStartedAt = Date.now();
       }
 
+      const warmupStartedAtRaw = plateWorkerWarmupStartedAt;
       const warmupStartedAtNum =
-        plateWorkerWarmupStartedAt === null || plateWorkerWarmupStartedAt === undefined
+        warmupStartedAtRaw === null || warmupStartedAtRaw === undefined
           ? null
-          : Number(plateWorkerWarmupStartedAt);
+          : typeof warmupStartedAtRaw === 'number'
+            ? warmupStartedAtRaw
+            : Number(warmupStartedAtRaw);
       const warmupStartedAtIsFinite =
-        typeof warmupStartedAtNum === 'number' && Number.isFinite(warmupStartedAtNum);
+        warmupStartedAtNum !== null && Number.isFinite(warmupStartedAtNum);
+      const warmupStartedAtNumIsNaN =
+        warmupStartedAtNum !== null && typeof warmupStartedAtNum === 'number'
+          ? Number.isNaN(warmupStartedAtNum)
+          : null;
 
       const warmupElapsedMs =
         plateWorkerWarming && warmupStartedAtIsFinite ? Date.now() - warmupStartedAtNum : null;
@@ -315,6 +322,8 @@ exports.parseLicensePlateFromImage = async (req, res) => {
           startedAt: warmupStartedAtIsFinite ? warmupStartedAtNum : plateWorkerWarmupStartedAt,
           startedAtType: typeof plateWorkerWarmupStartedAt,
           startedAtIsFinite: warmupStartedAtIsFinite,
+          startedAtNum: warmupStartedAtNum,
+          startedAtNumIsNaN: warmupStartedAtNumIsNaN,
           elapsedMs: warmupElapsedMs,
           lastError: debug ? plateWorkerWarmupError : plateWorkerWarmupError,
         },
