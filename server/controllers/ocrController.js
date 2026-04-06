@@ -155,7 +155,7 @@ async function getPlateWorker() {
   plateWorkerPromise = (async () => {
     try {
       const worker = await withTimeoutCustom(
-        createWorker('ukr+eng'),
+        createWorker('eng'),
         PLATE_WORKER_WARMUP_TIMEOUT_MS,
         {
           code: 'OCR_WARMUP_TIMEOUT',
