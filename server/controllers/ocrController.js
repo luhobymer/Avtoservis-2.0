@@ -273,17 +273,32 @@ exports.parseLicensePlateFromImage = async (req, res) => {
     const imagePath = req.file.path;
 
     if (!plateWorkerInstance) {
+      try {
+        if (!plateWorkerWarming || (plateWorkerWarming && !plateWorkerPromise)) {
+          void getPlateWorker().catch(() => undefined);
+        }
+      } catch (_) {
+        void _;
+      }
+
       if (plateWorkerWarming && !plateWorkerWarmupStartedAt) {
         plateWorkerWarmupStartedAt = Date.now();
       }
 
-      const warmupStartedAtRaw = plateWorkerWarmupStartedAt;
+      const warmupSnapshot = {
+        warming: Boolean(plateWorkerWarming),
+        hasInstance: Boolean(plateWorkerInstance),
+        hasPromise: Boolean(plateWorkerPromise),
+        startedAtRaw: plateWorkerWarmupStartedAt,
+        lastError: plateWorkerWarmupError,
+      };
+
       const warmupStartedAtNum =
-        warmupStartedAtRaw === null || warmupStartedAtRaw === undefined
+        warmupSnapshot.startedAtRaw === null || warmupSnapshot.startedAtRaw === undefined
           ? null
-          : typeof warmupStartedAtRaw === 'number'
-            ? warmupStartedAtRaw
-            : Number(warmupStartedAtRaw);
+          : typeof warmupSnapshot.startedAtRaw === 'number'
+            ? warmupSnapshot.startedAtRaw
+            : Number(warmupSnapshot.startedAtRaw);
       const warmupStartedAtIsFinite =
         warmupStartedAtNum !== null && Number.isFinite(warmupStartedAtNum);
       const warmupStartedAtNumIsNaN =
@@ -292,21 +307,14 @@ exports.parseLicensePlateFromImage = async (req, res) => {
           : null;
 
       const warmupElapsedMs =
-        plateWorkerWarming && warmupStartedAtIsFinite ? Date.now() - warmupStartedAtNum : null;
+        warmupSnapshot.warming && warmupStartedAtIsFinite ? Date.now() - warmupStartedAtNum : null;
 
       if (
-        plateWorkerWarming &&
+        warmupSnapshot.warming &&
         typeof warmupElapsedMs === 'number' &&
         warmupElapsedMs > PLATE_WORKER_WARMUP_STUCK_RESET_MS
       ) {
         void resetPlateWorker();
-      }
-      try {
-        if (!plateWorkerWarming || (plateWorkerWarming && !plateWorkerPromise)) {
-          void getPlateWorker().catch(() => undefined);
-        }
-      } catch (_) {
-        void _;
       }
 
       fs.unlink(imagePath, (err) => {
@@ -316,16 +324,16 @@ exports.parseLicensePlateFromImage = async (req, res) => {
       return res.status(503).json({
         message: 'OCR warming up, please retry',
         warmup: {
-          warming: Boolean(plateWorkerWarming),
-          hasInstance: Boolean(plateWorkerInstance),
-          hasPromise: Boolean(plateWorkerPromise),
-          startedAt: warmupStartedAtIsFinite ? warmupStartedAtNum : plateWorkerWarmupStartedAt,
-          startedAtType: typeof plateWorkerWarmupStartedAt,
+          warming: warmupSnapshot.warming,
+          hasInstance: warmupSnapshot.hasInstance,
+          hasPromise: warmupSnapshot.hasPromise,
+          startedAt: warmupStartedAtIsFinite ? warmupStartedAtNum : warmupSnapshot.startedAtRaw,
+          startedAtType: typeof warmupSnapshot.startedAtRaw,
           startedAtIsFinite: warmupStartedAtIsFinite,
           startedAtNum: warmupStartedAtNum,
           startedAtNumIsNaN: warmupStartedAtNumIsNaN,
           elapsedMs: warmupElapsedMs,
-          lastError: debug ? plateWorkerWarmupError : plateWorkerWarmupError,
+          lastError: debug ? warmupSnapshot.lastError : warmupSnapshot.lastError,
         },
       });
     }
