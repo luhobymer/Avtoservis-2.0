@@ -273,6 +273,7 @@ exports.parseLicensePlateFromImage = async (req, res) => {
     const imagePath = req.file.path;
 
     if (!plateWorkerInstance) {
+      const warmupWaitMs = 12000;
       try {
         if (!plateWorkerWarming || (plateWorkerWarming && !plateWorkerPromise)) {
           void getPlateWorker().catch(() => undefined);
@@ -280,6 +281,25 @@ exports.parseLicensePlateFromImage = async (req, res) => {
       } catch (_) {
         void _;
       }
+
+      try {
+        if (plateWorkerPromise) {
+          await withTimeoutCustom(
+            plateWorkerPromise,
+            warmupWaitMs,
+            {
+              code: 'OCR_WARMUP_WAIT_TIMEOUT',
+              message: 'OCR warmup wait timeout',
+            }
+          );
+        }
+      } catch (_) {
+        void _;
+      }
+
+      if (plateWorkerInstance) {
+        // Worker became ready during the wait window; proceed with OCR in this request.
+      } else {
 
       if (plateWorkerWarming && !plateWorkerWarmupStartedAt) {
         plateWorkerWarmupStartedAt = Date.now();
@@ -336,6 +356,7 @@ exports.parseLicensePlateFromImage = async (req, res) => {
           lastError: debug ? warmupSnapshot.lastError : warmupSnapshot.lastError,
         },
       });
+      }
     }
 
     let preprocessedPath = null;
