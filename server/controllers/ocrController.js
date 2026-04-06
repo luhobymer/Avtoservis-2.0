@@ -277,10 +277,15 @@ exports.parseLicensePlateFromImage = async (req, res) => {
         plateWorkerWarmupStartedAt = Date.now();
       }
 
+      const warmupStartedAtNum =
+        plateWorkerWarmupStartedAt === null || plateWorkerWarmupStartedAt === undefined
+          ? null
+          : Number(plateWorkerWarmupStartedAt);
+      const warmupStartedAtIsFinite =
+        typeof warmupStartedAtNum === 'number' && Number.isFinite(warmupStartedAtNum);
+
       const warmupElapsedMs =
-        plateWorkerWarmupStartedAt && plateWorkerWarming
-          ? Date.now() - plateWorkerWarmupStartedAt
-          : null;
+        plateWorkerWarming && warmupStartedAtIsFinite ? Date.now() - warmupStartedAtNum : null;
 
       if (
         plateWorkerWarming &&
@@ -307,7 +312,9 @@ exports.parseLicensePlateFromImage = async (req, res) => {
           warming: Boolean(plateWorkerWarming),
           hasInstance: Boolean(plateWorkerInstance),
           hasPromise: Boolean(plateWorkerPromise),
-          startedAt: plateWorkerWarmupStartedAt,
+          startedAt: warmupStartedAtIsFinite ? warmupStartedAtNum : plateWorkerWarmupStartedAt,
+          startedAtType: typeof plateWorkerWarmupStartedAt,
+          startedAtIsFinite: warmupStartedAtIsFinite,
           elapsedMs: warmupElapsedMs,
           lastError: debug ? plateWorkerWarmupError : plateWorkerWarmupError,
         },
