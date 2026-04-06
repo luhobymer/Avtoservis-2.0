@@ -61,9 +61,10 @@ const VehicleForm = ({
   // Валідація державного номера (українського формату)
   const validateLicensePlate = (plate) => {
     if (!plate) return false;
+    const normalized = String(plate).trim().replace(/[\s-]+/g, '');
     // Базова перевірка (може бути розширена для конкретного формату)
     const plateRegex = /^[А-ЯІЇЄҐA-Z]{2}\d{4}[А-ЯІЇЄҐA-Z]{2}$/i;
-    return plateRegex.test(plate);
+    return plateRegex.test(normalized);
   };
   
   // Валідація об'єму двигуна
