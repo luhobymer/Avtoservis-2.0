@@ -1140,6 +1140,22 @@ function extractLicensePlateFromText(text) {
     }
   }
 
+  if (!best && normalized.length >= 9) {
+    const deletionPenalty = 2;
+    for (let i = 0; i <= normalized.length - 9; i += 1) {
+      const s9 = normalized.slice(i, i + 9);
+      for (let drop = 0; drop < 9; drop += 1) {
+        const s8 = s9.slice(0, drop) + s9.slice(drop + 1);
+        const scored = scoreCandidate(s8);
+        if (!scored) continue;
+        const withPenalty = { fixed: scored.fixed, cost: scored.cost + deletionPenalty };
+        if (!best || withPenalty.cost < best.cost) {
+          best = withPenalty;
+        }
+      }
+    }
+  }
+
   if (best?.fixed) return best.fixed;
   return null;
 }
