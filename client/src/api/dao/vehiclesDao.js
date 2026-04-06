@@ -469,6 +469,15 @@ export async function recognizeLicensePlateFromPhoto(file) {
 
       break;
     } catch (err) {
+      const errMsg = String(err?.message || err || '');
+      const errMsgLower = errMsg.toLowerCase();
+      const isNetworkError =
+        err?.name === 'TypeError' ||
+        errMsgLower.includes('failed to fetch') ||
+        errMsgLower.includes('networkerror') ||
+        errMsgLower.includes('network error') ||
+        errMsgLower.includes('load failed');
+
       if (err?.name === 'AbortError') {
         if (attempt === 0 && maxRetries >= 1) {
           await warmupApiConnection(4500);
@@ -493,10 +502,33 @@ export async function recognizeLicensePlateFromPhoto(file) {
         }
         throw new Error('OCR timeout');
       }
+
+      if (isNetworkError) {
+        if (attempt < maxRetries) {
+          await warmupApiConnection(4500);
+          await sleep(1200 + attempt * 1200);
+          continue;
+        }
+        if (ocrDebug) {
+          try {
+            window.__OCR_DEBUG_PLATE__ = {
+              clientError: errMsg,
+              requestUrl: url,
+              timeoutMs: attemptTimeoutMs,
+              elapsedMs: Date.now() - startedAt,
+              hint: 'network_error',
+            };
+          } catch (debugErr) {
+            void debugErr;
+          }
+        }
+        throw new Error('Failed to fetch');
+      }
+
       if (ocrDebug) {
         try {
           window.__OCR_DEBUG_PLATE__ = {
-            clientError: String(err?.message || err),
+            clientError: errMsg,
             requestUrl: url,
             elapsedMs: Date.now() - startedAt,
           };
