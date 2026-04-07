@@ -403,6 +403,44 @@ export async function uploadPhoto(file) {
   return response.json();
 }
 
+const extractLicensePlateFromText = (text) => {
+  if (!text) return '';
+  const raw = String(text).toUpperCase();
+  const map = {
+    А: 'A',
+    В: 'B',
+    Е: 'E',
+    І: 'I',
+    К: 'K',
+    М: 'M',
+    Н: 'H',
+    О: 'O',
+    Р: 'P',
+    С: 'C',
+    Т: 'T',
+    Х: 'X',
+    У: 'Y',
+    Ї: 'I',
+    Є: 'E',
+    Ґ: 'G',
+  };
+  const normalized = raw
+    .replace(/[АВЕІКМНОРСТХУЇЄҐ]/g, (ch) => map[ch] || ch)
+    .replace(/[^A-Z0-9 ]/g, '');
+  const stripped = normalized.replace(/[^A-Z0-9]/g, '');
+  if (stripped.length < 7) return '';
+  const simpleRegex = /[A-Z]{2}[0-9]{4}[A-Z]{2}/;
+  const directMatch = stripped.match(simpleRegex);
+  if (directMatch && directMatch[0]) return directMatch[0];
+  const windowSize = 10;
+  for (let i = 0; i <= stripped.length - windowSize; i += 1) {
+    const chunk = stripped.slice(i, i + windowSize);
+    const match = chunk.replace(/[^A-Z0-9]/g, '').match(simpleRegex);
+    if (match && match[0]) return match[0];
+  }
+  return '';
+};
+
 export async function recognizeLicensePlateFromPhoto(file) {
   const token = localStorage.getItem('auth_token');
   const preparedFile = await prepareImageForOcr(file);
@@ -580,5 +618,12 @@ export async function recognizeLicensePlateFromPhoto(file) {
       void err;
     }
   }
-  return payload?.licensePlate || '';
+  if (payload && typeof payload.licensePlate === 'string' && payload.licensePlate.trim()) {
+    return payload.licensePlate.trim().toUpperCase();
+  }
+  if (payload && typeof payload.rawText === 'string' && payload.rawText.trim()) {
+    const candidate = extractLicensePlateFromText(payload.rawText);
+    return candidate || '';
+  }
+  return '';
 }
