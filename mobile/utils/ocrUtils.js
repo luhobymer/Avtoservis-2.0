@@ -374,6 +374,197 @@ export class OCRManager {
     }
   }
 
+  // Допоміжна функція для виділення номерного знаку з тексту
+  extractLicensePlateFromText(text) {
+    const raw = String(text || '').toUpperCase();
+    if (!raw) return null;
+
+    const map = {
+      А: 'A',
+      В: 'B',
+      Е: 'E',
+      І: 'I',
+      К: 'K',
+      М: 'M',
+      Н: 'H',
+      О: 'O',
+      Р: 'P',
+      С: 'C',
+      Т: 'T',
+      Х: 'X',
+      У: 'Y',
+      Ї: 'I',
+      Є: 'E',
+      Ґ: 'G',
+    };
+
+    const normalized = raw
+      .replace(/[АВЕІКМНОРСТХУЇЄҐ]/g, (ch) => map[ch] || ch)
+      .replace(/[^A-Z0-9 ]/g, '');
+
+    const stripped = normalized.replace(/[^A-Z0-9]/g, '');
+    if (stripped.length < 8) return null;
+
+    const allowedLetters = new Set(['A', 'B', 'C', 'E', 'H', 'I', 'K', 'M', 'O', 'P', 'T', 'X', 'Y']);
+    const uaPrefixes = new Set([
+      'AA','AB','AC','AE','AH','AI','AK','AM','AO','AP','AT','AX',
+      'BA','BB','BC','BE','BH','BI','BK','BM','BO','BP','BT','BX',
+      'CA','CB','CC','CE','CH','CI','CK','CM','CO','CP','CT','CX',
+      'EA','EB','EC','EE','EH','EI','EK','EM','EO','EP','ET','EX',
+      'HA','HB','HC','HE','HH','HI','HK','HM','HO','HP','HT','HX',
+      'IA','IB','IC','IE','IH','II','IK','IM','IO','IP','IT','IX',
+      'KA','KB','KC','KE','KH','KI','KK','KM','KO','KP','KT','KX',
+      'MA','MB','MC','ME','MH','MI','MK','MM','MO','MP','MT','MX',
+      'OA','OB','OC','OE','OH','OI','OK','OM','OO','OP','OT','OX',
+      'PA','PB','PC','PE','PH','PI','PK','PM','PO','PP','PT','PX',
+    ]);
+    const isAllowedLetter = (ch) => allowedLetters.has(ch);
+    const isDigit = (ch) => ch >= '0' && ch <= '9';
+
+    const fixLetter = (ch) => {
+      if (allowedLetters.has(ch)) return { ch, cost: 0 };
+      if (ch === '0') return { ch: 'O', cost: 1 };
+      if (ch === '1') return { ch: 'I', cost: 1 };
+      if (ch === '8') return { ch: 'B', cost: 1 };
+      if (ch === '6') return { ch: 'B', cost: 2 };
+      if (ch === '2') return { ch: 'Z', cost: 3 };
+      return { ch, cost: 99 };
+    };
+
+    const fixDigit = (ch) => {
+      if (isDigit(ch)) return { ch, cost: 0 };
+      if (ch === 'O') return { ch: '0', cost: 1 };
+      if (ch === 'I') return { ch: '1', cost: 1 };
+      if (ch === 'Z') return { ch: '2', cost: 1 };
+      if (ch === 'S') return { ch: '5', cost: 1 };
+      if (ch === 'B') return { ch: '8', cost: 1 };
+      if (ch === 'G') return { ch: '6', cost: 2 };
+      if (ch === 'Q') return { ch: '0', cost: 2 };
+      if (ch === 'D') return { ch: '0', cost: 2 };
+      return { ch, cost: 99 };
+    };
+
+    const fixPrefix = (a, b) => {
+      const direct = `${a}${b}`;
+      if (uaPrefixes.has(direct)) return { a, b, cost: 0 };
+
+      const variants = [
+        { a, b },
+        { a: a === 'P' ? 'B' : a === 'B' ? 'P' : a, b },
+        { a, b: b === 'P' ? 'B' : b === 'B' ? 'P' : b },
+        { a: a === 'P' ? 'B' : a === 'B' ? 'P' : a, b: b === 'P' ? 'B' : b === 'B' ? 'P' : b },
+      ];
+
+      for (const v of variants) {
+        const p = `${v.a}${v.b}`;
+        if (uaPrefixes.has(p)) {
+          const cost = (v.a !== a ? 1 : 0) + (v.b !== b ? 1 : 0);
+          return { a: v.a, b: v.b, cost };
+        }
+      }
+      return null;
+    };
+
+    const scoreCandidate = (candidate) => {
+      let cost = 0;
+      const s = candidate.split('');
+
+      const a0 = fixLetter(s[0]);
+      const a1 = fixLetter(s[1]);
+      const a6 = fixLetter(s[6]);
+      const a7 = fixLetter(s[7]);
+      if (a0.cost >= 99 || a1.cost >= 99 || a6.cost >= 99 || a7.cost >= 99) return null;
+
+      const d2 = fixDigit(s[2]);
+      const d3 = fixDigit(s[3]);
+      const d4 = fixDigit(s[4]);
+      const d5 = fixDigit(s[5]);
+      if (d2.cost >= 99 || d3.cost >= 99 || d4.cost >= 99 || d5.cost >= 99) return null;
+
+      const prefixFix = fixPrefix(a0.ch, a1.ch);
+      if (!prefixFix) return null;
+
+      cost +=
+        a0.cost +
+        a1.cost +
+        d2.cost +
+        d3.cost +
+        d4.cost +
+        d5.cost +
+        a6.cost +
+        a7.cost +
+        prefixFix.cost;
+
+      const fixed = `${prefixFix.a}${prefixFix.b}${d2.ch}${d3.ch}${d4.ch}${d5.ch}${a6.ch}${a7.ch}`;
+      if (!/^[A-Z]{2}\d{4}[A-Z]{2}$/.test(fixed)) return null;
+      if (!isAllowedLetter(fixed[0]) || !isAllowedLetter(fixed[1])) return null;
+      if (!isAllowedLetter(fixed[6]) || !isAllowedLetter(fixed[7])) return null;
+      return { fixed, cost };
+    };
+
+    let best = null;
+
+    for (let i = 0; i <= normalized.length - 8; i += 1) {
+      const s = normalized.slice(i, i + 8);
+      const scored = scoreCandidate(s);
+      if (!scored) continue;
+      if (!best || scored.cost < best.cost) {
+        best = scored;
+        if (best.cost === 0) break;
+      }
+    }
+
+    if (!best) {
+      for (let i = 0; i <= stripped.length - 8; i += 1) {
+        const s = stripped.slice(i, i + 8);
+        const scored = scoreCandidate(s);
+        if (!scored) continue;
+        if (!best || scored.cost < best.cost) {
+          best = scored;
+          if (best.cost === 0) break;
+        }
+      }
+    }
+
+    if (!best && stripped.length >= 9) {
+      const deletionPenalty = 2;
+      for (let i = 0; i <= stripped.length - 9; i += 1) {
+        const s9 = stripped.slice(i, i + 9);
+        for (let drop = 0; drop < 9; drop += 1) {
+          const s8 = s9.slice(0, drop) + s9.slice(drop + 1);
+          const scored = scoreCandidate(s8);
+          if (!scored) continue;
+          const withPenalty = { fixed: scored.fixed, cost: scored.cost + deletionPenalty };
+          if (!best || withPenalty.cost < best.cost) {
+            best = withPenalty;
+          }
+        }
+      }
+    }
+
+    if (!best && stripped.length >= 10) {
+      const deletionPenalty = 4;
+      for (let i = 0; i <= stripped.length - 10; i += 1) {
+        const s10 = stripped.slice(i, i + 10);
+        for (let dropA = 0; dropA < 10; dropA += 1) {
+          for (let dropB = dropA + 1; dropB < 10; dropB += 1) {
+            const s8 = s10.slice(0, dropA) + s10.slice(dropA + 1, dropB) + s10.slice(dropB + 1);
+            if (s8.length !== 8) continue;
+            const scored = scoreCandidate(s8);
+            if (!scored) continue;
+            const withPenalty = { fixed: scored.fixed, cost: scored.cost + deletionPenalty };
+            if (!best || withPenalty.cost < best.cost) {
+              best = withPenalty;
+            }
+          }
+        }
+      }
+    }
+
+    if (best?.fixed) return best.fixed;
+    return null;
+  }
+
   // Розпізнавання номерного знаку та отримання даних про автомобіль
   async recognizeLicensePlateAndGetVehicleData(imageUri) {
     try {
@@ -388,17 +579,13 @@ export class OCRManager {
       
       console.log('Розпізнаний текст з зображення:', text);
       
-      // Розпізнавання номерного знаку (українські номери)
-      // Формат: AA1234BB, AA 1234 BB, АА1234ВВ, АА 1234 ВВ
-      const plateRegex = /[A-ZА-ЯІЇЄ]{2}[ ]?[0-9]{4}[ ]?[A-ZА-ЯІЇЄ]{2}/gi;
-      const plateMatches = text.match(plateRegex);
-
-      if (!plateMatches || plateMatches.length === 0) {
+      const extractedPlate = this.extractLicensePlateFromText(text);
+      if (!extractedPlate) {
         console.warn('Не вдалося розпізнати номерний знак');
         return null;
       }
 
-      const licensePlate = normalizeLicensePlate(plateMatches[0]);
+      const licensePlate = normalizeLicensePlate(extractedPlate);
       console.log('Розпізнано номерний знак:', licensePlate);
 
       let registryData = null;
@@ -484,11 +671,9 @@ export class OCRManager {
     try {
       const text = await this.recognizeText(imageUri);
       if (!text) return null;
-      
-      // Регулярний вираз для українських номерних знаків
-      const plateRegex = /[A-ZА-ЯІЇЄ]{2}[ ]?[0-9]{4}[ ]?[A-ZА-ЯІЇЄ]{2}/i;
-      const match = text.match(plateRegex);
-      return match ? normalizeLicensePlate(match[0]) : null;
+
+      const extractedPlate = this.extractLicensePlateFromText(text);
+      return extractedPlate ? normalizeLicensePlate(extractedPlate) : null;
     } catch (error) {
       console.error('Error recognizing license plate:', error);
       return null;
