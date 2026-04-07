@@ -532,12 +532,13 @@ export async function recognizeLicensePlateFromPhoto(file) {
     (window.location?.search?.includes('ocrDebug=1') ||
       window.location?.hash?.includes('ocrDebug=1'));
   const url = ocrDebug ? resolveUrl('/api/ocr/plate?debug=1') : resolveUrl('/api/ocr/plate');
+  const debugUrl = resolveUrl('/api/ocr/plate?debug=1');
   const sleep = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
-  const timeoutMs = 16000;
-  const warmupTimeoutMs = 26000;
+  const timeoutMs = 30000;
+  const warmupTimeoutMs = 50000;
   const startedAt = Date.now();
 
-  const maxRetries = 2;
+  const maxRetries = 4;
   let lastHttpBody = null;
 
   let response;
@@ -716,5 +717,55 @@ export async function recognizeLicensePlateFromPhoto(file) {
     const candidate = extractLicensePlateFromText(payload.rawText);
     return candidate || '';
   }
+
+  // Last-resort fallback: force debug response and parse OCR attempts/raw text.
+  try {
+    const fallbackForm = new FormData();
+    fallbackForm.append('image', preparedFile || file);
+    const fallbackController = new AbortController();
+    const fallbackTimeoutId = window.setTimeout(() => fallbackController.abort(), 55000);
+    let fallbackResponse;
+    try {
+      fallbackResponse = await fetch(debugUrl, {
+        method: 'POST',
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: fallbackForm,
+        signal: fallbackController.signal,
+      });
+    } finally {
+      window.clearTimeout(fallbackTimeoutId);
+    }
+    if (fallbackResponse && fallbackResponse.ok) {
+      const fallbackPayload = await fallbackResponse.json();
+      if (
+        fallbackPayload &&
+        typeof fallbackPayload.licensePlate === 'string' &&
+        fallbackPayload.licensePlate.trim()
+      ) {
+        return fallbackPayload.licensePlate.trim().toUpperCase();
+      }
+      if (fallbackPayload && Array.isArray(fallbackPayload.attempts)) {
+        for (const attempt of fallbackPayload.attempts) {
+          if (attempt?.plate) {
+            const plate = extractLicensePlateFromText(String(attempt.plate));
+            if (plate) return plate;
+          }
+          if (attempt?.rawText) {
+            const plate = extractLicensePlateFromText(String(attempt.rawText));
+            if (plate) return plate;
+          }
+        }
+      }
+      if (fallbackPayload && typeof fallbackPayload.rawText === 'string' && fallbackPayload.rawText.trim()) {
+        const plate = extractLicensePlateFromText(fallbackPayload.rawText);
+        if (plate) return plate;
+      }
+    }
+  } catch (fallbackError) {
+    void fallbackError;
+  }
+
   return '';
 }
