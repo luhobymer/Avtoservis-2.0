@@ -935,11 +935,15 @@ function extractLicensePlateFromText(text) {
     Ґ: 'G',
   };
 
+  // Remove non-alphanumeric but keep spaces for spaced plates
   const normalized = raw
     .replace(/[АВЕІКМНОРСТХУЇЄҐ]/g, (ch) => map[ch] || ch)
-    .replace(/[^A-Z0-9]/g, '');
+    .replace(/[^A-Z0-9 ]/g, '');
 
-  if (normalized.length < 8) return null;
+  // Also create fully stripped version
+  const stripped = normalized.replace(/[^A-Z0-9]/g, '');
+
+  if (stripped.length < 8) return null;
 
   const allowedLetters = new Set(['A', 'B', 'C', 'E', 'H', 'I', 'K', 'M', 'O', 'P', 'T', 'X', 'Y']);
   const uaPrefixes = new Set([
@@ -1151,6 +1155,9 @@ function extractLicensePlateFromText(text) {
   };
 
   let best = null;
+
+  // Try spaced plates first (e.g., 'KA 2878 IA')
+  // Pattern: LL DDDD LL with possible spaces
   for (let i = 0; i <= normalized.length - 8; i += 1) {
     const s = normalized.slice(i, i + 8);
     const scored = scoreCandidate(s);
@@ -1161,10 +1168,55 @@ function extractLicensePlateFromText(text) {
     }
   }
 
-  if (!best && normalized.length >= 9) {
+  // Try spaced pattern with one space: LL DDDDLL (e.g., 'KA 2878IA')
+  for (let i = 0; i <= normalized.length - 9; i += 1) {
+    const s9 = normalized.slice(i, i + 9);
+    // Expect exactly one space at position 2
+    if (s9[2] === ' ' && s9[7] !== ' ' && s9[8] !== ' ') {
+      const s8 = s9.slice(0, 2) + s9.slice(3); // remove space
+      const scored = scoreCandidate(s8);
+      if (!scored) continue;
+      const withPenalty = { fixed: scored.fixed, cost: scored.cost + 1 };
+      if (!best || withPenalty.cost < best.cost) {
+        best = withPenalty;
+        if (best.cost <= 1) break;
+      }
+    }
+  }
+
+  // Try spaced pattern with two spaces: LL DD DD LL (e.g., 'KA 28 78 IA')
+  for (let i = 0; i <= normalized.length - 10; i += 1) {
+    const s10 = normalized.slice(i, i + 10);
+    // Expect spaces at positions 2 and 5
+    if (s10[2] === ' ' && s10[5] === ' ' && s10[8] !== ' ' && s10[9] !== ' ') {
+      const s8 = s10.slice(0, 2) + s10.slice(3, 5) + s10.slice(6); // remove both spaces
+      const scored = scoreCandidate(s8);
+      if (!scored) continue;
+      const withPenalty = { fixed: scored.fixed, cost: scored.cost + 2 };
+      if (!best || withPenalty.cost < best.cost) {
+        best = withPenalty;
+        if (best.cost <= 2) break;
+      }
+    }
+  }
+
+  // Fallback to stripped version if still no candidate
+  if (!best) {
+    for (let i = 0; i <= stripped.length - 8; i += 1) {
+      const s = stripped.slice(i, i + 8);
+      const scored = scoreCandidate(s);
+      if (!scored) continue;
+      if (!best || scored.cost < best.cost) {
+        best = scored;
+        if (best.cost === 0) break;
+      }
+    }
+  }
+
+  if (!best && stripped.length >= 9) {
     const deletionPenalty = 2;
-    for (let i = 0; i <= normalized.length - 9; i += 1) {
-      const s9 = normalized.slice(i, i + 9);
+    for (let i = 0; i <= stripped.length - 9; i += 1) {
+      const s9 = stripped.slice(i, i + 9);
       for (let drop = 0; drop < 9; drop += 1) {
         const s8 = s9.slice(0, drop) + s9.slice(drop + 1);
         const scored = scoreCandidate(s8);
@@ -1177,10 +1229,10 @@ function extractLicensePlateFromText(text) {
     }
   }
 
-  if (!best && normalized.length >= 10) {
+  if (!best && stripped.length >= 10) {
     const deletionPenalty = 4;
-    for (let i = 0; i <= normalized.length - 10; i += 1) {
-      const s10 = normalized.slice(i, i + 10);
+    for (let i = 0; i <= stripped.length - 10; i += 1) {
+      const s10 = stripped.slice(i, i + 10);
       for (let dropA = 0; dropA < 10; dropA += 1) {
         for (let dropB = dropA + 1; dropB < 10; dropB += 1) {
           const s8 =
