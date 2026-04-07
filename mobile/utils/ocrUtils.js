@@ -379,6 +379,12 @@ export class OCRManager {
     const raw = String(text || '').toUpperCase();
     if (!raw) return null;
 
+    const simpleRegex = /[A-ZА-ЯІЇЄҐ]{2}[ ]?[0-9]{4}[ ]?[A-ZА-ЯІЇЄҐ]{2}/i;
+    const simpleMatch = raw.match(simpleRegex);
+    if (simpleMatch && simpleMatch[0]) {
+      return simpleMatch[0];
+    }
+
     const map = {
       А: 'A',
       В: 'B',
