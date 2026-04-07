@@ -410,6 +410,7 @@ const extractLicensePlateFromText = (text) => {
     А: 'A',
     В: 'B',
     Е: 'E',
+    И: 'I',
     І: 'I',
     К: 'K',
     М: 'M',
@@ -420,13 +421,16 @@ const extractLicensePlateFromText = (text) => {
     Т: 'T',
     Х: 'X',
     У: 'Y',
+    Й: 'I',
+    З: '3',
+    Ч: '4',
     Ї: 'I',
     Є: 'E',
     Ґ: 'G',
   };
 
   const normalized = raw
-    .replace(/[АВЕІКМНОРСТХУЇЄҐ]/g, (ch) => map[ch] || ch)
+    .replace(/[АВЕИІКМНОРСТХУЙЗЧЇЄҐ]/g, (ch) => map[ch] || ch)
     .replace(/[^A-Z0-9 ]/g, '');
   const stripped = normalized.replace(/[^A-Z0-9]/g, '');
   if (stripped.length < 8) return '';
@@ -453,6 +457,18 @@ const extractLicensePlateFromText = (text) => {
     if (ch === '1') return { ch: 'I', cost: 1 };
     if (ch === '8') return { ch: 'B', cost: 1 };
     if (ch === '6') return { ch: 'B', cost: 2 };
+    if (ch === '4') return { ch: 'A', cost: 2 };
+    if (ch === '7') return { ch: 'T', cost: 2 };
+    if (ch === '9') return { ch: 'P', cost: 2 };
+    if (ch === '3') return { ch: 'E', cost: 2 };
+    if (ch === '5') return { ch: 'C', cost: 3 };
+    if (ch === 'L' || ch === 'J') return { ch: 'I', cost: 2 };
+    if (ch === 'V' || ch === 'U') return { ch: 'Y', cost: 2 };
+    if (ch === 'N') return { ch: 'H', cost: 2 };
+    if (ch === 'R') return { ch: 'P', cost: 2 };
+    if (ch === 'D' || ch === 'Q') return { ch: 'O', cost: 2 };
+    if (ch === 'G') return { ch: 'C', cost: 3 };
+    if (ch === 'F') return { ch: 'E', cost: 3 };
     return { ch, cost: 99 };
   };
 
@@ -483,6 +499,10 @@ const extractLicensePlateFromText = (text) => {
       if (uaPrefixes.has(p)) {
         return { a: v.a, b: v.b, cost: (v.a !== a ? 1 : 0) + (v.b !== b ? 1 : 0) };
       }
+    }
+    // Last-resort fallback: accept allowed-letter prefix with a penalty.
+    if (allowedLetters.has(a) && allowedLetters.has(b)) {
+      return { a, b, cost: 3 };
     }
     return null;
   };
