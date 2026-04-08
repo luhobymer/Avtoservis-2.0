@@ -285,14 +285,10 @@ exports.parseLicensePlateFromImage = async (req, res) => {
 
       try {
         if (plateWorkerPromise) {
-          await withTimeoutCustom(
-            plateWorkerPromise,
-            warmupWaitMs,
-            {
-              code: 'OCR_WARMUP_WAIT_TIMEOUT',
-              message: 'OCR warmup wait timeout',
-            }
-          );
+          await withTimeoutCustom(plateWorkerPromise, warmupWaitMs, {
+            code: 'OCR_WARMUP_WAIT_TIMEOUT',
+            message: 'OCR warmup wait timeout',
+          });
         }
       } catch (_) {
         void _;
@@ -301,62 +297,63 @@ exports.parseLicensePlateFromImage = async (req, res) => {
       if (plateWorkerInstance) {
         // Worker became ready during the wait window; proceed with OCR in this request.
       } else {
+        if (plateWorkerWarming && !plateWorkerWarmupStartedAt) {
+          plateWorkerWarmupStartedAt = Date.now();
+        }
 
-      if (plateWorkerWarming && !plateWorkerWarmupStartedAt) {
-        plateWorkerWarmupStartedAt = Date.now();
-      }
+        const warmupSnapshot = {
+          warming: Boolean(plateWorkerWarming),
+          hasInstance: Boolean(plateWorkerInstance),
+          hasPromise: Boolean(plateWorkerPromise),
+          startedAtRaw: plateWorkerWarmupStartedAt,
+          lastError: plateWorkerWarmupError,
+        };
 
-      const warmupSnapshot = {
-        warming: Boolean(plateWorkerWarming),
-        hasInstance: Boolean(plateWorkerInstance),
-        hasPromise: Boolean(plateWorkerPromise),
-        startedAtRaw: plateWorkerWarmupStartedAt,
-        lastError: plateWorkerWarmupError,
-      };
+        const warmupStartedAtNum =
+          warmupSnapshot.startedAtRaw === null || warmupSnapshot.startedAtRaw === undefined
+            ? null
+            : typeof warmupSnapshot.startedAtRaw === 'number'
+              ? warmupSnapshot.startedAtRaw
+              : Number(warmupSnapshot.startedAtRaw);
+        const warmupStartedAtIsFinite =
+          warmupStartedAtNum !== null && Number.isFinite(warmupStartedAtNum);
+        const warmupStartedAtNumIsNaN =
+          warmupStartedAtNum !== null && typeof warmupStartedAtNum === 'number'
+            ? Number.isNaN(warmupStartedAtNum)
+            : null;
 
-      const warmupStartedAtNum =
-        warmupSnapshot.startedAtRaw === null || warmupSnapshot.startedAtRaw === undefined
-          ? null
-          : typeof warmupSnapshot.startedAtRaw === 'number'
-            ? warmupSnapshot.startedAtRaw
-            : Number(warmupSnapshot.startedAtRaw);
-      const warmupStartedAtIsFinite =
-        warmupStartedAtNum !== null && Number.isFinite(warmupStartedAtNum);
-      const warmupStartedAtNumIsNaN =
-        warmupStartedAtNum !== null && typeof warmupStartedAtNum === 'number'
-          ? Number.isNaN(warmupStartedAtNum)
-          : null;
+        const warmupElapsedMs =
+          warmupSnapshot.warming && warmupStartedAtIsFinite
+            ? Date.now() - warmupStartedAtNum
+            : null;
 
-      const warmupElapsedMs =
-        warmupSnapshot.warming && warmupStartedAtIsFinite ? Date.now() - warmupStartedAtNum : null;
+        if (
+          warmupSnapshot.warming &&
+          typeof warmupElapsedMs === 'number' &&
+          warmupElapsedMs > PLATE_WORKER_WARMUP_STUCK_RESET_MS
+        ) {
+          void resetPlateWorker();
+        }
 
-      if (
-        warmupSnapshot.warming &&
-        typeof warmupElapsedMs === 'number' &&
-        warmupElapsedMs > PLATE_WORKER_WARMUP_STUCK_RESET_MS
-      ) {
-        void resetPlateWorker();
-      }
+        fs.unlink(imagePath, (err) => {
+          if (err) void err;
+        });
 
-      fs.unlink(imagePath, (err) => {
-        if (err) void err;
-      });
-
-      return res.status(503).json({
-        message: 'OCR warming up, please retry',
-        warmup: {
-          warming: warmupSnapshot.warming,
-          hasInstance: warmupSnapshot.hasInstance,
-          hasPromise: warmupSnapshot.hasPromise,
-          startedAt: warmupStartedAtIsFinite ? warmupStartedAtNum : warmupSnapshot.startedAtRaw,
-          startedAtType: typeof warmupSnapshot.startedAtRaw,
-          startedAtIsFinite: warmupStartedAtIsFinite,
-          startedAtNum: warmupStartedAtNum,
-          startedAtNumIsNaN: warmupStartedAtNumIsNaN,
-          elapsedMs: warmupElapsedMs,
-          lastError: debug ? warmupSnapshot.lastError : warmupSnapshot.lastError,
-        },
-      });
+        return res.status(503).json({
+          message: 'OCR warming up, please retry',
+          warmup: {
+            warming: warmupSnapshot.warming,
+            hasInstance: warmupSnapshot.hasInstance,
+            hasPromise: warmupSnapshot.hasPromise,
+            startedAt: warmupStartedAtIsFinite ? warmupStartedAtNum : warmupSnapshot.startedAtRaw,
+            startedAtType: typeof warmupSnapshot.startedAtRaw,
+            startedAtIsFinite: warmupStartedAtIsFinite,
+            startedAtNum: warmupStartedAtNum,
+            startedAtNumIsNaN: warmupStartedAtNumIsNaN,
+            elapsedMs: warmupElapsedMs,
+            lastError: debug ? warmupSnapshot.lastError : warmupSnapshot.lastError,
+          },
+        });
       }
     }
 
@@ -438,9 +435,9 @@ exports.parseLicensePlateFromImage = async (req, res) => {
             const h = img.bitmap.height;
 
             // Alternative crop: higher and wider zone for front-car shots.
-            const cropX = Math.max(0, Math.round(w * 0.10));
+            const cropX = Math.max(0, Math.round(w * 0.1));
             const cropY = Math.max(0, Math.round(h * 0.22));
-            const cropW = Math.min(w - cropX, Math.round(w * 0.80));
+            const cropW = Math.min(w - cropX, Math.round(w * 0.8));
             const cropH = Math.min(h - cropY, Math.round(h * 0.42));
 
             cropCompat(img, cropX, cropY, cropW, cropH);
@@ -532,7 +529,7 @@ exports.parseLicensePlateFromImage = async (req, res) => {
 
             const cropX = Math.max(0, Math.round(w * 0.05));
             const cropY = Math.max(0, Math.round(h * 0.52));
-            const cropW = Math.min(w - cropX, Math.round(w * 0.90));
+            const cropW = Math.min(w - cropX, Math.round(w * 0.9));
             const cropH = Math.min(h - cropY, Math.round(h * 0.45));
 
             cropCompat(img, cropX, cropY, cropW, cropH);
@@ -707,45 +704,52 @@ exports.parseLicensePlateFromImage = async (req, res) => {
         // If fast-mode produced no text/plate, try one emergency pass tuned for sparse text.
         if (fastMode && !bestPlate) {
           const emergencyInputs = [
-            { label: 'orig-emergency', path: imagePath },
+            { label: 'plate-emergency', path: preprocessedPath },
+            { label: 'plate-alt-emergency', path: altPreprocessedPath },
+            { label: 'binary-emergency', path: binaryPreprocessedPath },
             { label: 'fallback-emergency', path: fallbackPreprocessedPath },
+            { label: 'orig-emergency', path: imagePath },
           ].filter((x) => Boolean(x.path));
+          const emergencyPsmModes = ['11', '13'];
           for (const input of emergencyInputs) {
-            try {
-              if (Date.now() - startedAt > overallTimeoutMs + 4000) break;
+            for (const psm of emergencyPsmModes) {
               try {
-                await worker.setParameters({ tessedit_pageseg_mode: '11' });
-              } catch (_) {
-                void _;
-              }
-              const {
-                data: { text },
-              } = await withTimeout(worker.recognize(input.path), 5000);
-              const plate = extractLicensePlateFromText(text);
-              if (text && String(text).trim()) bestText = text;
-              if (debug) {
-                attempts.push({
-                  label: input.label,
-                  psm: '11',
-                  plate: plate || null,
-                  rawText: text || '',
-                });
-              }
-              if (plate) {
-                bestPlate = plate;
-                break;
-              }
-            } catch (err) {
-              if (debug) {
-                attempts.push({
-                  label: input.label,
-                  psm: '11',
-                  plate: null,
-                  rawText: '',
-                  error: String(err?.message || err),
-                });
+                if (Date.now() - startedAt > overallTimeoutMs + 7000) break;
+                try {
+                  await worker.setParameters({ tessedit_pageseg_mode: psm });
+                } catch (_) {
+                  void _;
+                }
+                const {
+                  data: { text },
+                } = await withTimeout(worker.recognize(input.path), 6500);
+                const plate = extractLicensePlateFromText(text);
+                if (text && String(text).trim()) bestText = text;
+                if (debug) {
+                  attempts.push({
+                    label: input.label,
+                    psm,
+                    plate: plate || null,
+                    rawText: text || '',
+                  });
+                }
+                if (plate) {
+                  bestPlate = plate;
+                  break;
+                }
+              } catch (err) {
+                if (debug) {
+                  attempts.push({
+                    label: input.label,
+                    psm,
+                    plate: null,
+                    rawText: '',
+                    error: String(err?.message || err),
+                  });
+                }
               }
             }
+            if (bestPlate) break;
           }
         }
 
@@ -1024,6 +1028,10 @@ function parseOcrText(text) {
 function extractLicensePlateFromText(text) {
   const raw = String(text || '').toUpperCase();
   if (!raw) return null;
+  const preNormalized = raw
+    .replace(/[\r\n\t]+/g, ' ')
+    .replace(/R\s*N/g, 'K')
+    .replace(/RN/g, 'K');
 
   const map = {
     А: 'A',
@@ -1048,15 +1056,43 @@ function extractLicensePlateFromText(text) {
     Ґ: 'G',
   };
 
-  // Remove non-alphanumeric but keep spaces for spaced plates
-  const normalized = raw
-    .replace(/[АВЕИІКМНОРСТХУЙЗЧЇЄҐ]/g, (ch) => map[ch] || ch)
-    .replace(/[^A-Z0-9 ]/g, '');
+  const normalizeChunk = (value) =>
+    String(value || '')
+      .replace(/[АВЕИІКМНОРСТХУЙЗЧЇЄҐ]/g, (ch) => map[ch] || ch)
+      .replace(/[^A-Z0-9 ]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
 
-  // Also create fully stripped version
+  const normalized = normalizeChunk(preNormalized);
   const stripped = normalized.replace(/[^A-Z0-9]/g, '');
+  const normalizedLines = raw
+    .split(/\r?\n/)
+    .map((line) =>
+      normalizeChunk(
+        String(line || '')
+          .replace(/R\s*N/g, 'K')
+          .replace(/RN/g, 'K')
+      )
+    )
+    .filter(Boolean);
 
-  if (stripped.length < 8) return null;
+  const sourceVariants = Array.from(
+    new Set(
+      [
+        normalized,
+        stripped,
+        normalizedLines.join(' '),
+        normalizedLines.join(''),
+        ...normalizedLines,
+        ...normalizedLines.flatMap((line, idx) => {
+          if (idx >= normalizedLines.length - 1) return [];
+          return [`${line} ${normalizedLines[idx + 1]}`, `${line}${normalizedLines[idx + 1]}`];
+        }),
+      ].filter(Boolean)
+    )
+  );
+
+  if (!sourceVariants.some((value) => value.replace(/[^A-Z0-9]/g, '').length >= 8)) return null;
 
   const allowedLetters = new Set(['A', 'B', 'C', 'E', 'H', 'I', 'K', 'M', 'O', 'P', 'T', 'X', 'Y']);
   const uaPrefixes = new Set([
@@ -1209,12 +1245,20 @@ function extractLicensePlateFromText(text) {
     if (isDigit(ch)) return { ch, cost: 0 };
     if (ch === 'O') return { ch: '0', cost: 1 };
     if (ch === 'I') return { ch: '1', cost: 1 };
+    if (ch === 'L') return { ch: '1', cost: 2 };
     if (ch === 'Z') return { ch: '2', cost: 1 };
     if (ch === 'S') return { ch: '5', cost: 1 };
     if (ch === 'B') return { ch: '8', cost: 1 };
+    if (ch === 'E') return { ch: '3', cost: 2 };
+    if (ch === 'A') return { ch: '4', cost: 2 };
+    if (ch === 'T') return { ch: '7', cost: 2 };
+    if (ch === 'W') return { ch: '7', cost: 3 };
+    if (ch === 'P') return { ch: '9', cost: 3 };
     if (ch === 'G') return { ch: '6', cost: 2 };
+    if (ch === 'C') return { ch: '6', cost: 3 };
     if (ch === 'Q') return { ch: '0', cost: 2 };
     if (ch === 'D') return { ch: '0', cost: 2 };
+    if (ch === 'U') return { ch: '0', cost: 3 };
     return { ch, cost: 99 };
   };
 
@@ -1236,6 +1280,10 @@ function extractLicensePlateFromText(text) {
         const cost = (v.a !== a ? 1 : 0) + (v.b !== b ? 1 : 0);
         return { a: v.a, b: v.b, cost };
       }
+    }
+
+    if (isAllowedLetter(a) && isAllowedLetter(b)) {
+      return { a, b, cost: 4 };
     }
 
     return null;
@@ -1279,100 +1327,87 @@ function extractLicensePlateFromText(text) {
   };
 
   let best = null;
-
-  // Try spaced plates first (e.g., 'KA 2878 IA')
-  // Pattern: LL DDDD LL with possible spaces
-  for (let i = 0; i <= normalized.length - 8; i += 1) {
-    const s = normalized.slice(i, i + 8);
-    const scored = scoreCandidate(s);
-    if (!scored) continue;
-    if (!best || scored.cost < best.cost) {
-      best = scored;
-      if (best.cost === 0) break;
+  const considerCandidate = (candidate, penalty = 0) => {
+    const scored = scoreCandidate(candidate);
+    if (!scored) return false;
+    const withPenalty = { fixed: scored.fixed, cost: scored.cost + penalty };
+    if (!best || withPenalty.cost < best.cost) {
+      best = withPenalty;
     }
-  }
+    return withPenalty.cost === 0;
+  };
 
-  // Try spaced pattern with one space: LL DDDDLL (e.g., 'KA 2878IA')
-  for (let i = 0; i <= normalized.length - 9; i += 1) {
-    const s9 = normalized.slice(i, i + 9);
-    // Expect exactly one space at position 2
-    if (s9[2] === ' ' && s9[7] !== ' ' && s9[8] !== ' ') {
-      const s8 = s9.slice(0, 2) + s9.slice(3); // remove space
-      const scored = scoreCandidate(s8);
-      if (!scored) continue;
-      const withPenalty = { fixed: scored.fixed, cost: scored.cost + 1 };
-      if (!best || withPenalty.cost < best.cost) {
-        best = withPenalty;
-        if (best.cost <= 1) break;
+  const trySource = (source) => {
+    const compact = String(source || '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!compact) return;
+
+    for (let i = 0; i <= compact.length - 8; i += 1) {
+      if (considerCandidate(compact.slice(i, i + 8))) return;
+    }
+
+    for (let i = 0; i <= compact.length - 9; i += 1) {
+      const s9 = compact.slice(i, i + 9);
+      if (s9[2] === ' ' && s9[7] !== ' ' && s9[8] !== ' ') {
+        if (considerCandidate(s9.slice(0, 2) + s9.slice(3), 1)) return;
       }
     }
-  }
 
-  // Try spaced pattern with two spaces: LL DD DD LL (e.g., 'KA 28 78 IA')
-  for (let i = 0; i <= normalized.length - 10; i += 1) {
-    const s10 = normalized.slice(i, i + 10);
-    // Expect spaces at positions 2 and 5
-    if (s10[2] === ' ' && s10[5] === ' ' && s10[8] !== ' ' && s10[9] !== ' ') {
-      const s8 = s10.slice(0, 2) + s10.slice(3, 5) + s10.slice(6); // remove both spaces
-      const scored = scoreCandidate(s8);
-      if (!scored) continue;
-      const withPenalty = { fixed: scored.fixed, cost: scored.cost + 2 };
-      if (!best || withPenalty.cost < best.cost) {
-        best = withPenalty;
-        if (best.cost <= 2) break;
+    for (let i = 0; i <= compact.length - 10; i += 1) {
+      const s10 = compact.slice(i, i + 10);
+      if (s10[2] === ' ' && s10[5] === ' ' && s10[8] !== ' ' && s10[9] !== ' ') {
+        if (considerCandidate(s10.slice(0, 2) + s10.slice(3, 5) + s10.slice(6), 2)) return;
       }
     }
-  }
 
-  // Fallback to stripped version if still no candidate
-  if (!best) {
-    for (let i = 0; i <= stripped.length - 8; i += 1) {
-      const s = stripped.slice(i, i + 8);
-      const scored = scoreCandidate(s);
-      if (!scored) continue;
-      if (!best || scored.cost < best.cost) {
-        best = scored;
-        if (best.cost === 0) break;
-      }
+    const onlyAlnum = compact.replace(/[^A-Z0-9]/g, '');
+    for (let i = 0; i <= onlyAlnum.length - 8; i += 1) {
+      if (considerCandidate(onlyAlnum.slice(i, i + 8))) return;
     }
-  }
 
-  if (!best && stripped.length >= 9) {
-    const deletionPenalty = 2;
-    for (let i = 0; i <= stripped.length - 9; i += 1) {
-      const s9 = stripped.slice(i, i + 9);
-      for (let drop = 0; drop < 9; drop += 1) {
-        const s8 = s9.slice(0, drop) + s9.slice(drop + 1);
-        const scored = scoreCandidate(s8);
-        if (!scored) continue;
-        const withPenalty = { fixed: scored.fixed, cost: scored.cost + deletionPenalty };
-        if (!best || withPenalty.cost < best.cost) {
-          best = withPenalty;
-        }
-      }
-    }
-  }
-
-  if (!best && stripped.length >= 10) {
-    const deletionPenalty = 4;
-    for (let i = 0; i <= stripped.length - 10; i += 1) {
-      const s10 = stripped.slice(i, i + 10);
-      for (let dropA = 0; dropA < 10; dropA += 1) {
-        for (let dropB = dropA + 1; dropB < 10; dropB += 1) {
-          const s8 =
-            s10.slice(0, dropA) +
-            s10.slice(dropA + 1, dropB) +
-            s10.slice(dropB + 1);
-          if (s8.length !== 8) continue;
-          const scored = scoreCandidate(s8);
-          if (!scored) continue;
-          const withPenalty = { fixed: scored.fixed, cost: scored.cost + deletionPenalty };
-          if (!best || withPenalty.cost < best.cost) {
-            best = withPenalty;
+    const tryDeletionWindows = (windowLength, deletionPenalty, stopAtCost = 1) => {
+      if (onlyAlnum.length < windowLength) return false;
+      const dropCount = windowLength - 8;
+      for (let i = 0; i <= onlyAlnum.length - windowLength; i += 1) {
+        const window = onlyAlnum.slice(i, i + windowLength);
+        const picked = [];
+        let shouldStop = false;
+        const choose = (index, dropsLeft) => {
+          if (shouldStop) return;
+          if (picked.length === 8) {
+            const stop = considerCandidate(picked.join(''), deletionPenalty);
+            if (stop && best && best.cost <= stopAtCost) shouldStop = true;
+            return;
           }
-        }
+          if (index >= window.length) return;
+          const remaining = window.length - index;
+          const required = 8 - picked.length;
+          if (remaining < required) return;
+
+          picked.push(window[index]);
+          choose(index + 1, dropsLeft);
+          picked.pop();
+
+          if (dropsLeft > 0) {
+            choose(index + 1, dropsLeft - 1);
+          }
+        };
+        choose(0, dropCount);
+        if (shouldStop) return true;
       }
-    }
+      return false;
+    };
+
+    if (tryDeletionWindows(9, 2, 2)) return;
+    if (tryDeletionWindows(10, 4, 3)) return;
+    if (tryDeletionWindows(11, 6, 4)) return;
+    tryDeletionWindows(12, 8, 5);
+  };
+
+  for (const source of sourceVariants) {
+    trySource(source);
+    if (best?.cost === 0) break;
   }
 
   if (best?.fixed) return best.fixed;
