@@ -679,7 +679,7 @@ exports.parseLicensePlateFromImage = async (req, res) => {
         }
 
         // If fast-mode produced no text/plate, try one emergency pass tuned for sparse text.
-        if (fastMode && !bestPlate && !String(bestText || '').trim()) {
+        if (fastMode && !bestPlate) {
           const emergencyInputs = [
             { label: 'orig-emergency', path: imagePath },
             { label: 'fallback-emergency', path: fallbackPreprocessedPath },
@@ -996,6 +996,7 @@ function extractLicensePlateFromText(text) {
     А: 'A',
     В: 'B',
     Е: 'E',
+    И: 'I',
     І: 'I',
     К: 'K',
     М: 'M',
@@ -1006,6 +1007,9 @@ function extractLicensePlateFromText(text) {
     Т: 'T',
     Х: 'X',
     У: 'Y',
+    Й: 'I',
+    З: '3',
+    Ч: '4',
     Ї: 'I',
     Є: 'E',
     Ґ: 'G',
@@ -1013,7 +1017,7 @@ function extractLicensePlateFromText(text) {
 
   // Remove non-alphanumeric but keep spaces for spaced plates
   const normalized = raw
-    .replace(/[АВЕІКМНОРСТХУЇЄҐ]/g, (ch) => map[ch] || ch)
+    .replace(/[АВЕИІКМНОРСТХУЙЗЧЇЄҐ]/g, (ch) => map[ch] || ch)
     .replace(/[^A-Z0-9 ]/g, '');
 
   // Also create fully stripped version
@@ -1153,7 +1157,18 @@ function extractLicensePlateFromText(text) {
     if (ch === '1') return { ch: 'I', cost: 1 };
     if (ch === '8') return { ch: 'B', cost: 1 };
     if (ch === '6') return { ch: 'B', cost: 2 };
-    if (ch === '2') return { ch: 'Z', cost: 3 };
+    if (ch === '4') return { ch: 'A', cost: 2 };
+    if (ch === '7') return { ch: 'T', cost: 2 };
+    if (ch === '9') return { ch: 'P', cost: 2 };
+    if (ch === '3') return { ch: 'E', cost: 2 };
+    if (ch === '5') return { ch: 'C', cost: 3 };
+    if (ch === 'L' || ch === 'J') return { ch: 'I', cost: 2 };
+    if (ch === 'V' || ch === 'U') return { ch: 'Y', cost: 2 };
+    if (ch === 'N') return { ch: 'H', cost: 2 };
+    if (ch === 'R') return { ch: 'P', cost: 2 };
+    if (ch === 'D' || ch === 'Q') return { ch: 'O', cost: 2 };
+    if (ch === 'G') return { ch: 'C', cost: 3 };
+    if (ch === 'F') return { ch: 'E', cost: 3 };
     return { ch, cost: 99 };
   };
 
