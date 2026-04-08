@@ -623,8 +623,8 @@ exports.parseLicensePlateFromImage = async (req, res) => {
     const result = await withTimeout(
       withPlateWorker(async (worker) => {
         const psmModes = fastMode ? ['7', '6'] : ['7', '6', '11'];
-        const perAttemptTimeoutMs = fastMode ? 6000 : 9000;
-        const overallTimeoutMs = fastMode ? 14000 : 22000;
+        const perAttemptTimeoutMs = fastMode ? 9000 : 9000;
+        const overallTimeoutMs = fastMode ? 30000 : 22000;
         const startedAt = Date.now();
         let bestText = '';
         let bestPlate = null;
@@ -725,7 +725,7 @@ exports.parseLicensePlateFromImage = async (req, res) => {
 
         return { bestPlate, bestText, attempts };
       }),
-      fastMode ? 20000 : 28000,
+      fastMode ? 45000 : 28000,
       () => {
         void resetPlateWorker();
       }
@@ -804,7 +804,6 @@ exports.parseLicensePlateFromImage = async (req, res) => {
     const msgLower = msg.toLowerCase();
 
     if (code === 'OCR_TIMEOUT' || msgLower.includes('ocr timeout')) {
-      void resetPlateWorker();
       return res.status(200).json({
         licensePlate: null,
         rawText: '',
