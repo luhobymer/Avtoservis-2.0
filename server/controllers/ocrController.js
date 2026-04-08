@@ -269,6 +269,7 @@ exports.parseLicensePlateFromImage = async (req, res) => {
     }
 
     const debug = String(req.query?.debug || '') === '1';
+    const fastMode = !debug;
 
     const imagePath = req.file.path;
 
@@ -375,8 +376,8 @@ exports.parseLicensePlateFromImage = async (req, res) => {
     if (Jimp) {
       try {
         const preprocessStartedAt = Date.now();
-        const preprocessBudgetMs = 18000;
-        const readTimeoutMs = 9000;
+        const preprocessBudgetMs = fastMode ? 9000 : 18000;
+        const readTimeoutMs = fastMode ? 5000 : 9000;
 
         const remainingMs = () =>
           Math.max(0, preprocessBudgetMs - (Date.now() - preprocessStartedAt));
@@ -585,19 +586,26 @@ exports.parseLicensePlateFromImage = async (req, res) => {
       }
     }
 
-    const ocrInputs = [
-      { label: 'bottom', path: bottomPreprocessedPath },
-      { label: 'binary', path: binaryPreprocessedPath },
-      { label: 'plate', path: preprocessedPath },
-      { label: 'full', path: fullPreprocessedPath },
-      { label: 'orig', path: imagePath },
-    ].filter((x) => Boolean(x.path));
+    const ocrInputs = (
+      fastMode
+        ? [
+            { label: 'plate', path: preprocessedPath },
+            { label: 'orig', path: imagePath },
+          ]
+        : [
+            { label: 'bottom', path: bottomPreprocessedPath },
+            { label: 'binary', path: binaryPreprocessedPath },
+            { label: 'plate', path: preprocessedPath },
+            { label: 'full', path: fullPreprocessedPath },
+            { label: 'orig', path: imagePath },
+          ]
+    ).filter((x) => Boolean(x.path));
 
     const result = await withTimeout(
       withPlateWorker(async (worker) => {
-        const psmModes = ['7', '6', '11'];
-        const perAttemptTimeoutMs = 9000;
-        const overallTimeoutMs = 22000;
+        const psmModes = fastMode ? ['7', '6'] : ['7', '6', '11'];
+        const perAttemptTimeoutMs = fastMode ? 6000 : 9000;
+        const overallTimeoutMs = fastMode ? 14000 : 22000;
         const startedAt = Date.now();
         let bestText = '';
         let bestPlate = null;
@@ -619,9 +627,7 @@ exports.parseLicensePlateFromImage = async (req, res) => {
 
               const {
                 data: { text },
-              } = await withTimeout(worker.recognize(input.path), perAttemptTimeoutMs, () => {
-                void resetPlateWorker();
-              });
+              } = await withTimeout(worker.recognize(input.path), perAttemptTimeoutMs);
               bestText = text || bestText;
               const plate = extractLicensePlateFromText(text);
 
@@ -655,7 +661,7 @@ exports.parseLicensePlateFromImage = async (req, res) => {
 
         return { bestPlate, bestText, attempts };
       }),
-      28000,
+      fastMode ? 20000 : 28000,
       () => {
         void resetPlateWorker();
       }
