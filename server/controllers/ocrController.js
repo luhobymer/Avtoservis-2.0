@@ -364,6 +364,7 @@ exports.parseLicensePlateFromImage = async (req, res) => {
     let fullPreprocessedPath = null;
     let binaryPreprocessedPath = null;
     let bottomPreprocessedPath = null;
+    let fallbackPreprocessedPath = null;
     const preprocessErrors = {
       plate: null,
       binary: null,
@@ -427,6 +428,20 @@ exports.parseLicensePlateFromImage = async (req, res) => {
         } catch (err) {
           preprocessErrors.plate = String(err?.message || err);
           preprocessedPath = null;
+        }
+
+        try {
+          await runStep('fallback', async () => {
+            const img = base.clone();
+            // Conservative full-frame preprocessing as last-resort OCR input.
+            resizeKeepAspect(img, 1400);
+            img.greyscale().contrast(0.45).normalize();
+            fallbackPreprocessedPath = `${imagePath}-fallback.png`;
+            await writeImage(img, fallbackPreprocessedPath);
+          });
+        } catch (err) {
+          preprocessErrors.full = preprocessErrors.full || String(err?.message || err);
+          fallbackPreprocessedPath = null;
         }
 
         try {
@@ -593,6 +608,7 @@ exports.parseLicensePlateFromImage = async (req, res) => {
         ? [
             { label: 'plate', path: preprocessedPath },
             { label: 'binary', path: binaryPreprocessedPath },
+            { label: 'fallback', path: fallbackPreprocessedPath },
             { label: 'orig', path: imagePath },
           ]
         : [
@@ -662,6 +678,51 @@ exports.parseLicensePlateFromImage = async (req, res) => {
           if (bestPlate) break;
         }
 
+        // If fast-mode produced no text/plate, try one emergency pass tuned for sparse text.
+        if (fastMode && !bestPlate && !String(bestText || '').trim()) {
+          const emergencyInputs = [
+            { label: 'orig-emergency', path: imagePath },
+            { label: 'fallback-emergency', path: fallbackPreprocessedPath },
+          ].filter((x) => Boolean(x.path));
+          for (const input of emergencyInputs) {
+            try {
+              if (Date.now() - startedAt > overallTimeoutMs + 4000) break;
+              try {
+                await worker.setParameters({ tessedit_pageseg_mode: '11' });
+              } catch (_) {
+                void _;
+              }
+              const {
+                data: { text },
+              } = await withTimeout(worker.recognize(input.path), 5000);
+              const plate = extractLicensePlateFromText(text);
+              if (text && String(text).trim()) bestText = text;
+              if (debug) {
+                attempts.push({
+                  label: input.label,
+                  psm: '11',
+                  plate: plate || null,
+                  rawText: text || '',
+                });
+              }
+              if (plate) {
+                bestPlate = plate;
+                break;
+              }
+            } catch (err) {
+              if (debug) {
+                attempts.push({
+                  label: input.label,
+                  psm: '11',
+                  plate: null,
+                  rawText: '',
+                  error: String(err?.message || err),
+                });
+              }
+            }
+          }
+        }
+
         return { bestPlate, bestText, attempts };
       }),
       fastMode ? 20000 : 28000,
@@ -698,6 +759,12 @@ exports.parseLicensePlateFromImage = async (req, res) => {
       });
     }
 
+    if (fallbackPreprocessedPath) {
+      fs.unlink(fallbackPreprocessedPath, (err) => {
+        if (err) void err;
+      });
+    }
+
     const debugMeta = debug
       ? {
           meta: {
@@ -709,6 +776,7 @@ exports.parseLicensePlateFromImage = async (req, res) => {
               binary: Boolean(binaryPreprocessedPath),
               plate: Boolean(preprocessedPath),
               full: Boolean(fullPreprocessedPath),
+              fallback: Boolean(fallbackPreprocessedPath),
               orig: true,
             },
             preprocessErrors,
