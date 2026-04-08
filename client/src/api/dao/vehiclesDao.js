@@ -145,8 +145,10 @@ async function prepareImageForOcr(file) {
     return file;
   }
 
+  // Re-encode only when needed: HEIC/HEIF or very large images.
+  // Unnecessary JPEG re-save can blur plates and reduce OCR quality.
   const shouldReencode =
-    file.size > 0 || type.includes('heic') || type.includes('heif');
+    type.includes('heic') || type.includes('heif') || file.size > 7 * 1024 * 1024;
   if (!shouldReencode || typeof document === 'undefined') {
     return file;
   }
@@ -167,7 +169,7 @@ async function prepareImageForOcr(file) {
       return file;
     }
 
-    const maxSide = 1400;
+    const maxSide = 2200;
     const ratio = Math.min(1, maxSide / Math.max(width, height));
     const targetW = Math.max(1, Math.round(width * ratio));
     const targetH = Math.max(1, Math.round(height * ratio));
@@ -179,10 +181,12 @@ async function prepareImageForOcr(file) {
     if (!ctx) {
       return file;
     }
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
     ctx.drawImage(image, 0, 0, targetW, targetH);
 
     const blob = await new Promise((resolve) => {
-      canvas.toBlob((b) => resolve(b), 'image/jpeg', 0.88);
+      canvas.toBlob((b) => resolve(b), 'image/jpeg', 0.95);
     });
 
     if (!blob || !blob.size) {
