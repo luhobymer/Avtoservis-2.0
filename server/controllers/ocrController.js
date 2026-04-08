@@ -361,6 +361,7 @@ exports.parseLicensePlateFromImage = async (req, res) => {
     }
 
     let preprocessedPath = null;
+    let altPreprocessedPath = null;
     let fullPreprocessedPath = null;
     let binaryPreprocessedPath = null;
     let bottomPreprocessedPath = null;
@@ -428,6 +429,30 @@ exports.parseLicensePlateFromImage = async (req, res) => {
         } catch (err) {
           preprocessErrors.plate = String(err?.message || err);
           preprocessedPath = null;
+        }
+
+        try {
+          await runStep('plate-alt', async () => {
+            const img = base.clone();
+            const w = img.bitmap.width;
+            const h = img.bitmap.height;
+
+            // Alternative crop: higher and wider zone for front-car shots.
+            const cropX = Math.max(0, Math.round(w * 0.10));
+            const cropY = Math.max(0, Math.round(h * 0.22));
+            const cropW = Math.min(w - cropX, Math.round(w * 0.80));
+            const cropH = Math.min(h - cropY, Math.round(h * 0.42));
+
+            cropCompat(img, cropX, cropY, cropW, cropH);
+            resizeKeepAspect(img, 1100);
+            img.greyscale().contrast(0.75).normalize();
+
+            altPreprocessedPath = `${imagePath}-plate-alt.png`;
+            await writeImage(img, altPreprocessedPath);
+          });
+        } catch (err) {
+          preprocessErrors.full = preprocessErrors.full || String(err?.message || err);
+          altPreprocessedPath = null;
         }
 
         try {
@@ -607,6 +632,7 @@ exports.parseLicensePlateFromImage = async (req, res) => {
       fastMode
         ? [
             { label: 'plate', path: preprocessedPath },
+            { label: 'plate-alt', path: altPreprocessedPath },
             { label: 'binary', path: binaryPreprocessedPath },
             { label: 'fallback', path: fallbackPreprocessedPath },
             { label: 'orig', path: imagePath },
@@ -622,7 +648,7 @@ exports.parseLicensePlateFromImage = async (req, res) => {
 
     const result = await withTimeout(
       withPlateWorker(async (worker) => {
-        const psmModes = fastMode ? ['7', '6'] : ['7', '6', '11'];
+        const psmModes = fastMode ? ['7', '8', '6'] : ['7', '6', '11'];
         const perAttemptTimeoutMs = fastMode ? 9000 : 9000;
         const overallTimeoutMs = fastMode ? 30000 : 22000;
         const startedAt = Date.now();
@@ -741,6 +767,12 @@ exports.parseLicensePlateFromImage = async (req, res) => {
       });
     }
 
+    if (altPreprocessedPath) {
+      fs.unlink(altPreprocessedPath, (err) => {
+        if (err) void err;
+      });
+    }
+
     if (fullPreprocessedPath) {
       fs.unlink(fullPreprocessedPath, (err) => {
         if (err) void err;
@@ -775,6 +807,7 @@ exports.parseLicensePlateFromImage = async (req, res) => {
               bottom: Boolean(bottomPreprocessedPath),
               binary: Boolean(binaryPreprocessedPath),
               plate: Boolean(preprocessedPath),
+              plateAlt: Boolean(altPreprocessedPath),
               full: Boolean(fullPreprocessedPath),
               fallback: Boolean(fallbackPreprocessedPath),
               orig: true,
