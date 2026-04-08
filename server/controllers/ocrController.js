@@ -376,8 +376,10 @@ exports.parseLicensePlateFromImage = async (req, res) => {
     if (Jimp) {
       try {
         const preprocessStartedAt = Date.now();
-        const preprocessBudgetMs = fastMode ? 9000 : 18000;
-        const readTimeoutMs = fastMode ? 5000 : 9000;
+        // Render cold starts can be slow; give preprocessing enough time
+        // so we still produce cropped plate-focused inputs.
+        const preprocessBudgetMs = fastMode ? 18000 : 32000;
+        const readTimeoutMs = fastMode ? 12000 : 22000;
 
         const remainingMs = () =>
           Math.max(0, preprocessBudgetMs - (Date.now() - preprocessStartedAt));
@@ -428,7 +430,7 @@ exports.parseLicensePlateFromImage = async (req, res) => {
         }
 
         try {
-          if (remainingMs() < 6000) {
+          if (remainingMs() < 3500) {
             preprocessErrors.binary = 'OCR preprocess skipped';
             throw new Error('OCR preprocess skipped');
           }
@@ -479,7 +481,7 @@ exports.parseLicensePlateFromImage = async (req, res) => {
         }
 
         try {
-          if (remainingMs() < 6000) {
+          if (remainingMs() < 3500) {
             preprocessErrors.bottom = 'OCR preprocess skipped';
             throw new Error('OCR preprocess skipped');
           }
@@ -507,7 +509,7 @@ exports.parseLicensePlateFromImage = async (req, res) => {
 
         if (debug) {
           try {
-            if (remainingMs() < 8000) {
+            if (remainingMs() < 4500) {
               preprocessErrors.bottom = 'OCR preprocess skipped';
               throw new Error('OCR preprocess skipped');
             }
@@ -558,7 +560,7 @@ exports.parseLicensePlateFromImage = async (req, res) => {
           }
 
           try {
-            if (remainingMs() < 8000) {
+            if (remainingMs() < 4500) {
               preprocessErrors.full = 'OCR preprocess skipped';
               throw new Error('OCR preprocess skipped');
             }
@@ -590,6 +592,7 @@ exports.parseLicensePlateFromImage = async (req, res) => {
       fastMode
         ? [
             { label: 'plate', path: preprocessedPath },
+            { label: 'binary', path: binaryPreprocessedPath },
             { label: 'orig', path: imagePath },
           ]
         : [
