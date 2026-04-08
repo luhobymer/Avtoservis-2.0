@@ -135,7 +135,7 @@ const mapVehicle = (v) => ({
 
 const vehicleByPlateCache = new Map();
 
-async function prepareImageForOcr(file) {
+async function prepareImageForOcr(file, options = {}) {
   if (!file || typeof File === 'undefined' || !(file instanceof File)) {
     return file;
   }
@@ -145,11 +145,7 @@ async function prepareImageForOcr(file) {
     return file;
   }
 
-  // Re-encode only when needed: HEIC/HEIF or very large images.
-  // Unnecessary JPEG re-save can blur plates and reduce OCR quality.
-  const shouldReencode =
-    type.includes('heic') || type.includes('heif') || file.size > 7 * 1024 * 1024;
-  if (!shouldReencode || typeof document === 'undefined') {
+  if (typeof document === 'undefined') {
     return file;
   }
 
@@ -169,7 +165,20 @@ async function prepareImageForOcr(file) {
       return file;
     }
 
-    const maxSide = 2200;
+    const requestedMaxSide = Number(options.maxSide) || 2200;
+    const maxSide = Math.max(1200, requestedMaxSide);
+    const force = Boolean(options.force);
+    // Re-encode when needed: HEIC/HEIF, large file, large dimensions, or forced fallback.
+    const shouldReencode =
+      force ||
+      type.includes('heic') ||
+      type.includes('heif') ||
+      file.size > 7 * 1024 * 1024 ||
+      Math.max(width, height) > maxSide;
+    if (!shouldReencode) {
+      return file;
+    }
+
     const ratio = Math.min(1, maxSide / Math.max(width, height));
     const targetW = Math.max(1, Math.round(width * ratio));
     const targetH = Math.max(1, Math.round(height * ratio));
@@ -185,8 +194,12 @@ async function prepareImageForOcr(file) {
     ctx.imageSmoothingQuality = 'high';
     ctx.drawImage(image, 0, 0, targetW, targetH);
 
+    const jpegQuality =
+      typeof options.quality === 'number' && options.quality > 0 && options.quality <= 1
+        ? options.quality
+        : 0.95;
     const blob = await new Promise((resolve) => {
-      canvas.toBlob((b) => resolve(b), 'image/jpeg', 0.95);
+      canvas.toBlob((b) => resolve(b), 'image/jpeg', jpegQuality);
     });
 
     if (!blob || !blob.size) {
@@ -716,11 +729,64 @@ export async function recognizeLicensePlateFromPhoto(file) {
   }
 
   const payload = await response.json();
+  const payloadErrorText = String(payload?.error || payload?.message || '').toLowerCase();
   if (ocrDebug) {
     try {
       window.__OCR_DEBUG_PLATE__ = payload;
     } catch (err) {
       void err;
+    }
+  }
+  // Some OCR backends return HTTP 200 with { error: "OCR timeout" }.
+  // Retry once with a compacted image to reduce server processing time.
+  if (payloadErrorText.includes('timeout')) {
+    try {
+      const compactFile = await prepareImageForOcr(file, {
+        force: true,
+        maxSide: 1600,
+        quality: 0.9,
+      });
+      const compactForm = new FormData();
+      compactForm.append('image', compactFile || file);
+      const compactController = new AbortController();
+      const compactTimeoutId = window.setTimeout(() => compactController.abort(), 70000);
+      let compactResponse;
+      try {
+        compactResponse = await fetch(debugUrl, {
+          method: 'POST',
+          headers: {
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: compactForm,
+          signal: compactController.signal,
+        });
+      } finally {
+        window.clearTimeout(compactTimeoutId);
+      }
+      if (compactResponse && compactResponse.ok) {
+        const compactPayload = await compactResponse.json();
+        if (compactPayload?.licensePlate && String(compactPayload.licensePlate).trim()) {
+          return String(compactPayload.licensePlate).trim().toUpperCase();
+        }
+        if (Array.isArray(compactPayload?.attempts)) {
+          for (const attempt of compactPayload.attempts) {
+            if (attempt?.plate) {
+              const plate = extractLicensePlateFromText(String(attempt.plate));
+              if (plate) return plate;
+            }
+            if (attempt?.rawText) {
+              const plate = extractLicensePlateFromText(String(attempt.rawText));
+              if (plate) return plate;
+            }
+          }
+        }
+        if (compactPayload?.rawText && String(compactPayload.rawText).trim()) {
+          const plate = extractLicensePlateFromText(String(compactPayload.rawText));
+          if (plate) return plate;
+        }
+      }
+    } catch (compactErr) {
+      void compactErr;
     }
   }
   if (payload && typeof payload.licensePlate === 'string' && payload.licensePlate.trim()) {
