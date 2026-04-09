@@ -8,24 +8,24 @@ const normalizeLicensePlate = (plate) => {
   if (!plate) return null;
   const normalized = String(plate).replace(/[\s\-_.]/g, '').toUpperCase();
   const map = {
-    А: 'A',
-    В: 'B',
-    Е: 'E',
-    І: 'I',
-    К: 'K',
-    М: 'M',
-    Н: 'H',
-    О: 'O',
-    Р: 'P',
-    С: 'C',
-    Т: 'T',
-    Х: 'X',
-    У: 'Y',
+    Рђ: 'A',
+    Р’: 'B',
+    Р•: 'E',
+    Р†: 'I',
+    Рљ: 'K',
+    Рњ: 'M',
+    Рќ: 'H',
+    Рћ: 'O',
+    Р : 'P',
+    РЎ: 'C',
+    Рў: 'T',
+    РҐ: 'X',
+    РЈ: 'Y',
   };
-  return normalized.replace(/[АВЕІКМНОРСТХУ]/g, (char) => map[char] || char);
+  return normalized.replace(/[РђР’Р•Р†РљРњРќРћР РЎРўРҐРЈ]/g, (char) => map[char] || char);
 };
 
-// Клас для роботи з OCR
+// РљР»Р°СЃ РґР»СЏ СЂРѕР±РѕС‚Рё Р· OCR
 export class OCRManager {
   constructor() {
     this.worker = null;
@@ -34,13 +34,13 @@ export class OCRManager {
     this.tesseractLoaded = false;
     this.nativeTextRecognition = null;
     this.useNative = false;
-    console.log(`OCRManager створено. Платформа: ${Platform.OS}`);
+    console.log(`OCRManager СЃС‚РІРѕСЂРµРЅРѕ. РџР»Р°С‚С„РѕСЂРјР°: ${Platform.OS}`);
   }
 
-  // Ініціалізація OCR системи
+  // Р†РЅС–С†С–Р°Р»С–Р·Р°С†С–СЏ OCR СЃРёСЃС‚РµРјРё
   async initialize() {
     if (this.worker !== null) {
-      return; // Вже ініціалізовано
+      return; // Р’Р¶Рµ С–РЅС–С†С–Р°Р»С–Р·РѕРІР°РЅРѕ
     }
     
     try {
@@ -69,12 +69,12 @@ export class OCRManager {
         return;
       }
       
-      // Спробуємо ініціалізувати Tesseract тільки для веб-версії
+      // РЎРїСЂРѕР±СѓС”РјРѕ С–РЅС–С†С–Р°Р»С–Р·СѓРІР°С‚Рё Tesseract С‚С–Р»СЊРєРё РґР»СЏ РІРµР±-РІРµСЂСЃС–С—
       try {
-        // Динамічно імпортуємо Tesseract.js
+        // Р”РёРЅР°РјС–С‡РЅРѕ С–РјРїРѕСЂС‚СѓС”РјРѕ Tesseract.js
         const { createWorker } = await import('tesseract.js');
         
-        // Створюємо worker з базовими опціями
+        // РЎС‚РІРѕСЂСЋС”РјРѕ worker Р· Р±Р°Р·РѕРІРёРјРё РѕРїС†С–СЏРјРё
         this.worker = await createWorker({
           lang: 'ukr+eng',
           logger: m => console.debug(m)
@@ -98,30 +98,30 @@ export class OCRManager {
     }
   }
   
-  // Створення мокового воркера
+  // РЎС‚РІРѕСЂРµРЅРЅСЏ РјРѕРєРѕРІРѕРіРѕ РІРѕСЂРєРµСЂР°
   createMockWorker() {
     console.log('Creating mock OCR worker');
     return {
       recognize: async (imageUri) => {
-        // Імітуємо затримку розпізнавання
+        // Р†РјС–С‚СѓС”РјРѕ Р·Р°С‚СЂРёРјРєСѓ СЂРѕР·РїС–Р·РЅР°РІР°РЅРЅСЏ
         await new Promise(resolve => setTimeout(resolve, 1000));
         
-        // Перевіряємо, чи це зображення номерного знаку (за назвою файлу або шляхом)
+        // РџРµСЂРµРІС–СЂСЏС”РјРѕ, С‡Рё С†Рµ Р·РѕР±СЂР°Р¶РµРЅРЅСЏ РЅРѕРјРµСЂРЅРѕРіРѕ Р·РЅР°РєСѓ (Р·Р° РЅР°Р·РІРѕСЋ С„Р°Р№Р»Сѓ Р°Р±Рѕ С€Р»СЏС…РѕРј)
         const isLicensePlate = imageUri.toLowerCase().includes('plate') || 
-                              imageUri.toLowerCase().includes('номер') || 
+                              imageUri.toLowerCase().includes('РЅРѕРјРµСЂ') || 
                               imageUri.toLowerCase().includes('license');
         
-        // Повертаємо різні мокові дані залежно від типу зображення
+        // РџРѕРІРµСЂС‚Р°С”РјРѕ СЂС–Р·РЅС– РјРѕРєРѕРІС– РґР°РЅС– Р·Р°Р»РµР¶РЅРѕ РІС–Рґ С‚РёРїСѓ Р·РѕР±СЂР°Р¶РµРЅРЅСЏ
         if (isLicensePlate) {
           return { 
             data: { 
-              text: "AA1234BB\nУкраїна" 
+              text: "AA1234BB\nРЈРєСЂР°С—РЅР°" 
             } 
           };
         } else {
           return { 
             data: { 
-              text: "СВІДОЦТВО ПРО РЕЄСТРАЦІЮ ТРАНСПОРТНОГО ЗАСОБУ\nVIN: ABC12345678901234\nМарка: Toyota\nМодель: Camry\nРік: 2020\nКолір: Чорний\nНомерний знак: AA1234BB" 
+              text: "РЎР’Р†Р”РћР¦РўР’Рћ РџР Рћ Р Р•Р„РЎРўР РђР¦Р†Р® РўР РђРќРЎРџРћР РўРќРћР“Рћ Р—РђРЎРћР‘РЈ\nVIN: ABC12345678901234\nРњР°СЂРєР°: Toyota\nРњРѕРґРµР»СЊ: Camry\nР С–Рє: 2020\nРљРѕР»С–СЂ: Р§РѕСЂРЅРёР№\nРќРѕРјРµСЂРЅРёР№ Р·РЅР°Рє: AA1234BB" 
             } 
           };
         }
@@ -132,23 +132,23 @@ export class OCRManager {
     };
   }
 
-  // Розпізнавання тексту з зображення
+  // Р РѕР·РїС–Р·РЅР°РІР°РЅРЅСЏ С‚РµРєСЃС‚Сѓ Р· Р·РѕР±СЂР°Р¶РµРЅРЅСЏ
   async recognizeText(imageUri) {
     try {
-      // Перевіряємо, чи ініціалізовано worker
+      // РџРµСЂРµРІС–СЂСЏС”РјРѕ, С‡Рё С–РЅС–С†С–Р°Р»С–Р·РѕРІР°РЅРѕ worker
       if (!this.worker) {
         await this.initialize();
       }
       
-      // Перевіряємо, чи успішно ініціалізовано
+      // РџРµСЂРµРІС–СЂСЏС”РјРѕ, С‡Рё СѓСЃРїС–С€РЅРѕ С–РЅС–С†С–Р°Р»С–Р·РѕРІР°РЅРѕ
       if (!this.initialized) {
-        console.warn('УВАГА: OCR не ініціалізовано належним чином');
-        throw new Error('OCR недоступний. Використовується заглушка.');
+        console.warn('РЈР’РђР“Рђ: OCR РЅРµ С–РЅС–С†С–Р°Р»С–Р·РѕРІР°РЅРѕ РЅР°Р»РµР¶РЅРёРј С‡РёРЅРѕРј');
+        throw new Error('OCR РЅРµРґРѕСЃС‚СѓРїРЅРёР№. Р’РёРєРѕСЂРёСЃС‚РѕРІСѓС”С‚СЊСЃСЏ Р·Р°РіР»СѓС€РєР°.');
       }
       
-      // Якщо використовується заглушка, попереджаємо про це
+      // РЇРєС‰Рѕ РІРёРєРѕСЂРёСЃС‚РѕРІСѓС”С‚СЊСЃСЏ Р·Р°РіР»СѓС€РєР°, РїРѕРїРµСЂРµРґР¶Р°С”РјРѕ РїСЂРѕ С†Рµ
       if (this.useMock) {
-        console.warn('УВАГА: Використовується заглушка для OCR. Реальне розпізнавання неможливе.');
+        console.warn('РЈР’РђР“Рђ: Р’РёРєРѕСЂРёСЃС‚РѕРІСѓС”С‚СЊСЃСЏ Р·Р°РіР»СѓС€РєР° РґР»СЏ OCR. Р РµР°Р»СЊРЅРµ СЂРѕР·РїС–Р·РЅР°РІР°РЅРЅСЏ РЅРµРјРѕР¶Р»РёРІРµ.');
       }
       
       const optimizedImageUri = await optimizeImage(imageUri, {
@@ -157,7 +157,7 @@ export class OCRManager {
         maxHeight: 1200
       });
       
-      console.log('Розпізнавання тексту з оптимізованого зображення...');
+      console.log('Р РѕР·РїС–Р·РЅР°РІР°РЅРЅСЏ С‚РµРєСЃС‚Сѓ Р· РѕРїС‚РёРјС–Р·РѕРІР°РЅРѕРіРѕ Р·РѕР±СЂР°Р¶РµРЅРЅСЏ...');
       
       let recognizedText = null;
       
@@ -175,40 +175,40 @@ export class OCRManager {
       } else if (this.worker) {
         const result = await this.worker.recognize(optimizedImageUri);
         if (!result || !result.data || !result.data.text) {
-          console.warn('Розпізнавання тексту не повернуло результатів');
+          console.warn('Р РѕР·РїС–Р·РЅР°РІР°РЅРЅСЏ С‚РµРєСЃС‚Сѓ РЅРµ РїРѕРІРµСЂРЅСѓР»Рѕ СЂРµР·СѓР»СЊС‚Р°С‚С–РІ');
           return null;
         }
         recognizedText = result.data.text;
       }
       
-      // Перевіряємо, чи текст не порожній
+      // РџРµСЂРµРІС–СЂСЏС”РјРѕ, С‡Рё С‚РµРєСЃС‚ РЅРµ РїРѕСЂРѕР¶РЅС–Р№
       if (!recognizedText || recognizedText.trim().length === 0) {
-        console.warn('Розпізнаний текст порожній');
+        console.warn('Р РѕР·РїС–Р·РЅР°РЅРёР№ С‚РµРєСЃС‚ РїРѕСЂРѕР¶РЅС–Р№');
         return null;
       }
       
-      console.log('Текст успішно розпізнано');
+      console.log('РўРµРєСЃС‚ СѓСЃРїС–С€РЅРѕ СЂРѕР·РїС–Р·РЅР°РЅРѕ');
       return recognizedText;
     } catch (error) {
       console.error('Error recognizing text:', error);
       
-      // Спробуємо ще раз з нижчою якістю, якщо помилка не критична
+      // РЎРїСЂРѕР±СѓС”РјРѕ С‰Рµ СЂР°Р· Р· РЅРёР¶С‡РѕСЋ СЏРєС–СЃС‚СЋ, СЏРєС‰Рѕ РїРѕРјРёР»РєР° РЅРµ РєСЂРёС‚РёС‡РЅР°
       try {
         if (this.worker && this.initialized) {
-          console.log('Спроба розпізнавання з нижчою якістю...');
+          console.log('РЎРїСЂРѕР±Р° СЂРѕР·РїС–Р·РЅР°РІР°РЅРЅСЏ Р· РЅРёР¶С‡РѕСЋ СЏРєС–СЃС‚СЋ...');
           
-          // Оптимізуємо зображення з нижчою якістю
+          // РћРїС‚РёРјС–Р·СѓС”РјРѕ Р·РѕР±СЂР°Р¶РµРЅРЅСЏ Р· РЅРёР¶С‡РѕСЋ СЏРєС–СЃС‚СЋ
           const lowQualityImageUri = await optimizeImage(imageUri, {
             quality: 0.7,
             maxWidth: 800,
             maxHeight: 800
           });
           
-          // Розпізнаємо текст
+          // Р РѕР·РїС–Р·РЅР°С”РјРѕ С‚РµРєСЃС‚
           const result = await this.worker.recognize(lowQualityImageUri);
           
           if (result && result.data && result.data.text) {
-            console.log('Текст успішно розпізнано з нижчою якістю');
+            console.log('РўРµРєСЃС‚ СѓСЃРїС–С€РЅРѕ СЂРѕР·РїС–Р·РЅР°РЅРѕ Р· РЅРёР¶С‡РѕСЋ СЏРєС–СЃС‚СЋ');
             return result.data.text;
           }
         }
@@ -216,20 +216,20 @@ export class OCRManager {
         console.error('Error during retry with lower quality:', retryError);
       }
       
-      // Якщо все невдало і це мобільна платформа, повертаємо мокові дані
+      // РЇРєС‰Рѕ РІСЃРµ РЅРµРІРґР°Р»Рѕ С– С†Рµ РјРѕР±С–Р»СЊРЅР° РїР»Р°С‚С„РѕСЂРјР°, РїРѕРІРµСЂС‚Р°С”РјРѕ РјРѕРєРѕРІС– РґР°РЅС–
       if (isMobile) {
-        console.log('Повертаємо мокові дані для мобільної платформи');
+        console.log('РџРѕРІРµСЂС‚Р°С”РјРѕ РјРѕРєРѕРІС– РґР°РЅС– РґР»СЏ РјРѕР±С–Р»СЊРЅРѕС— РїР»Р°С‚С„РѕСЂРјРё');
         
-        // Перевіряємо, чи це зображення номерного знаку (за назвою файлу або шляхом)
+        // РџРµСЂРµРІС–СЂСЏС”РјРѕ, С‡Рё С†Рµ Р·РѕР±СЂР°Р¶РµРЅРЅСЏ РЅРѕРјРµСЂРЅРѕРіРѕ Р·РЅР°РєСѓ (Р·Р° РЅР°Р·РІРѕСЋ С„Р°Р№Р»Сѓ Р°Р±Рѕ С€Р»СЏС…РѕРј)
         const isLicensePlate = imageUri.toLowerCase().includes('plate') || 
-                              imageUri.toLowerCase().includes('номер') || 
+                              imageUri.toLowerCase().includes('РЅРѕРјРµСЂ') || 
                               imageUri.toLowerCase().includes('license');
         
-        // Повертаємо різні мокові дані залежно від типу зображення
+        // РџРѕРІРµСЂС‚Р°С”РјРѕ СЂС–Р·РЅС– РјРѕРєРѕРІС– РґР°РЅС– Р·Р°Р»РµР¶РЅРѕ РІС–Рґ С‚РёРїСѓ Р·РѕР±СЂР°Р¶РµРЅРЅСЏ
         if (isLicensePlate) {
-          return "AA1234BB\nУкраїна";
+          return "AA1234BB\nРЈРєСЂР°С—РЅР°";
         } else {
-          return "СВІДОЦТВО ПРО РЕЄСТРАЦІЮ ТРАНСПОРТНОГО ЗАСОБУ\nVIN: ABC12345678901234\nМарка: Toyota\nМодель: Camry\nРік: 2020\nКолір: Чорний\nНомерний знак: AA1234BB";
+          return "РЎР’Р†Р”РћР¦РўР’Рћ РџР Рћ Р Р•Р„РЎРўР РђР¦Р†Р® РўР РђРќРЎРџРћР РўРќРћР“Рћ Р—РђРЎРћР‘РЈ\nVIN: ABC12345678901234\nРњР°СЂРєР°: Toyota\nРњРѕРґРµР»СЊ: Camry\nР С–Рє: 2020\nРљРѕР»С–СЂ: Р§РѕСЂРЅРёР№\nРќРѕРјРµСЂРЅРёР№ Р·РЅР°Рє: AA1234BB";
         }
       }
       
@@ -237,21 +237,21 @@ export class OCRManager {
     }
   }
 
-  // Розпізнавання документів транспортного засобу
+  // Р РѕР·РїС–Р·РЅР°РІР°РЅРЅСЏ РґРѕРєСѓРјРµРЅС‚С–РІ С‚СЂР°РЅСЃРїРѕСЂС‚РЅРѕРіРѕ Р·Р°СЃРѕР±Сѓ
   async recognizeVehicleDocument(imageUri) {
     try {
-      // Розпізнаємо текст з зображення
+      // Р РѕР·РїС–Р·РЅР°С”РјРѕ С‚РµРєСЃС‚ Р· Р·РѕР±СЂР°Р¶РµРЅРЅСЏ
       const text = await this.recognizeText(imageUri);
       
-      // Перевіряємо, чи вдалося розпізнати текст
+      // РџРµСЂРµРІС–СЂСЏС”РјРѕ, С‡Рё РІРґР°Р»РѕСЃСЏ СЂРѕР·РїС–Р·РЅР°С‚Рё С‚РµРєСЃС‚
       if (!text || text.trim().length === 0) {
-        console.warn('Не вдалося розпізнати текст з документа');
+        console.warn('РќРµ РІРґР°Р»РѕСЃСЏ СЂРѕР·РїС–Р·РЅР°С‚Рё С‚РµРєСЃС‚ Р· РґРѕРєСѓРјРµРЅС‚Р°');
         return null;
       }
       
-      console.log('Розпізнаний текст з документа:', text.substring(0, 100) + '...');
+      console.log('Р РѕР·РїС–Р·РЅР°РЅРёР№ С‚РµРєСЃС‚ Р· РґРѕРєСѓРјРµРЅС‚Р°:', text.substring(0, 100) + '...');
       
-      // Ініціалізуємо об'єкт для даних автомобіля
+      // Р†РЅС–С†С–Р°Р»С–Р·СѓС”РјРѕ РѕР±'С”РєС‚ РґР»СЏ РґР°РЅРёС… Р°РІС‚РѕРјРѕР±С–Р»СЏ
       const vehicleData = {
         vin: null,
         licensePlate: null,
@@ -259,82 +259,82 @@ export class OCRManager {
         model: null,
         year: null,
         color: null,
-        // Додаткові поля, які можна розпізнати
+        // Р”РѕРґР°С‚РєРѕРІС– РїРѕР»СЏ, СЏРєС– РјРѕР¶РЅР° СЂРѕР·РїС–Р·РЅР°С‚Рё
         engineNumber: null,
         chassisNumber: null,
         registrationNumber: null,
         ownerName: null,
         registrationDate: null,
-        // Прапорець, що вказує, чи дані розпізнані частково
+        // РџСЂР°РїРѕСЂРµС†СЊ, С‰Рѕ РІРєР°Р·СѓС”, С‡Рё РґР°РЅС– СЂРѕР·РїС–Р·РЅР°РЅС– С‡Р°СЃС‚РєРѕРІРѕ
         isPartialData: false
       };
       
-      // Якщо використовується мок, позначаємо це
+      // РЇРєС‰Рѕ РІРёРєРѕСЂРёСЃС‚РѕРІСѓС”С‚СЊСЃСЏ РјРѕРє, РїРѕР·РЅР°С‡Р°С”РјРѕ С†Рµ
       if (this.useMock) {
         vehicleData.isMockData = true;
       }
       
-      // Розпізнавання VIN-коду (17 символів, букви та цифри)
+      // Р РѕР·РїС–Р·РЅР°РІР°РЅРЅСЏ VIN-РєРѕРґСѓ (17 СЃРёРјРІРѕР»С–РІ, Р±СѓРєРІРё С‚Р° С†РёС„СЂРё)
       const vinRegex = /[A-HJ-NPR-Z0-9]{17}/gi;
       const vinMatches = text.match(vinRegex);
       if (vinMatches && vinMatches.length > 0) {
         vehicleData.vin = vinMatches[0].toUpperCase();
-        console.log('Розпізнано VIN:', vehicleData.vin);
+        console.log('Р РѕР·РїС–Р·РЅР°РЅРѕ VIN:', vehicleData.vin);
       }
       
-      const plateRegex = /[A-ZА-ЯІЇЄ]{2}[ ]?[0-9]{4}[ ]?[A-ZА-ЯІЇЄ]{2}/gi;
+      const plateRegex = /[A-ZРђ-РЇР†Р‡Р„]{2}[ ]?[0-9]{4}[ ]?[A-ZРђ-РЇР†Р‡Р„]{2}/gi;
       const plateMatches = text.match(plateRegex);
       if (plateMatches && plateMatches.length > 0) {
         vehicleData.licensePlate = normalizeLicensePlate(plateMatches[0]);
-        console.log('Розпізнано номерний знак:', vehicleData.licensePlate);
+        console.log('Р РѕР·РїС–Р·РЅР°РЅРѕ РЅРѕРјРµСЂРЅРёР№ Р·РЅР°Рє:', vehicleData.licensePlate);
       }
       
-      // Розпізнавання марки автомобіля
-      // Список популярних марок
+      // Р РѕР·РїС–Р·РЅР°РІР°РЅРЅСЏ РјР°СЂРєРё Р°РІС‚РѕРјРѕР±С–Р»СЏ
+      // РЎРїРёСЃРѕРє РїРѕРїСѓР»СЏСЂРЅРёС… РјР°СЂРѕРє
       const popularMakes = [
         'TOYOTA', 'HONDA', 'FORD', 'CHEVROLET', 'VOLKSWAGEN', 'BMW', 'MERCEDES', 'AUDI', 
         'HYUNDAI', 'KIA', 'NISSAN', 'MAZDA', 'SUBARU', 'LEXUS', 'MITSUBISHI', 'VOLVO', 
         'SKODA', 'RENAULT', 'PEUGEOT', 'CITROEN', 'FIAT', 'OPEL', 'SEAT', 'PORSCHE',
-        'JEEP', 'LAND ROVER', 'JAGUAR', 'MINI', 'SUZUKI', 'DACIA', 'LADA', 'ВАЗ', 'ЗАЗ'
+        'JEEP', 'LAND ROVER', 'JAGUAR', 'MINI', 'SUZUKI', 'DACIA', 'LADA', 'Р’РђР—', 'Р—РђР—'
       ];
       
       for (const make of popularMakes) {
         if (text.toUpperCase().includes(make)) {
           vehicleData.make = make.charAt(0).toUpperCase() + make.slice(1).toLowerCase();
-          console.log('Розпізнано марку:', vehicleData.make);
+          console.log('Р РѕР·РїС–Р·РЅР°РЅРѕ РјР°СЂРєСѓ:', vehicleData.make);
           break;
         }
       }
       
-      // Розпізнавання моделі автомобіля
-      // Це складніше, тому що моделі можуть мати різні назви
-      // Спробуємо знайти модель після слова "модель" або "model"
-      const modelRegex = /(?:модель|model)[:\s]+([A-Za-zА-Яа-яІіЇїЄєҐґ0-9\s\-]+)/i;
+      // Р РѕР·РїС–Р·РЅР°РІР°РЅРЅСЏ РјРѕРґРµР»С– Р°РІС‚РѕРјРѕР±С–Р»СЏ
+      // Р¦Рµ СЃРєР»Р°РґРЅС–С€Рµ, С‚РѕРјСѓ С‰Рѕ РјРѕРґРµР»С– РјРѕР¶СѓС‚СЊ РјР°С‚Рё СЂС–Р·РЅС– РЅР°Р·РІРё
+      // РЎРїСЂРѕР±СѓС”РјРѕ Р·РЅР°Р№С‚Рё РјРѕРґРµР»СЊ РїС–СЃР»СЏ СЃР»РѕРІР° "РјРѕРґРµР»СЊ" Р°Р±Рѕ "model"
+      const modelRegex = /(?:РјРѕРґРµР»СЊ|model)[:\s]+([A-Za-zРђ-РЇР°-СЏР†С–Р‡С—Р„С”ТђТ‘0-9\s\-]+)/i;
       const modelMatch = text.match(modelRegex);
       if (modelMatch && modelMatch[1]) {
         vehicleData.model = modelMatch[1].trim();
-        console.log('Розпізнано модель:', vehicleData.model);
+        console.log('Р РѕР·РїС–Р·РЅР°РЅРѕ РјРѕРґРµР»СЊ:', vehicleData.model);
       }
       
-      // Розпізнавання року випуску (4 цифри між 1900 і поточним роком)
+      // Р РѕР·РїС–Р·РЅР°РІР°РЅРЅСЏ СЂРѕРєСѓ РІРёРїСѓСЃРєСѓ (4 С†РёС„СЂРё РјС–Р¶ 1900 С– РїРѕС‚РѕС‡РЅРёРј СЂРѕРєРѕРј)
       const currentYear = new Date().getFullYear();
       const yearRegex = /\b(19[5-9][0-9]|20[0-2][0-9])\b/g;
       const yearMatches = text.match(yearRegex);
       if (yearMatches && yearMatches.length > 0) {
-        // Перевіряємо, що рік не більший за поточний
+        // РџРµСЂРµРІС–СЂСЏС”РјРѕ, С‰Рѕ СЂС–Рє РЅРµ Р±С–Р»СЊС€РёР№ Р·Р° РїРѕС‚РѕС‡РЅРёР№
         const parsedYear = parseInt(yearMatches[0], 10);
         if (parsedYear <= currentYear) {
           vehicleData.year = parsedYear;
-          console.log('Розпізнано рік:', vehicleData.year);
+          console.log('Р РѕР·РїС–Р·РЅР°РЅРѕ СЂС–Рє:', vehicleData.year);
         }
       }
       
-      // Розпізнавання кольору
+      // Р РѕР·РїС–Р·РЅР°РІР°РЅРЅСЏ РєРѕР»СЊРѕСЂСѓ
       const colors = [
-        'білий', 'чорний', 'червоний', 'синій', 'зелений', 'жовтий', 'сірий', 'коричневий',
-        'срібний', 'золотий', 'бежевий', 'фіолетовий', 'помаранчевий', 'блакитний',
-        'белый', 'черный', 'красный', 'синий', 'зеленый', 'желтый', 'серый', 'коричневый',
-        'серебряный', 'золотой', 'бежевый', 'фиолетовый', 'оранжевый', 'голубой',
+        'Р±С–Р»РёР№', 'С‡РѕСЂРЅРёР№', 'С‡РµСЂРІРѕРЅРёР№', 'СЃРёРЅС–Р№', 'Р·РµР»РµРЅРёР№', 'Р¶РѕРІС‚РёР№', 'СЃС–СЂРёР№', 'РєРѕСЂРёС‡РЅРµРІРёР№',
+        'СЃСЂС–Р±РЅРёР№', 'Р·РѕР»РѕС‚РёР№', 'Р±РµР¶РµРІРёР№', 'С„С–РѕР»РµС‚РѕРІРёР№', 'РїРѕРјР°СЂР°РЅС‡РµРІРёР№', 'Р±Р»Р°РєРёС‚РЅРёР№',
+        'Р±РµР»С‹Р№', 'С‡РµСЂРЅС‹Р№', 'РєСЂР°СЃРЅС‹Р№', 'СЃРёРЅРёР№', 'Р·РµР»РµРЅС‹Р№', 'Р¶РµР»С‚С‹Р№', 'СЃРµСЂС‹Р№', 'РєРѕСЂРёС‡РЅРµРІС‹Р№',
+        'СЃРµСЂРµР±СЂСЏРЅС‹Р№', 'Р·РѕР»РѕС‚РѕР№', 'Р±РµР¶РµРІС‹Р№', 'С„РёРѕР»РµС‚РѕРІС‹Р№', 'РѕСЂР°РЅР¶РµРІС‹Р№', 'РіРѕР»СѓР±РѕР№',
         'white', 'black', 'red', 'blue', 'green', 'yellow', 'gray', 'brown',
         'silver', 'gold', 'beige', 'purple', 'orange', 'light blue'
       ];
@@ -342,31 +342,31 @@ export class OCRManager {
       for (const color of colors) {
         if (text.toLowerCase().includes(color.toLowerCase())) {
           vehicleData.color = color.charAt(0).toUpperCase() + color.slice(1).toLowerCase();
-          console.log('Розпізнано колір:', vehicleData.color);
+          console.log('Р РѕР·РїС–Р·РЅР°РЅРѕ РєРѕР»С–СЂ:', vehicleData.color);
           break;
         }
       }
       
-      // Перевіряємо, чи розпізнано хоча б одне поле
+      // РџРµСЂРµРІС–СЂСЏС”РјРѕ, С‡Рё СЂРѕР·РїС–Р·РЅР°РЅРѕ С…РѕС‡Р° Р± РѕРґРЅРµ РїРѕР»Рµ
       const hasAnyData = Object.keys(vehicleData).some(key => 
         key !== 'isPartialData' && key !== 'isMockData' && vehicleData[key] !== null
       );
       
       if (!hasAnyData) {
-        console.warn('Не вдалося розпізнати жодних даних з документа');
+        console.warn('РќРµ РІРґР°Р»РѕСЃСЏ СЂРѕР·РїС–Р·РЅР°С‚Рё Р¶РѕРґРЅРёС… РґР°РЅРёС… Р· РґРѕРєСѓРјРµРЅС‚Р°');
         return null;
       }
       
-      // Перевіряємо, чи дані розпізнані частково
+      // РџРµСЂРµРІС–СЂСЏС”РјРѕ, С‡Рё РґР°РЅС– СЂРѕР·РїС–Р·РЅР°РЅС– С‡Р°СЃС‚РєРѕРІРѕ
       const requiredFields = ['vin', 'make', 'model', 'year'];
       const hasAllRequiredData = requiredFields.every(field => vehicleData[field] !== null);
       
       if (!hasAllRequiredData) {
         vehicleData.isPartialData = true;
-        console.log('Розпізнано лише частину даних');
+        console.log('Р РѕР·РїС–Р·РЅР°РЅРѕ Р»РёС€Рµ С‡Р°СЃС‚РёРЅСѓ РґР°РЅРёС…');
       }
       
-      console.log('Результат розпізнавання документу:', vehicleData);
+      console.log('Р РµР·СѓР»СЊС‚Р°С‚ СЂРѕР·РїС–Р·РЅР°РІР°РЅРЅСЏ РґРѕРєСѓРјРµРЅС‚Сѓ:', vehicleData);
       return vehicleData;
     } catch (error) {
       console.error('Error recognizing vehicle document:', error);
@@ -374,42 +374,102 @@ export class OCRManager {
     }
   }
 
-  // Допоміжна функція для виділення номерного знаку з тексту
+  // Р”РѕРїРѕРјС–Р¶РЅР° С„СѓРЅРєС†С–СЏ РґР»СЏ РІРёРґС–Р»РµРЅРЅСЏ РЅРѕРјРµСЂРЅРѕРіРѕ Р·РЅР°РєСѓ Р· С‚РµРєСЃС‚Сѓ
   extractLicensePlateFromText(text) {
     const raw = String(text || '').toUpperCase();
     if (!raw) return null;
 
-    const simpleRegex = /[A-ZА-ЯІЇЄҐ]{2}[ ]?[0-9]{4}[ ]?[A-ZА-ЯІЇЄҐ]{2}/i;
-    const simpleMatch = raw.match(simpleRegex);
-    if (simpleMatch && simpleMatch[0]) {
-      return simpleMatch[0];
-    }
+    const preNormalized = raw
+      .replace(/[\r\n\t]+/g, ' ')
+      .replace(/R\s*N/g, 'K')
+      .replace(/RN/g, 'K');
 
     const map = {
-      А: 'A',
-      В: 'B',
-      Е: 'E',
-      І: 'I',
-      К: 'K',
-      М: 'M',
-      Н: 'H',
-      О: 'O',
-      Р: 'P',
-      С: 'C',
-      Т: 'T',
-      Х: 'X',
-      У: 'Y',
-      Ї: 'I',
-      Є: 'E',
-      Ґ: 'G',
+      Рђ: 'A',
+      Р’: 'B',
+      Р•: 'E',
+      Р: 'I',
+      Р†: 'I',
+      Рљ: 'K',
+      Рњ: 'M',
+      Рќ: 'H',
+      Рћ: 'O',
+      Р : 'P',
+      РЎ: 'C',
+      Рў: 'T',
+      РҐ: 'X',
+      РЈ: 'Y',
+      Р™: 'I',
+      Р—: '3',
+      Р§: '4',
+      Р‡: 'I',
+      Р„: 'E',
+      Тђ: 'G',
     };
 
-    const normalized = raw
-      .replace(/[АВЕІКМНОРСТХУЇЄҐ]/g, (ch) => map[ch] || ch)
-      .replace(/[^A-Z0-9 ]/g, '');
+    const normalizeChunk = (value) =>
+      String(value || '')
+        .replace(/[РђР’Р•РР†РљРњРќРћР РЎРўРҐРЈР™Р—Р§Р‡Р„Тђ]/g, (ch) => map[ch] || ch)
+        .replace(/[^A-Z0-9 ]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
 
-    const stripped = normalized.replace(/[^A-Z0-9]/g, '');
-    if (stripped.length < 8) return null;
+    const normalized = normalizeChunk(preNormalized);
+    const normalizedLines = raw
+      .split(/\r?\n/)
+      .map((line) =>
+        normalizeChunk(
+          String(line || '')
+            .replace(/R\s*N/g, 'K')
+            .replace(/RN/g, 'K')
+        )
+      )
+      .filter(Boolean);
+
+    const exactSources = Array.from(
+      new Set(
+        [
+          normalized,
+          ...normalizedLines,
+          ...normalizedLines.flatMap((line, idx) => {
+            if (idx >= normalizedLines.length - 1) return [];
+            return [`${line} ${normalizedLines[idx + 1]}`, `${line}${normalizedLines[idx + 1]}`];
+          }),
+        ].filter(Boolean)
+      )
+    );
+
+    for (const source of exactSources) {
+      const exactMatch = String(source).match(/\b[A-Z]{2}\s?\d{4}\s?[A-Z]{2}\b/);
+      if (exactMatch && exactMatch[0]) {
+        return exactMatch[0].replace(/\s+/g, '');
+      }
+    }
+
+    const fragments = [];
+    const seenFragments = new Set();
+    const pushFragment = (value, kind = 'token') => {
+      const compact = String(value || '').replace(/[^A-Z0-9]/g, '');
+      if (!compact || compact.length < 8 || compact.length > 10) return;
+      const key = `${kind}:${compact}`;
+      if (seenFragments.has(key)) return;
+      seenFragments.add(key);
+      fragments.push({ compact, kind });
+    };
+
+    for (const line of normalizedLines) {
+      pushFragment(line, 'line');
+      const tokens = String(line).split(/\s+/).filter(Boolean);
+      tokens.forEach((token) => pushFragment(token, 'token'));
+      for (let i = 0; i < tokens.length - 1; i += 1) {
+        pushFragment(`${tokens[i]}${tokens[i + 1]}`, 'pair');
+        if (i < tokens.length - 2) {
+          pushFragment(`${tokens[i]}${tokens[i + 1]}${tokens[i + 2]}`, 'triple');
+        }
+      }
+    }
+
+    if (!fragments.length) return null;
 
     const allowedLetters = new Set(['A', 'B', 'C', 'E', 'H', 'I', 'K', 'M', 'O', 'P', 'T', 'X', 'Y']);
     const uaPrefixes = new Set([
@@ -433,7 +493,18 @@ export class OCRManager {
       if (ch === '1') return { ch: 'I', cost: 1 };
       if (ch === '8') return { ch: 'B', cost: 1 };
       if (ch === '6') return { ch: 'B', cost: 2 };
-      if (ch === '2') return { ch: 'Z', cost: 3 };
+      if (ch === '4') return { ch: 'A', cost: 2 };
+      if (ch === '7') return { ch: 'T', cost: 2 };
+      if (ch === '9') return { ch: 'P', cost: 2 };
+      if (ch === '3') return { ch: 'E', cost: 2 };
+      if (ch === '5') return { ch: 'C', cost: 3 };
+      if (ch === 'L' || ch === 'J') return { ch: 'I', cost: 2 };
+      if (ch === 'V' || ch === 'U') return { ch: 'Y', cost: 2 };
+      if (ch === 'N') return { ch: 'H', cost: 2 };
+      if (ch === 'R') return { ch: 'P', cost: 2 };
+      if (ch === 'D' || ch === 'Q') return { ch: 'O', cost: 2 };
+      if (ch === 'G') return { ch: 'C', cost: 3 };
+      if (ch === 'F') return { ch: 'E', cost: 3 };
       return { ch, cost: 99 };
     };
 
@@ -441,12 +512,20 @@ export class OCRManager {
       if (isDigit(ch)) return { ch, cost: 0 };
       if (ch === 'O') return { ch: '0', cost: 1 };
       if (ch === 'I') return { ch: '1', cost: 1 };
+      if (ch === 'L') return { ch: '1', cost: 2 };
       if (ch === 'Z') return { ch: '2', cost: 1 };
       if (ch === 'S') return { ch: '5', cost: 1 };
       if (ch === 'B') return { ch: '8', cost: 1 };
+      if (ch === 'E') return { ch: '3', cost: 2 };
+      if (ch === 'A') return { ch: '4', cost: 2 };
+      if (ch === 'T') return { ch: '7', cost: 2 };
+      if (ch === 'W') return { ch: '7', cost: 3 };
+      if (ch === 'P') return { ch: '9', cost: 3 };
       if (ch === 'G') return { ch: '6', cost: 2 };
+      if (ch === 'C') return { ch: '6', cost: 3 };
       if (ch === 'Q') return { ch: '0', cost: 2 };
       if (ch === 'D') return { ch: '0', cost: 2 };
+      if (ch === 'U') return { ch: '0', cost: 3 };
       return { ch, cost: 99 };
     };
 
@@ -468,11 +547,11 @@ export class OCRManager {
           return { a: v.a, b: v.b, cost };
         }
       }
+
       return null;
     };
 
     const scoreCandidate = (candidate) => {
-      let cost = 0;
       const s = candidate.split('');
 
       const a0 = fixLetter(s[0]);
@@ -490,7 +569,7 @@ export class OCRManager {
       const prefixFix = fixPrefix(a0.ch, a1.ch);
       if (!prefixFix) return null;
 
-      cost +=
+      const cost =
         a0.cost +
         a1.cost +
         d2.cost +
@@ -505,94 +584,84 @@ export class OCRManager {
       if (!/^[A-Z]{2}\d{4}[A-Z]{2}$/.test(fixed)) return null;
       if (!isAllowedLetter(fixed[0]) || !isAllowedLetter(fixed[1])) return null;
       if (!isAllowedLetter(fixed[6]) || !isAllowedLetter(fixed[7])) return null;
-      return { fixed, cost };
+      const exactHits = fixed.split('').reduce((sum, ch, idx) => sum + (candidate[idx] === ch ? 1 : 0), 0);
+      return { fixed, cost, exactHits };
     };
 
     let best = null;
-
-    for (let i = 0; i <= normalized.length - 8; i += 1) {
-      const s = normalized.slice(i, i + 8);
-      const scored = scoreCandidate(s);
-      if (!scored) continue;
-      if (!best || scored.cost < best.cost) {
-        best = scored;
-        if (best.cost === 0) break;
+    const considerCandidate = (candidate, kind, penalty = 0) => {
+      const scored = scoreCandidate(candidate);
+      if (!scored) return false;
+      const totalCost = scored.cost + penalty;
+      const minExactHits = penalty > 0 ? 7 : kind === 'line' || kind === 'pair' || kind === 'triple' ? 6 : 7;
+      if (totalCost > 3) return false;
+      if (scored.exactHits < minExactHits) return false;
+      const withPenalty = { fixed: scored.fixed, cost: totalCost, exactHits: scored.exactHits };
+      if (!best || withPenalty.cost < best.cost) {
+        best = withPenalty;
       }
-    }
+      return withPenalty.cost === 0 && withPenalty.exactHits === 8;
+    };
 
-    if (!best) {
-      for (let i = 0; i <= stripped.length - 8; i += 1) {
-        const s = stripped.slice(i, i + 8);
-        const scored = scoreCandidate(s);
-        if (!scored) continue;
-        if (!best || scored.cost < best.cost) {
-          best = scored;
-          if (best.cost === 0) break;
-        }
+    const trySource = ({ compact, kind }) => {
+      if (!compact) return;
+
+      if (compact.length === 8) {
+        considerCandidate(compact, kind);
+        return;
       }
-    }
 
-    if (!best && stripped.length >= 9) {
-      const deletionPenalty = 2;
-      for (let i = 0; i <= stripped.length - 9; i += 1) {
-        const s9 = stripped.slice(i, i + 9);
+      if (compact.length === 9) {
         for (let drop = 0; drop < 9; drop += 1) {
-          const s8 = s9.slice(0, drop) + s9.slice(drop + 1);
-          const scored = scoreCandidate(s8);
-          if (!scored) continue;
-          const withPenalty = { fixed: scored.fixed, cost: scored.cost + deletionPenalty };
-          if (!best || withPenalty.cost < best.cost) {
-            best = withPenalty;
-          }
+          const s8 = compact.slice(0, drop) + compact.slice(drop + 1);
+          considerCandidate(s8, kind, 2);
         }
+        return;
       }
-    }
 
-    if (!best && stripped.length >= 10) {
-      const deletionPenalty = 4;
-      for (let i = 0; i <= stripped.length - 10; i += 1) {
-        const s10 = stripped.slice(i, i + 10);
+      if (compact.length === 10) {
         for (let dropA = 0; dropA < 10; dropA += 1) {
           for (let dropB = dropA + 1; dropB < 10; dropB += 1) {
-            const s8 = s10.slice(0, dropA) + s10.slice(dropA + 1, dropB) + s10.slice(dropB + 1);
-            if (s8.length !== 8) continue;
-            const scored = scoreCandidate(s8);
-            if (!scored) continue;
-            const withPenalty = { fixed: scored.fixed, cost: scored.cost + deletionPenalty };
-            if (!best || withPenalty.cost < best.cost) {
-              best = withPenalty;
+            const s8 = compact.slice(0, dropA) + compact.slice(dropA + 1, dropB) + compact.slice(dropB + 1);
+            if (s8.length === 8) {
+              considerCandidate(s8, kind, 3);
             }
           }
         }
       }
+    };
+
+    for (const source of fragments) {
+      trySource(source);
+      if (best?.cost === 0 && best?.exactHits === 8) break;
     }
 
     if (best?.fixed) return best.fixed;
     return null;
   }
 
-  // Розпізнавання номерного знаку та отримання даних про автомобіль
+  // Р РѕР·РїС–Р·РЅР°РІР°РЅРЅСЏ РЅРѕРјРµСЂРЅРѕРіРѕ Р·РЅР°РєСѓ С‚Р° РѕС‚СЂРёРјР°РЅРЅСЏ РґР°РЅРёС… РїСЂРѕ Р°РІС‚РѕРјРѕР±С–Р»СЊ
   async recognizeLicensePlateAndGetVehicleData(imageUri) {
     try {
-      // Розпізнаємо текст з зображення
+      // Р РѕР·РїС–Р·РЅР°С”РјРѕ С‚РµРєСЃС‚ Р· Р·РѕР±СЂР°Р¶РµРЅРЅСЏ
       const text = await this.recognizeText(imageUri);
       
-      // Перевіряємо, чи вдалося розпізнати текст
+      // РџРµСЂРµРІС–СЂСЏС”РјРѕ, С‡Рё РІРґР°Р»РѕСЃСЏ СЂРѕР·РїС–Р·РЅР°С‚Рё С‚РµРєСЃС‚
       if (!text || text.trim().length === 0) {
-        console.warn('Не вдалося розпізнати текст з зображення');
+        console.warn('РќРµ РІРґР°Р»РѕСЃСЏ СЂРѕР·РїС–Р·РЅР°С‚Рё С‚РµРєСЃС‚ Р· Р·РѕР±СЂР°Р¶РµРЅРЅСЏ');
         return null;
       }
       
-      console.log('Розпізнаний текст з зображення:', text);
+      console.log('Р РѕР·РїС–Р·РЅР°РЅРёР№ С‚РµРєСЃС‚ Р· Р·РѕР±СЂР°Р¶РµРЅРЅСЏ:', text);
       
       const extractedPlate = this.extractLicensePlateFromText(text);
       if (!extractedPlate) {
-        console.warn('Не вдалося розпізнати номерний знак');
+        console.warn('РќРµ РІРґР°Р»РѕСЃСЏ СЂРѕР·РїС–Р·РЅР°С‚Рё РЅРѕРјРµСЂРЅРёР№ Р·РЅР°Рє');
         return null;
       }
 
       const licensePlate = normalizeLicensePlate(extractedPlate);
-      console.log('Розпізнано номерний знак:', licensePlate);
+      console.log('Р РѕР·РїС–Р·РЅР°РЅРѕ РЅРѕРјРµСЂРЅРёР№ Р·РЅР°Рє:', licensePlate);
 
       let registryData = null;
 
@@ -615,7 +684,7 @@ export class OCRManager {
       }
 
       if (registryData) {
-        // Маппінг типу палива
+        // РњР°РїРїС–РЅРі С‚РёРїСѓ РїР°Р»РёРІР°
         let engineType = 'petrol'; // default
         const fuelRaw = String(registryData.fuel_type || '').toUpperCase();
         if (fuelRaw.includes('BENZINE') || fuelRaw.includes('PETROL')) engineType = 'petrol';
@@ -643,7 +712,7 @@ export class OCRManager {
           make: 'Toyota',
           model: 'Camry',
           year: 2020,
-          color: 'Чорний',
+          color: 'Р§РѕСЂРЅРёР№',
           vin: 'ABC12345678901234',
           isMockData: true,
           isPartialData: false
@@ -657,7 +726,7 @@ export class OCRManager {
     }
   }
 
-  // Розпізнавання VIN-коду
+  // Р РѕР·РїС–Р·РЅР°РІР°РЅРЅСЏ VIN-РєРѕРґСѓ
   async recognizeVIN(imageUri) {
     try {
       const text = await this.recognizeText(imageUri);
@@ -672,7 +741,7 @@ export class OCRManager {
     }
   }
 
-  // Розпізнавання номерного знаку
+  // Р РѕР·РїС–Р·РЅР°РІР°РЅРЅСЏ РЅРѕРјРµСЂРЅРѕРіРѕ Р·РЅР°РєСѓ
   async recognizeLicensePlate(imageUri) {
     try {
       const text = await this.recognizeText(imageUri);
@@ -686,22 +755,22 @@ export class OCRManager {
     }
   }
 
-  // Розпізнавання характеристик запчастини
+  // Р РѕР·РїС–Р·РЅР°РІР°РЅРЅСЏ С…Р°СЂР°РєС‚РµСЂРёСЃС‚РёРє Р·Р°РїС‡Р°СЃС‚РёРЅРё
   async recognizePartDetails(imageUri) {
     try {
       const text = await this.recognizeText(imageUri);
       if (!text) return null;
       
-      // Об'єкт для зберігання розпізнаних даних
+      // РћР±'С”РєС‚ РґР»СЏ Р·Р±РµСЂС–РіР°РЅРЅСЏ СЂРѕР·РїС–Р·РЅР°РЅРёС… РґР°РЅРёС…
       const partDetails = {};
       
-      // Пошук артикулу (номеру запчастини)
+      // РџРѕС€СѓРє Р°СЂС‚РёРєСѓР»Сѓ (РЅРѕРјРµСЂСѓ Р·Р°РїС‡Р°СЃС‚РёРЅРё)
       const partNumberPatterns = [
-        /артикул[:\s]+([A-Z0-9-]+)/i,
-        /номер[:\s]+([A-Z0-9-]+)/i,
+        /Р°СЂС‚РёРєСѓР»[:\s]+([A-Z0-9-]+)/i,
+        /РЅРѕРјРµСЂ[:\s]+([A-Z0-9-]+)/i,
         /part[.\s]+no[.:\s]+([A-Z0-9-]+)/i,
         /part[.\s]+number[:\s]+([A-Z0-9-]+)/i,
-        /№([A-Z0-9-]+)/i
+        /в„–([A-Z0-9-]+)/i
       ];
       
       for (const pattern of partNumberPatterns) {
@@ -712,12 +781,12 @@ export class OCRManager {
         }
       }
       
-      // Пошук виробника
+      // РџРѕС€СѓРє РІРёСЂРѕР±РЅРёРєР°
       const manufacturerPatterns = [
-        /виробник[:\s]+([A-Za-zА-Яа-яІіЇїЄєҐґ]+)/i,
+        /РІРёСЂРѕР±РЅРёРє[:\s]+([A-Za-zРђ-РЇР°-СЏР†С–Р‡С—Р„С”ТђТ‘]+)/i,
         /manufacturer[:\s]+([A-Za-z]+)/i,
         /made by[:\s]+([A-Za-z]+)/i,
-        /бренд[:\s]+([A-Za-zА-Яа-яІіЇїЄєҐґ]+)/i
+        /Р±СЂРµРЅРґ[:\s]+([A-Za-zРђ-РЇР°-СЏР†С–Р‡С—Р„С”ТђТ‘]+)/i
       ];
       
       for (const pattern of manufacturerPatterns) {
@@ -728,11 +797,11 @@ export class OCRManager {
         }
       }
       
-      // Пошук назви запчастини
+      // РџРѕС€СѓРє РЅР°Р·РІРё Р·Р°РїС‡Р°СЃС‚РёРЅРё
       const namePatterns = [
-        /назва[:\s]+([A-Za-zА-Яа-яІіЇїЄєҐґ\s]+)/i,
+        /РЅР°Р·РІР°[:\s]+([A-Za-zРђ-РЇР°-СЏР†С–Р‡С—Р„С”ТђТ‘\s]+)/i,
         /name[:\s]+([A-Za-z\s]+)/i,
-        /деталь[:\s]+([A-Za-zА-Яа-яІіЇїЄєҐґ\s]+)/i,
+        /РґРµС‚Р°Р»СЊ[:\s]+([A-Za-zРђ-РЇР°-СЏР†С–Р‡С—Р„С”ТђТ‘\s]+)/i,
         /part[:\s]+([A-Za-z\s]+)/i
       ];
       
@@ -744,11 +813,11 @@ export class OCRManager {
         }
       }
       
-      // Якщо використовується мок і нічого не розпізнано, додаємо мокові дані
+      // РЇРєС‰Рѕ РІРёРєРѕСЂРёСЃС‚РѕРІСѓС”С‚СЊСЃСЏ РјРѕРє С– РЅС–С‡РѕРіРѕ РЅРµ СЂРѕР·РїС–Р·РЅР°РЅРѕ, РґРѕРґР°С”РјРѕ РјРѕРєРѕРІС– РґР°РЅС–
       if (this.useMock && Object.keys(partDetails).length === 0) {
         partDetails.partNumber = 'ABC-12345';
         partDetails.manufacturer = 'Toyota';
-        partDetails.name = 'Фільтр масляний';
+        partDetails.name = 'Р¤С–Р»СЊС‚СЂ РјР°СЃР»СЏРЅРёР№';
         partDetails.isMockData = true;
       }
       
@@ -760,11 +829,12 @@ export class OCRManager {
   }
 }
 
-// Створюємо екземпляр класу
+// РЎС‚РІРѕСЂСЋС”РјРѕ РµРєР·РµРјРїР»СЏСЂ РєР»Р°СЃСѓ
 const ocrManagerInstance = new OCRManager();
 
-// Перевіряємо наявність методів в екземплярі
-console.log('Методи ocrManagerInstance:', Object.getOwnPropertyNames(Object.getPrototypeOf(ocrManagerInstance)));
+// РџРµСЂРµРІС–СЂСЏС”РјРѕ РЅР°СЏРІРЅС–СЃС‚СЊ РјРµС‚РѕРґС–РІ РІ РµРєР·РµРјРїР»СЏСЂС–
+console.log('РњРµС‚РѕРґРё ocrManagerInstance:', Object.getOwnPropertyNames(Object.getPrototypeOf(ocrManagerInstance)));
 
-// Експортуємо тільки екземпляр класу, а не сам клас
+// Р•РєСЃРїРѕСЂС‚СѓС”РјРѕ С‚С–Р»СЊРєРё РµРєР·РµРјРїР»СЏСЂ РєР»Р°СЃСѓ, Р° РЅРµ СЃР°Рј РєР»Р°СЃ
 export const ocrManager = ocrManagerInstance;
+

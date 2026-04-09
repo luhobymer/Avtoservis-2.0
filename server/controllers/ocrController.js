@@ -362,6 +362,7 @@ exports.parseLicensePlateFromImage = async (req, res) => {
     let fullPreprocessedPath = null;
     let binaryPreprocessedPath = null;
     let bottomPreprocessedPath = null;
+    let plateCorePreprocessedPath = null;
     let fallbackPreprocessedPath = null;
     const preprocessErrors = {
       plate: null,
@@ -404,6 +405,45 @@ exports.parseLicensePlateFromImage = async (req, res) => {
             message: 'OCR preprocess timeout',
           });
         };
+
+        try {
+          await runStep('plate-core', async () => {
+            const img = base.clone();
+            const w = img.bitmap.width;
+            const h = img.bitmap.height;
+
+            const cropX = Math.max(0, Math.round(w * 0.26));
+            const cropY = Math.max(0, Math.round(h * 0.63));
+            const cropW = Math.min(w - cropX, Math.round(w * 0.48));
+            const cropH = Math.min(h - cropY, Math.round(h * 0.2));
+
+            cropCompat(img, cropX, cropY, cropW, cropH);
+            resizeKeepAspect(img, 1200);
+            img
+              .greyscale()
+              .contrast(0.95)
+              .normalize()
+              .convolute([
+                [0, -1, 0],
+                [-1, 5, -1],
+                [0, -1, 0],
+              ]);
+
+            if (typeof img.threshold === 'function') {
+              try {
+                img.threshold({ max: 168 });
+              } catch (_) {
+                void _;
+              }
+            }
+
+            plateCorePreprocessedPath = `${imagePath}-plate-core.png`;
+            await writeImage(img, plateCorePreprocessedPath);
+          });
+        } catch (err) {
+          preprocessErrors.plateCore = String(err?.message || err);
+          plateCorePreprocessedPath = null;
+        }
 
         try {
           await runStep('plate', async () => {
@@ -628,16 +668,20 @@ exports.parseLicensePlateFromImage = async (req, res) => {
     const ocrInputs = (
       fastMode
         ? [
+            { label: 'plate-core', path: plateCorePreprocessedPath },
             { label: 'plate', path: preprocessedPath },
             { label: 'plate-alt', path: altPreprocessedPath },
             { label: 'binary', path: binaryPreprocessedPath },
+            { label: 'bottom', path: bottomPreprocessedPath },
             { label: 'fallback', path: fallbackPreprocessedPath },
             { label: 'orig', path: imagePath },
           ]
         : [
+            { label: 'plate-core', path: plateCorePreprocessedPath },
             { label: 'bottom', path: bottomPreprocessedPath },
             { label: 'binary', path: binaryPreprocessedPath },
             { label: 'plate', path: preprocessedPath },
+            { label: 'plate-alt', path: altPreprocessedPath },
             { label: 'full', path: fullPreprocessedPath },
             { label: 'orig', path: imagePath },
           ]
@@ -652,6 +696,7 @@ exports.parseLicensePlateFromImage = async (req, res) => {
         let bestText = '';
         let bestPlate = null;
         const attempts = [];
+        const whitelist = 'ABCEHIKMOPTXY0123456789';
 
         for (const input of ocrInputs) {
           for (const psm of psmModes) {
@@ -662,7 +707,11 @@ exports.parseLicensePlateFromImage = async (req, res) => {
                 throw err;
               }
               try {
-                await worker.setParameters({ tessedit_pageseg_mode: psm });
+                await worker.setParameters({
+                  tessedit_pageseg_mode: psm,
+                  tessedit_char_whitelist: whitelist,
+                  preserve_interword_spaces: '1',
+                });
               } catch (_) {
                 void _;
               }
@@ -716,7 +765,11 @@ exports.parseLicensePlateFromImage = async (req, res) => {
               try {
                 if (Date.now() - startedAt > overallTimeoutMs + 7000) break;
                 try {
-                  await worker.setParameters({ tessedit_pageseg_mode: psm });
+                  await worker.setParameters({
+                    tessedit_pageseg_mode: psm,
+                    tessedit_char_whitelist: whitelist,
+                    preserve_interword_spaces: '1',
+                  });
                 } catch (_) {
                   void _;
                 }
@@ -795,6 +848,12 @@ exports.parseLicensePlateFromImage = async (req, res) => {
       });
     }
 
+    if (plateCorePreprocessedPath) {
+      fs.unlink(plateCorePreprocessedPath, (err) => {
+        if (err) void err;
+      });
+    }
+
     if (fallbackPreprocessedPath) {
       fs.unlink(fallbackPreprocessedPath, (err) => {
         if (err) void err;
@@ -809,6 +868,7 @@ exports.parseLicensePlateFromImage = async (req, res) => {
             jimpError: jimpResolveError,
             inputs: {
               bottom: Boolean(bottomPreprocessedPath),
+              plateCore: Boolean(plateCorePreprocessedPath),
               binary: Boolean(binaryPreprocessedPath),
               plate: Boolean(preprocessedPath),
               plateAlt: Boolean(altPreprocessedPath),
@@ -1064,7 +1124,6 @@ function extractLicensePlateFromText(text) {
       .trim();
 
   const normalized = normalizeChunk(preNormalized);
-  const stripped = normalized.replace(/[^A-Z0-9]/g, '');
   const normalizedLines = raw
     .split(/\r?\n/)
     .map((line) =>
@@ -1075,14 +1134,10 @@ function extractLicensePlateFromText(text) {
       )
     )
     .filter(Boolean);
-
-  const sourceVariants = Array.from(
+  const exactSources = Array.from(
     new Set(
       [
         normalized,
-        stripped,
-        normalizedLines.join(' '),
-        normalizedLines.join(''),
         ...normalizedLines,
         ...normalizedLines.flatMap((line, idx) => {
           if (idx >= normalizedLines.length - 1) return [];
@@ -1092,7 +1147,37 @@ function extractLicensePlateFromText(text) {
     )
   );
 
-  if (!sourceVariants.some((value) => value.replace(/[^A-Z0-9]/g, '').length >= 8)) return null;
+  for (const source of exactSources) {
+    const exactMatch = String(source).match(/\b[A-Z]{2}\s?\d{4}\s?[A-Z]{2}\b/);
+    if (exactMatch && exactMatch[0]) {
+      return exactMatch[0].replace(/\s+/g, '');
+    }
+  }
+
+  const fragments = [];
+  const seenFragments = new Set();
+  const pushFragment = (value, kind = 'token') => {
+    const compact = String(value || '').replace(/[^A-Z0-9]/g, '');
+    if (!compact || compact.length < 8 || compact.length > 10) return;
+    const key = `${kind}:${compact}`;
+    if (seenFragments.has(key)) return;
+    seenFragments.add(key);
+    fragments.push({ compact, kind });
+  };
+
+  for (const line of normalizedLines) {
+    pushFragment(line, 'line');
+    const tokens = String(line).split(/\s+/).filter(Boolean);
+    tokens.forEach((token) => pushFragment(token, 'token'));
+    for (let i = 0; i < tokens.length - 1; i += 1) {
+      pushFragment(`${tokens[i]}${tokens[i + 1]}`, 'pair');
+      if (i < tokens.length - 2) {
+        pushFragment(`${tokens[i]}${tokens[i + 1]}${tokens[i + 2]}`, 'triple');
+      }
+    }
+  }
+
+  if (!fragments.length) return null;
 
   const allowedLetters = new Set(['A', 'B', 'C', 'E', 'H', 'I', 'K', 'M', 'O', 'P', 'T', 'X', 'Y']);
   const uaPrefixes = new Set([
@@ -1282,15 +1367,10 @@ function extractLicensePlateFromText(text) {
       }
     }
 
-    if (isAllowedLetter(a) && isAllowedLetter(b)) {
-      return { a, b, cost: 4 };
-    }
-
     return null;
   };
 
   const scoreCandidate = (candidate) => {
-    let cost = 0;
     const s = candidate.split('');
 
     const a0 = fixLetter(s[0]);
@@ -1308,7 +1388,7 @@ function extractLicensePlateFromText(text) {
     const prefixFix = fixPrefix(a0.ch, a1.ch);
     if (!prefixFix) return null;
 
-    cost +=
+    const cost =
       a0.cost +
       a1.cost +
       d2.cost +
@@ -1323,91 +1403,56 @@ function extractLicensePlateFromText(text) {
     if (!/^[A-Z]{2}\d{4}[A-Z]{2}$/.test(fixed)) return null;
     if (!isAllowedLetter(fixed[0]) || !isAllowedLetter(fixed[1])) return null;
     if (!isAllowedLetter(fixed[6]) || !isAllowedLetter(fixed[7])) return null;
-    return { fixed, cost };
+    const exactHits = fixed.split('').reduce((sum, ch, idx) => sum + (candidate[idx] === ch ? 1 : 0), 0);
+    return { fixed, cost, exactHits };
   };
 
   let best = null;
-  const considerCandidate = (candidate, penalty = 0) => {
+  const considerCandidate = (candidate, kind, penalty = 0) => {
     const scored = scoreCandidate(candidate);
     if (!scored) return false;
-    const withPenalty = { fixed: scored.fixed, cost: scored.cost + penalty };
+    const totalCost = scored.cost + penalty;
+    const minExactHits = penalty > 0 ? 7 : kind === 'line' || kind === 'pair' || kind === 'triple' ? 6 : 7;
+    if (totalCost > 3) return false;
+    if (scored.exactHits < minExactHits) return false;
+    const withPenalty = { fixed: scored.fixed, cost: totalCost, exactHits: scored.exactHits };
     if (!best || withPenalty.cost < best.cost) {
       best = withPenalty;
     }
-    return withPenalty.cost === 0;
+    return withPenalty.cost === 0 && withPenalty.exactHits === 8;
   };
 
-  const trySource = (source) => {
-    const compact = String(source || '')
-      .replace(/\s+/g, ' ')
-      .trim();
+  const trySource = ({ compact, kind }) => {
     if (!compact) return;
 
-    for (let i = 0; i <= compact.length - 8; i += 1) {
-      if (considerCandidate(compact.slice(i, i + 8))) return;
+    if (compact.length === 8) {
+      considerCandidate(compact, kind);
+      return;
     }
 
-    for (let i = 0; i <= compact.length - 9; i += 1) {
-      const s9 = compact.slice(i, i + 9);
-      if (s9[2] === ' ' && s9[7] !== ' ' && s9[8] !== ' ') {
-        if (considerCandidate(s9.slice(0, 2) + s9.slice(3), 1)) return;
+    if (compact.length === 9) {
+      for (let drop = 0; drop < 9; drop += 1) {
+        const s8 = compact.slice(0, drop) + compact.slice(drop + 1);
+        considerCandidate(s8, kind, 2);
       }
+      return;
     }
 
-    for (let i = 0; i <= compact.length - 10; i += 1) {
-      const s10 = compact.slice(i, i + 10);
-      if (s10[2] === ' ' && s10[5] === ' ' && s10[8] !== ' ' && s10[9] !== ' ') {
-        if (considerCandidate(s10.slice(0, 2) + s10.slice(3, 5) + s10.slice(6), 2)) return;
-      }
-    }
-
-    const onlyAlnum = compact.replace(/[^A-Z0-9]/g, '');
-    for (let i = 0; i <= onlyAlnum.length - 8; i += 1) {
-      if (considerCandidate(onlyAlnum.slice(i, i + 8))) return;
-    }
-
-    const tryDeletionWindows = (windowLength, deletionPenalty, stopAtCost = 1) => {
-      if (onlyAlnum.length < windowLength) return false;
-      const dropCount = windowLength - 8;
-      for (let i = 0; i <= onlyAlnum.length - windowLength; i += 1) {
-        const window = onlyAlnum.slice(i, i + windowLength);
-        const picked = [];
-        let shouldStop = false;
-        const choose = (index, dropsLeft) => {
-          if (shouldStop) return;
-          if (picked.length === 8) {
-            const stop = considerCandidate(picked.join(''), deletionPenalty);
-            if (stop && best && best.cost <= stopAtCost) shouldStop = true;
-            return;
+    if (compact.length === 10) {
+      for (let dropA = 0; dropA < 10; dropA += 1) {
+        for (let dropB = dropA + 1; dropB < 10; dropB += 1) {
+          const s8 = compact.slice(0, dropA) + compact.slice(dropA + 1, dropB) + compact.slice(dropB + 1);
+          if (s8.length === 8) {
+            considerCandidate(s8, kind, 3);
           }
-          if (index >= window.length) return;
-          const remaining = window.length - index;
-          const required = 8 - picked.length;
-          if (remaining < required) return;
-
-          picked.push(window[index]);
-          choose(index + 1, dropsLeft);
-          picked.pop();
-
-          if (dropsLeft > 0) {
-            choose(index + 1, dropsLeft - 1);
-          }
-        };
-        choose(0, dropCount);
-        if (shouldStop) return true;
+        }
       }
-      return false;
-    };
-
-    if (tryDeletionWindows(9, 2, 2)) return;
-    if (tryDeletionWindows(10, 4, 3)) return;
-    if (tryDeletionWindows(11, 6, 4)) return;
-    tryDeletionWindows(12, 8, 5);
+    }
   };
 
-  for (const source of sourceVariants) {
+  for (const source of fragments) {
     trySource(source);
-    if (best?.cost === 0) break;
+    if (best?.cost === 0 && best?.exactHits === 8) break;
   }
 
   if (best?.fixed) return best.fixed;

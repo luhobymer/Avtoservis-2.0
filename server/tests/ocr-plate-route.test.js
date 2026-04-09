@@ -64,4 +64,22 @@ describe('OCR Plate Route - integration (mocked tesseract)', () => {
     expect(res.body.meta).toHaveProperty('inputs');
     expect(res.body.meta.inputs).toHaveProperty('orig', true);
   });
+
+  test('POST /api/ocr/plate prefers a real short plate fragment over noisy OCR garbage', async () => {
+    mockRecognize.mockResolvedValueOnce({
+      data: {
+        text: 'A)\\n\\nE5 RN 4 2 7 0 EO\\nKA 2878 IA\\nUA',
+      },
+    });
+
+    const token = signToken({ id: 'u3', email: 'u3@example.com', role: 'client' });
+
+    const res = await request(app)
+      .post('/api/ocr/plate')
+      .set('Authorization', `Bearer ${token}`)
+      .attach('image', Buffer.from('fake-image-bytes'), 'plate.png');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('licensePlate', 'KA2878IA');
+  });
 });

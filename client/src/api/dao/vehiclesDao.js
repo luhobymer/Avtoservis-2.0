@@ -446,11 +446,63 @@ const extractLicensePlateFromText = (text) => {
     Ґ: 'G',
   };
 
-  const normalized = raw
-    .replace(/[АВЕИІКМНОРСТХУЙЗЧЇЄҐ]/g, (ch) => map[ch] || ch)
-    .replace(/[^A-Z0-9 ]/g, '');
-  const stripped = normalized.replace(/[^A-Z0-9]/g, '');
-  if (stripped.length < 8) return '';
+  const normalizeChunk = (value) =>
+    String(value || '')
+      .replace(/[АВЕИІКМНОРСТХУЙЗЧЇЄҐ]/g, (ch) => map[ch] || ch)
+      .replace(/[^A-Z0-9 ]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+  const normalized = normalizeChunk(raw);
+  const normalizedLines = raw
+    .split(/\r?\n/)
+    .map((line) => normalizeChunk(line))
+    .filter(Boolean);
+
+  const exactSources = Array.from(
+    new Set(
+      [
+        normalized,
+        ...normalizedLines,
+        ...normalizedLines.flatMap((line, idx) => {
+          if (idx >= normalizedLines.length - 1) return [];
+          return [`${line} ${normalizedLines[idx + 1]}`, `${line}${normalizedLines[idx + 1]}`];
+        }),
+      ].filter(Boolean)
+    )
+  );
+
+  for (const source of exactSources) {
+    const exactMatch = String(source).match(/\b[A-Z]{2}\s?\d{4}\s?[A-Z]{2}\b/);
+    if (exactMatch && exactMatch[0]) {
+      return exactMatch[0].replace(/\s+/g, '');
+    }
+  }
+
+  const fragments = [];
+  const seenFragments = new Set();
+  const pushFragment = (value, kind = 'token') => {
+    const compact = String(value || '').replace(/[^A-Z0-9]/g, '');
+    if (!compact || compact.length < 8 || compact.length > 10) return;
+    const key = `${kind}:${compact}`;
+    if (seenFragments.has(key)) return;
+    seenFragments.add(key);
+    fragments.push({ compact, kind });
+  };
+
+  for (const line of normalizedLines) {
+    pushFragment(line, 'line');
+    const tokens = String(line).split(/\s+/).filter(Boolean);
+    tokens.forEach((token) => pushFragment(token, 'token'));
+    for (let i = 0; i < tokens.length - 1; i += 1) {
+      pushFragment(`${tokens[i]}${tokens[i + 1]}`, 'pair');
+      if (i < tokens.length - 2) {
+        pushFragment(`${tokens[i]}${tokens[i + 1]}${tokens[i + 2]}`, 'triple');
+      }
+    }
+  }
+
+  if (!fragments.length) return '';
 
   const allowedLetters = new Set(['A', 'B', 'C', 'E', 'H', 'I', 'K', 'M', 'O', 'P', 'T', 'X', 'Y']);
   const uaPrefixes = new Set([
@@ -517,10 +569,6 @@ const extractLicensePlateFromText = (text) => {
         return { a: v.a, b: v.b, cost: (v.a !== a ? 1 : 0) + (v.b !== b ? 1 : 0) };
       }
     }
-    // Last-resort fallback: accept allowed-letter prefix with a penalty.
-    if (allowedLetters.has(a) && allowedLetters.has(b)) {
-      return { a, b, cost: 3 };
-    }
     return null;
   };
 
@@ -541,16 +589,43 @@ const extractLicensePlateFromText = (text) => {
     if (!/^[A-Z]{2}\d{4}[A-Z]{2}$/.test(fixed)) return null;
     const cost =
       a0.cost + a1.cost + d2.cost + d3.cost + d4.cost + d5.cost + a6.cost + a7.cost + prefixFix.cost;
-    return { fixed, cost };
+    const exactHits = fixed.split('').reduce((sum, ch, idx) => sum + (candidate[idx] === ch ? 1 : 0), 0);
+    return { fixed, cost, exactHits };
   };
 
   let best = null;
-  for (let i = 0; i <= stripped.length - 8; i += 1) {
-    const scored = scoreCandidate(stripped.slice(i, i + 8));
-    if (!scored) continue;
-    if (!best || scored.cost < best.cost) {
-      best = scored;
-      if (best.cost === 0) break;
+  const considerCandidate = (candidate, kind, penalty = 0) => {
+    const scored = scoreCandidate(candidate);
+    if (!scored) return;
+    const totalCost = scored.cost + penalty;
+    const minExactHits = penalty > 0 ? 7 : kind === 'line' || kind === 'pair' || kind === 'triple' ? 6 : 7;
+    if (totalCost > 3 || scored.exactHits < minExactHits) return;
+    if (!best || totalCost < best.cost) {
+      best = { fixed: scored.fixed, cost: totalCost, exactHits: scored.exactHits };
+    }
+  };
+
+  for (const { compact, kind } of fragments) {
+    if (compact.length === 8) {
+      considerCandidate(compact, kind);
+      continue;
+    }
+    if (compact.length === 9) {
+      for (let drop = 0; drop < 9; drop += 1) {
+        const s8 = compact.slice(0, drop) + compact.slice(drop + 1);
+        considerCandidate(s8, kind, 2);
+      }
+      continue;
+    }
+    if (compact.length === 10) {
+      for (let dropA = 0; dropA < 10; dropA += 1) {
+        for (let dropB = dropA + 1; dropB < 10; dropB += 1) {
+          const s8 = compact.slice(0, dropA) + compact.slice(dropA + 1, dropB) + compact.slice(dropB + 1);
+          if (s8.length === 8) {
+            considerCandidate(s8, kind, 3);
+          }
+        }
+      }
     }
   }
 
