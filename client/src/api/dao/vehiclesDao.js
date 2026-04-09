@@ -26,7 +26,7 @@ async function warmupApiConnection(timeoutMs = 5000) {
   }
 }
 
-async function requestJson(url, options = {}) {
+async function requestJson(url, options = {}, attemptRefresh = true) {
   const token = localStorage.getItem('auth_token');
   const response = await fetch(resolveUrl(url), {
     method: options.method || 'GET',
@@ -35,8 +35,43 @@ async function requestJson(url, options = {}) {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(options.headers || {})
     },
-    body: options.body ? JSON.stringify(options.body) : undefined
+    body: options.body ? JSON.stringify(options.body) : undefined,
+    credentials: 'include'
   });
+
+  if (response.status === 401 && attemptRefresh) {
+    try {
+      const storedRefreshToken = localStorage.getItem('refresh_token');
+      if (!storedRefreshToken) {
+        throw new Error('Refresh token missing');
+      }
+
+      const refreshResponse = await fetch(resolveUrl('/api/auth/refresh-token'), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ refresh_token: storedRefreshToken }),
+        credentials: 'include'
+      });
+
+      if (refreshResponse.ok) {
+        const refreshData = await refreshResponse.json();
+        const newAccessToken = refreshData?.token || refreshData?.accessToken || null;
+        const newRefreshToken =
+          refreshData?.refresh_token || refreshData?.refreshToken || null;
+        if (newAccessToken) {
+          localStorage.setItem('auth_token', newAccessToken);
+        }
+        if (newRefreshToken) {
+          localStorage.setItem('refresh_token', newRefreshToken);
+        }
+        return requestJson(url, options, false);
+      }
+    } catch (error) {
+      void error;
+    }
+  }
 
   if (!response.ok) {
     let message = `Request failed with status ${response.status}`;
