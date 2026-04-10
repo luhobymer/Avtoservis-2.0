@@ -744,6 +744,55 @@ const extractLicensePlateFromText = (text) => {
 export async function recognizeLicensePlateFromPhoto(file) {
   const token = localStorage.getItem('auth_token');
   const preparedFile = await prepareImageForOcr(file);
+  const tryDebugPlateFallback = async () => {
+    try {
+      const fallbackForm = new FormData();
+      fallbackForm.append('image', preparedFile || file);
+      const fallbackController = new AbortController();
+      const fallbackTimeoutId = window.setTimeout(() => fallbackController.abort(), 90000);
+      let fallbackResponse;
+      try {
+        fallbackResponse = await fetch(debugUrl, {
+          method: 'POST',
+          headers: {
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: fallbackForm,
+          signal: fallbackController.signal,
+        });
+      } finally {
+        window.clearTimeout(fallbackTimeoutId);
+      }
+      if (!fallbackResponse || !fallbackResponse.ok) return '';
+      const fallbackPayload = await fallbackResponse.json();
+      if (
+        fallbackPayload &&
+        typeof fallbackPayload.licensePlate === 'string' &&
+        fallbackPayload.licensePlate.trim()
+      ) {
+        return fallbackPayload.licensePlate.trim().toUpperCase();
+      }
+      if (fallbackPayload && Array.isArray(fallbackPayload.attempts)) {
+        for (const attempt of fallbackPayload.attempts) {
+          if (attempt?.plate) {
+            const plate = extractLicensePlateFromText(String(attempt.plate));
+            if (plate) return plate;
+          }
+          if (attempt?.rawText) {
+            const plate = extractLicensePlateFromText(String(attempt.rawText));
+            if (plate) return plate;
+          }
+        }
+      }
+      if (fallbackPayload && typeof fallbackPayload.rawText === 'string' && fallbackPayload.rawText.trim()) {
+        const plate = extractLicensePlateFromText(fallbackPayload.rawText);
+        if (plate) return plate;
+      }
+      return '';
+    } catch (_) {
+      return '';
+    }
+  };
   const formData = new FormData();
   formData.append('image', preparedFile || file);
 
@@ -839,6 +888,8 @@ export async function recognizeLicensePlateFromPhoto(file) {
             void debugErr;
           }
         }
+        const fallbackPlate = await tryDebugPlateFallback();
+        if (fallbackPlate) return fallbackPlate;
         throw new Error('OCR timeout');
       }
 
@@ -861,6 +912,8 @@ export async function recognizeLicensePlateFromPhoto(file) {
             void debugErr;
           }
         }
+        const fallbackPlate = await tryDebugPlateFallback();
+        if (fallbackPlate) return fallbackPlate;
         throw new Error('Failed to fetch');
       }
 
