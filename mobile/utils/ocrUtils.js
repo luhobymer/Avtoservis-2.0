@@ -379,7 +379,17 @@ export class OCRManager {
     const raw = String(text || '').toUpperCase();
     if (!raw) return null;
 
+    const rawForLines = raw
+      .replace(/\\R\\N/g, '\n')
+      .replace(/\\N/g, '\n')
+      .replace(/\\R/g, '\n')
+      .replace(/\\T/g, ' ');
+
     const preNormalized = raw
+      .replace(/\\R\\N/g, ' ')
+      .replace(/\\N/g, ' ')
+      .replace(/\\R/g, ' ')
+      .replace(/\\T/g, ' ')
       .replace(/[\r\n\t]+/g, ' ')
       .replace(/R\s*N/g, 'K')
       .replace(/RN/g, 'K');
@@ -415,7 +425,7 @@ export class OCRManager {
         .trim();
 
     const normalized = normalizeChunk(preNormalized);
-    const normalizedLines = raw
+    const normalizedLines = rawForLines
       .split(/\r?\n/)
       .map((line) =>
         normalizeChunk(
@@ -438,6 +448,14 @@ export class OCRManager {
         ].filter(Boolean)
       )
     );
+
+    // Fast-path: exact line hit like "KA 2878 IA"
+    for (const line of normalizedLines) {
+      const lineMatch = String(line).match(/\b([A-Z]{2})\s*(\d{4})\s*([A-Z]{2})\b/);
+      if (lineMatch) {
+        return `${lineMatch[1]}${lineMatch[2]}${lineMatch[3]}`;
+      }
+    }
 
     for (const source of exactSources) {
       const exactMatch = String(source).match(/\b[A-Z]{2}\s?\d{4}\s?[A-Z]{2}\b/);
@@ -643,18 +661,43 @@ export class OCRManager {
   // Р РѕР·РїС–Р·РЅР°РІР°РЅРЅСЏ РЅРѕРјРµСЂРЅРѕРіРѕ Р·РЅР°РєСѓ С‚Р° РѕС‚СЂРёРјР°РЅРЅСЏ РґР°РЅРёС… РїСЂРѕ Р°РІС‚РѕРјРѕР±С–Р»СЊ
   async recognizeLicensePlateAndGetVehicleData(imageUri) {
     try {
-      // Р РѕР·РїС–Р·РЅР°С”РјРѕ С‚РµРєСЃС‚ Р· Р·РѕР±СЂР°Р¶РµРЅРЅСЏ
-      const text = await this.recognizeText(imageUri);
-      
-      // РџРµСЂРµРІС–СЂСЏС”РјРѕ, С‡Рё РІРґР°Р»РѕСЃСЏ СЂРѕР·РїС–Р·РЅР°С‚Рё С‚РµРєСЃС‚
-      if (!text || text.trim().length === 0) {
-        console.warn('РќРµ РІРґР°Р»РѕСЃСЏ СЂРѕР·РїС–Р·РЅР°С‚Рё С‚РµРєСЃС‚ Р· Р·РѕР±СЂР°Р¶РµРЅРЅСЏ');
-        return null;
+      let extractedPlate = null;
+      let recognizedText = '';
+
+      // 1) First try backend OCR (more stable for plate recognition)
+      try {
+        const filename = String(imageUri || '').split(/[\\/]/).pop() || 'plate.jpg';
+        const ext = filename.includes('.') ? filename.split('.').pop().toLowerCase() : 'jpg';
+        const type = ext === 'png' ? 'image/png' : 'image/jpeg';
+        const formData = new FormData();
+        formData.append('image', {
+          uri: imageUri,
+          name: filename,
+          type,
+        });
+
+        const plateResponse = await axiosAuth.post('/api/ocr/plate', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
+
+        extractedPlate = plateResponse?.data?.licensePlate || null;
+        recognizedText = plateResponse?.data?.rawText || '';
+      } catch (serverOcrError) {
+        console.warn('Backend plate OCR failed, fallback to local OCR:', serverOcrError?.message || serverOcrError);
       }
-      
-      console.log('Р РѕР·РїС–Р·РЅР°РЅРёР№ С‚РµРєСЃС‚ Р· Р·РѕР±СЂР°Р¶РµРЅРЅСЏ:', text);
-      
-      const extractedPlate = this.extractLicensePlateFromText(text);
+
+      // 2) Fallback: local OCR + local parser
+      if (!extractedPlate) {
+        const text = await this.recognizeText(imageUri);
+        if (!text || text.trim().length === 0) {
+          console.warn('РќРµ РІРґР°Р»РѕСЃСЏ СЂРѕР·РїС–Р·РЅР°С‚Рё С‚РµРєСЃС‚ Р· Р·РѕР±СЂР°Р¶РµРЅРЅСЏ');
+          return null;
+        }
+        recognizedText = text;
+        console.log('Р РѕР·РїС–Р·РЅР°РЅРёР№ С‚РµРєСЃС‚ Р· Р·РѕР±СЂР°Р¶РµРЅРЅСЏ:', text);
+        extractedPlate = this.extractLicensePlateFromText(text);
+      }
+
       if (!extractedPlate) {
         console.warn('РќРµ РІРґР°Р»РѕСЃСЏ СЂРѕР·РїС–Р·РЅР°С‚Рё РЅРѕРјРµСЂРЅРёР№ Р·РЅР°Рє');
         return null;
@@ -663,12 +706,23 @@ export class OCRManager {
       const licensePlate = normalizeLicensePlate(extractedPlate);
       console.log('Р РѕР·РїС–Р·РЅР°РЅРѕ РЅРѕРјРµСЂРЅРёР№ Р·РЅР°Рє:', licensePlate);
 
+      let dbData = null;
       let registryData = null;
+      const normalizedPlate = normalizeLicensePlate(licensePlate);
 
       try {
-        const normalizedPlate = normalizeLicensePlate(licensePlate);
-
         if (normalizedPlate) {
+          // Prefer own DB first
+          try {
+            const dbResponse = await axiosAuth.get(`/api/vehicles/license/${encodeURIComponent(normalizedPlate)}`);
+            if (dbResponse?.data) {
+              dbData = dbResponse.data;
+            }
+          } catch (_) {
+            void _;
+          }
+
+          // Then registry fallback
           const response = await axiosAuth.get('/api/vehicle-registry', {
             params: {
               license_plate: normalizedPlate,
@@ -681,6 +735,30 @@ export class OCRManager {
         }
       } catch (apiError) {
         console.error('Error fetching vehicle data from registry:', apiError);
+      }
+
+      if (dbData) {
+        const rawEngine = String(dbData.engineType || dbData.engine_type || '').toUpperCase();
+        let engineType = 'petrol';
+        if (rawEngine.includes('BENZINE') || rawEngine.includes('PETROL')) engineType = 'petrol';
+        else if (rawEngine.includes('DIESEL')) engineType = 'diesel';
+        else if (rawEngine.includes('GAS')) engineType = 'gas';
+        else if (rawEngine.includes('ELECTRO') || rawEngine.includes('ELECTRIC')) engineType = 'electric';
+        else if (rawEngine.includes('HYBRID')) engineType = 'hybrid';
+
+        return {
+          licensePlate,
+          make: dbData.make || dbData.brand || null,
+          model: dbData.model || null,
+          year: dbData.year || null,
+          color: dbData.color || null,
+          vin: dbData.vin || null,
+          engineType,
+          engineVolume: dbData.engineCapacity || dbData.engine_capacity || null,
+          mileage: dbData.mileage || null,
+          rawText: recognizedText || null,
+          isPartialData: false,
+        };
       }
 
       if (registryData) {
@@ -702,12 +780,14 @@ export class OCRManager {
           vin: registryData.vin || null,
           engineType: engineType,
           engineVolume: registryData.engine_volume || null,
+          rawText: recognizedText || null,
           isPartialData: false
         };
       }
 
       return {
         licensePlate: licensePlate,
+        rawText: recognizedText || null,
         ...(this.useMock ? {
           make: 'Toyota',
           model: 'Camry',

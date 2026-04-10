@@ -2,10 +2,10 @@ buildscript {
     ext {
         buildToolsVersion = "35.0.0"
         minSdkVersion = 24
-        compileSdkVersion = 35
-        targetSdkVersion = 35
-        ndkVersion = "27.1.12297006"
-        kotlinVersion = "1.9.24"
+        compileSdkVersion = 34
+        targetSdkVersion = 34
+        ndkVersion = "26.1.10909125"
+        kotlinVersion = "2.0.21"
     }
     repositories {
         google()
@@ -15,24 +15,6 @@ buildscript {
         classpath("com.android.tools.build:gradle")
         classpath("com.facebook.react:react-native-gradle-plugin")
         classpath("org.jetbrains.kotlin:kotlin-gradle-plugin")
-    }
-}
-
-// Add these to rootProject.ext explicitly
-ext {
-    buildToolsVersion = "35.0.0"
-    minSdkVersion = 24
-    compileSdkVersion = 35
-    targetSdkVersion = 35
-    ndkVersion = "27.1.12297006"
-    kotlinVersion = "1.9.24"
-}
-
-subprojects { project ->
-    afterEvaluate {
-        if (project.plugins.hasPlugin("com.android.application") || project.plugins.hasPlugin("com.android.library")) {
-            project.android.defaultConfig.minSdkVersion = rootProject.ext.minSdkVersion
-        }
     }
 }
 
