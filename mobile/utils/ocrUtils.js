@@ -8,21 +8,21 @@ const normalizeLicensePlate = (plate) => {
   if (!plate) return null;
   const normalized = String(plate).replace(/[\s\-_.]/g, '').toUpperCase();
   const map = {
-    Рђ: 'A',
-    Р’: 'B',
-    Р•: 'E',
-    Р†: 'I',
-    Рљ: 'K',
-    Рњ: 'M',
-    Рќ: 'H',
-    Рћ: 'O',
-    Р : 'P',
-    РЎ: 'C',
-    Рў: 'T',
-    РҐ: 'X',
-    РЈ: 'Y',
+    '\u0410': 'A',
+    '\u0412': 'B',
+    '\u0415': 'E',
+    '\u0406': 'I',
+    '\u041A': 'K',
+    '\u041C': 'M',
+    '\u041D': 'H',
+    '\u041E': 'O',
+    '\u0420': 'P',
+    '\u0421': 'C',
+    '\u0422': 'T',
+    '\u0425': 'X',
+    '\u0423': 'Y',
   };
-  return normalized.replace(/[РђР’Р•Р†РљРњРќРћР РЎРўРҐРЈ]/g, (char) => map[char] || char);
+  return normalized.replace(/[\u0410\u0412\u0415\u0406\u041A\u041C\u041D\u041E\u0420\u0421\u0422\u0425\u0423]/g, (char) => map[char] || char);
 };
 
 // РљР»Р°СЃ РґР»СЏ СЂРѕР±РѕС‚Рё Р· OCR
@@ -61,12 +61,12 @@ export class OCRManager {
         } catch (nativeError) {
           console.error('Failed to initialize native OCR:', nativeError);
         }
-        console.log('Mobile platform detected, using mock OCR');
-        this.worker = this.createMockWorker();
-        this.useMock = true;
-        this.initialized = true;
-        console.log('Mock OCR initialized successfully');
-        return;
+        // On mobile we intentionally rely on ML Kit only.
+        this.worker = null;
+        this.useMock = false;
+        this.useNative = false;
+        this.initialized = false;
+        throw new Error('ML Kit text recognition is unavailable on this device');
       }
       
       // РЎРїСЂРѕР±СѓС”РјРѕ С–РЅС–С†С–Р°Р»С–Р·СѓРІР°С‚Рё Tesseract С‚С–Р»СЊРєРё РґР»СЏ РІРµР±-РІРµСЂСЃС–С—
@@ -214,23 +214,6 @@ export class OCRManager {
         }
       } catch (retryError) {
         console.error('Error during retry with lower quality:', retryError);
-      }
-      
-      // РЇРєС‰Рѕ РІСЃРµ РЅРµРІРґР°Р»Рѕ С– С†Рµ РјРѕР±С–Р»СЊРЅР° РїР»Р°С‚С„РѕСЂРјР°, РїРѕРІРµСЂС‚Р°С”РјРѕ РјРѕРєРѕРІС– РґР°РЅС–
-      if (isMobile) {
-        console.log('РџРѕРІРµСЂС‚Р°С”РјРѕ РјРѕРєРѕРІС– РґР°РЅС– РґР»СЏ РјРѕР±С–Р»СЊРЅРѕС— РїР»Р°С‚С„РѕСЂРјРё');
-        
-        // РџРµСЂРµРІС–СЂСЏС”РјРѕ, С‡Рё С†Рµ Р·РѕР±СЂР°Р¶РµРЅРЅСЏ РЅРѕРјРµСЂРЅРѕРіРѕ Р·РЅР°РєСѓ (Р·Р° РЅР°Р·РІРѕСЋ С„Р°Р№Р»Сѓ Р°Р±Рѕ С€Р»СЏС…РѕРј)
-        const isLicensePlate = imageUri.toLowerCase().includes('plate') || 
-                              imageUri.toLowerCase().includes('РЅРѕРјРµСЂ') || 
-                              imageUri.toLowerCase().includes('license');
-        
-        // РџРѕРІРµСЂС‚Р°С”РјРѕ СЂС–Р·РЅС– РјРѕРєРѕРІС– РґР°РЅС– Р·Р°Р»РµР¶РЅРѕ РІС–Рґ С‚РёРїСѓ Р·РѕР±СЂР°Р¶РµРЅРЅСЏ
-        if (isLicensePlate) {
-          return "AA1234BB\nРЈРєСЂР°С—РЅР°";
-        } else {
-          return "РЎР’Р†Р”РћР¦РўР’Рћ РџР Рћ Р Р•Р„РЎРўР РђР¦Р†Р® РўР РђРќРЎРџРћР РўРќРћР“Рћ Р—РђРЎРћР‘РЈ\nVIN: ABC12345678901234\nРњР°СЂРєР°: Toyota\nРњРѕРґРµР»СЊ: Camry\nР С–Рє: 2020\nРљРѕР»С–СЂ: Р§РѕСЂРЅРёР№\nРќРѕРјРµСЂРЅРёР№ Р·РЅР°Рє: AA1234BB";
-        }
       }
       
       return null;
@@ -395,31 +378,31 @@ export class OCRManager {
       .replace(/RN/g, 'K');
 
     const map = {
-      Рђ: 'A',
-      Р’: 'B',
-      Р•: 'E',
-      Р: 'I',
-      Р†: 'I',
-      Рљ: 'K',
-      Рњ: 'M',
-      Рќ: 'H',
-      Рћ: 'O',
-      Р : 'P',
-      РЎ: 'C',
-      Рў: 'T',
-      РҐ: 'X',
-      РЈ: 'Y',
-      Р™: 'I',
-      Р—: '3',
-      Р§: '4',
-      Р‡: 'I',
-      Р„: 'E',
-      Тђ: 'G',
+      '\u0410': 'A',
+      '\u0412': 'B',
+      '\u0415': 'E',
+      '\u0418': 'I',
+      '\u0406': 'I',
+      '\u041A': 'K',
+      '\u041C': 'M',
+      '\u041D': 'H',
+      '\u041E': 'O',
+      '\u0420': 'P',
+      '\u0421': 'C',
+      '\u0422': 'T',
+      '\u0425': 'X',
+      '\u0423': 'Y',
+      '\u0419': 'I',
+      '\u0417': '3',
+      '\u0427': '4',
+      '\u0407': 'I',
+      '\u0404': 'E',
+      '\u0490': 'G',
     };
 
     const normalizeChunk = (value) =>
       String(value || '')
-        .replace(/[РђР’Р•РР†РљРњРќРћР РЎРўРҐРЈР™Р—Р§Р‡Р„Тђ]/g, (ch) => map[ch] || ch)
+        .replace(/[\u0410\u0412\u0415\u0418\u0406\u041A\u041C\u041D\u041E\u0420\u0421\u0422\u0425\u0423\u0419\u0417\u0427\u0407\u0404\u0490]/g, (ch) => map[ch] || ch)
         .replace(/[^A-Z0-9 ]/g, '')
         .replace(/\s+/g, ' ')
         .trim();
