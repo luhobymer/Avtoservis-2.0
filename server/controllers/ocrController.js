@@ -961,9 +961,8 @@ exports.parseLicensePlateFromImage = async (req, res) => {
     const msgLower = msg.toLowerCase();
 
     if (code === 'OCR_TIMEOUT' || msgLower.includes('ocr timeout')) {
-      return res.status(200).json({
-        licensePlate: null,
-        rawText: '',
+      return res.status(503).json({
+        message: 'OCR timeout, please retry',
         error: 'OCR timeout',
       });
     }
