@@ -1120,7 +1120,16 @@ function parseOcrText(text) {
 function extractLicensePlateFromText(text) {
   const raw = String(text || '').toUpperCase();
   if (!raw) return null;
+  const rawForLines = raw
+    .replace(/\\R\\N/g, '\n')
+    .replace(/\\N/g, '\n')
+    .replace(/\\R/g, '\n')
+    .replace(/\\T/g, ' ');
   const preNormalized = raw
+    .replace(/\\R\\N/g, ' ')
+    .replace(/\\N/g, ' ')
+    .replace(/\\R/g, ' ')
+    .replace(/\\T/g, ' ')
     .replace(/[\r\n\t]+/g, ' ')
     .replace(/R\s*N/g, 'K')
     .replace(/RN/g, 'K');
@@ -1158,7 +1167,7 @@ function extractLicensePlateFromText(text) {
       .trim();
 
   const normalized = normalizeChunk(preNormalized);
-  const normalizedLines = raw
+  const normalizedLines = rawForLines
     .split(/\r?\n/)
     .map((line) =>
       normalizeChunk(
@@ -1180,6 +1189,14 @@ function extractLicensePlateFromText(text) {
       ].filter(Boolean)
     )
   );
+
+  // Prefer direct per-line plate hits (e.g. "KA 2878 IA") over mixed noisy blobs.
+  for (const line of normalizedLines) {
+    const lineMatch = String(line).match(/\b([A-Z]{2})\s*(\d{4})\s*([A-Z]{2})\b/);
+    if (lineMatch) {
+      return `${lineMatch[1]}${lineMatch[2]}${lineMatch[3]}`;
+    }
+  }
 
   for (const source of exactSources) {
     const exactMatch = String(source).match(/\b[A-Z]{2}\s?\d{4}\s?[A-Z]{2}\b/);
