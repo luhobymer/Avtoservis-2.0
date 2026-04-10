@@ -882,6 +882,38 @@ exports.parseLicensePlateFromImage = async (req, res) => {
       : {};
 
     if (!result?.bestPlate) {
+      try {
+        const attemptSummary = Array.isArray(result?.attempts)
+          ? result.attempts.slice(0, 12).map((a) => ({
+              label: a?.label || '',
+              psm: a?.psm || '',
+              plate: a?.plate || null,
+              hasText: Boolean(String(a?.rawText || '').trim()),
+              textSample: String(a?.rawText || '')
+                .replace(/\s+/g, ' ')
+                .trim()
+                .slice(0, 120),
+              error: a?.error || null,
+            }))
+          : [];
+        console.warn(
+          '[OCR_PLATE_MISS]',
+          JSON.stringify({
+            at: new Date().toISOString(),
+            ip: req.ip || null,
+            userId: req?.user?.id || null,
+            hasRawText: Boolean(String(result?.bestText || '').trim()),
+            rawTextSample: String(result?.bestText || '')
+              .replace(/\s+/g, ' ')
+              .trim()
+              .slice(0, 220),
+            attempts: attemptSummary,
+            preprocessErrors,
+          })
+        );
+      } catch (logErr) {
+        void logErr;
+      }
       return res.status(200).json({
         licensePlate: null,
         rawText: result?.bestText || '',
@@ -1114,6 +1146,8 @@ function extractLicensePlateFromText(text) {
     Ї: 'I',
     Є: 'E',
     Ґ: 'G',
+    Л: 'A',
+    Д: 'O',
   };
 
   const normalizeChunk = (value) =>
@@ -1456,5 +1490,50 @@ function extractLicensePlateFromText(text) {
   }
 
   if (best?.fixed) return best.fixed;
+
+  // Soft fallback: try to recover plate even when region prefix is uncertain.
+  const softSources = Array.from(
+    new Set(
+      [
+        normalized,
+        ...normalizedLines,
+        ...normalizedLines.flatMap((line, idx) => {
+          if (idx >= normalizedLines.length - 1) return [];
+          return [`${line} ${normalizedLines[idx + 1]}`, `${line}${normalizedLines[idx + 1]}`];
+        }),
+      ]
+        .filter(Boolean)
+        .map((v) => String(v).replace(/[^A-Z0-9]/g, ' '))
+    )
+  );
+
+  const softFix = (candidate) => {
+    const s = String(candidate || '').replace(/[^A-Z0-9]/g, '');
+    if (s.length !== 8) return null;
+    const a0 = fixLetter(s[0]);
+    const a1 = fixLetter(s[1]);
+    const d2 = fixDigit(s[2]);
+    const d3 = fixDigit(s[3]);
+    const d4 = fixDigit(s[4]);
+    const d5 = fixDigit(s[5]);
+    const a6 = fixLetter(s[6]);
+    const a7 = fixLetter(s[7]);
+    const nodes = [a0, a1, d2, d3, d4, d5, a6, a7];
+    if (nodes.some((x) => x.cost >= 99)) return null;
+    const fixed = `${a0.ch}${a1.ch}${d2.ch}${d3.ch}${d4.ch}${d5.ch}${a6.ch}${a7.ch}`;
+    if (!/^[A-Z]{2}\d{4}[A-Z]{2}$/.test(fixed)) return null;
+    const cost = nodes.reduce((sum, node) => sum + node.cost, 0);
+    return cost <= 4 ? fixed : null;
+  };
+
+  for (const src of softSources) {
+    const compact = String(src || '').replace(/[^A-Z0-9]/g, '');
+    for (let i = 0; i <= compact.length - 8; i += 1) {
+      const part = compact.slice(i, i + 8);
+      const fixed = softFix(part);
+      if (fixed) return fixed;
+    }
+  }
+
   return null;
 }
