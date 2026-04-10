@@ -696,7 +696,8 @@ exports.parseLicensePlateFromImage = async (req, res) => {
         let bestText = '';
         let bestPlate = null;
         const attempts = [];
-        const whitelist = 'ABCEHIKMOPTXY0123456789';
+        // Include both Latin and Cyrillic plate-like symbols to avoid dropping Ukrainian letters.
+        const whitelist = 'ABCEHIKMOPTXY0123456789АВЕИІКМНОРСТХУЇЄҐСН';
 
         for (const input of ocrInputs) {
           for (const psm of psmModes) {
@@ -719,15 +720,42 @@ exports.parseLicensePlateFromImage = async (req, res) => {
               const {
                 data: { text },
               } = await withTimeout(worker.recognize(input.path), perAttemptTimeoutMs);
-              bestText = text || bestText;
-              const plate = extractLicensePlateFromText(text);
+              let ocrText = text || '';
+              bestText = ocrText || bestText;
+
+              // If OCR returned too little text (e.g. "EF"), retry once without strict whitelist.
+              if (String(ocrText).replace(/\s+/g, '').length < 4) {
+                try {
+                  await worker.setParameters({
+                    tessedit_pageseg_mode: psm,
+                    preserve_interword_spaces: '1',
+                  });
+                  const {
+                    data: { text: retryText },
+                  } = await withTimeout(worker.recognize(input.path), Math.max(4500, perAttemptTimeoutMs - 2000));
+                  if (String(retryText || '').trim().length > String(ocrText || '').trim().length) {
+                    ocrText = retryText || ocrText;
+                    bestText = ocrText || bestText;
+                  }
+                  // Restore strict params for next attempts.
+                  await worker.setParameters({
+                    tessedit_pageseg_mode: psm,
+                    tessedit_char_whitelist: whitelist,
+                    preserve_interword_spaces: '1',
+                  });
+                } catch (_) {
+                  void _;
+                }
+              }
+
+              const plate = extractLicensePlateFromText(ocrText);
 
               if (debug) {
                 attempts.push({
                   label: input.label,
                   psm,
                   plate: plate || null,
-                  rawText: text || '',
+                  rawText: ocrText || '',
                 });
               }
 
