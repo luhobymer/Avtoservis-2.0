@@ -742,7 +742,6 @@ const extractLicensePlateFromText = (text) => {
 };
 
 export async function recognizeLicensePlateFromPhoto(file) {
-  const token = localStorage.getItem('auth_token');
   const preparedFile = await prepareImageForOcr(file);
   const tryDebugPlateFallback = async () => {
     try {
@@ -754,9 +753,6 @@ export async function recognizeLicensePlateFromPhoto(file) {
       try {
         fallbackResponse = await fetch(debugUrl, {
           method: 'POST',
-          headers: {
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
           body: fallbackForm,
           signal: fallbackController.signal,
         });
@@ -800,8 +796,10 @@ export async function recognizeLicensePlateFromPhoto(file) {
     typeof window !== 'undefined' &&
     (window.location?.search?.includes('ocrDebug=1') ||
       window.location?.hash?.includes('ocrDebug=1'));
-  const url = ocrDebug ? resolveUrl('/api/ocr/plate?debug=1') : resolveUrl('/api/ocr/plate');
-  const debugUrl = resolveUrl('/api/ocr/plate?debug=1');
+  // Use public OCR endpoint to avoid auth/CORS instability for browser upload requests.
+  const plateEndpoint = '/api/ocr/plate-debug';
+  const url = ocrDebug ? resolveUrl(`${plateEndpoint}?debug=1`) : resolveUrl(plateEndpoint);
+  const debugUrl = resolveUrl(`${plateEndpoint}?debug=1`);
   const sleep = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
   const timeoutMs = 30000;
   const warmupTimeoutMs = 50000;
@@ -819,9 +817,6 @@ export async function recognizeLicensePlateFromPhoto(file) {
     try {
       response = await fetch(url, {
         method: 'POST',
-        headers: {
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
         body: formData,
         signal: controller.signal,
       });
@@ -990,9 +985,6 @@ export async function recognizeLicensePlateFromPhoto(file) {
       try {
         compactResponse = await fetch(debugUrl, {
           method: 'POST',
-          headers: {
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
           body: compactForm,
           signal: compactController.signal,
         });
@@ -1054,9 +1046,6 @@ export async function recognizeLicensePlateFromPhoto(file) {
     try {
       fallbackResponse = await fetch(debugUrl, {
         method: 'POST',
-        headers: {
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
         body: fallbackForm,
         signal: fallbackController.signal,
       });
