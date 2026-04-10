@@ -743,6 +743,13 @@ const extractLicensePlateFromText = (text) => {
 
 export async function recognizeLicensePlateFromPhoto(file) {
   const preparedFile = await prepareImageForOcr(file);
+  const authToken = localStorage.getItem('auth_token');
+  const buildOcrRequestOptions = (body, signal) => ({
+    method: 'POST',
+    body,
+    signal,
+    headers: authToken ? { Authorization: `Bearer ${authToken}` } : undefined,
+  });
   const tryDebugPlateFallback = async () => {
     try {
       const fallbackForm = new FormData();
@@ -751,11 +758,7 @@ export async function recognizeLicensePlateFromPhoto(file) {
       const fallbackTimeoutId = window.setTimeout(() => fallbackController.abort(), 90000);
       let fallbackResponse;
       try {
-        fallbackResponse = await fetch(debugUrl, {
-          method: 'POST',
-          body: fallbackForm,
-          signal: fallbackController.signal,
-        });
+        fallbackResponse = await fetch(debugUrl, buildOcrRequestOptions(fallbackForm, fallbackController.signal));
       } finally {
         window.clearTimeout(fallbackTimeoutId);
       }
@@ -796,10 +799,10 @@ export async function recognizeLicensePlateFromPhoto(file) {
     typeof window !== 'undefined' &&
     (window.location?.search?.includes('ocrDebug=1') ||
       window.location?.hash?.includes('ocrDebug=1'));
-  // Use public OCR endpoint to avoid auth/CORS instability for browser upload requests.
-  const plateEndpoint = '/api/ocr/plate-debug';
-  const url = ocrDebug ? resolveUrl(`${plateEndpoint}?debug=1`) : resolveUrl(plateEndpoint);
-  const debugUrl = resolveUrl(`${plateEndpoint}?debug=1`);
+  const primaryEndpoint = '/api/ocr/plate';
+  const debugEndpoint = '/api/ocr/plate-debug';
+  const url = ocrDebug ? resolveUrl(`${primaryEndpoint}?debug=1`) : resolveUrl(primaryEndpoint);
+  const debugUrl = resolveUrl(`${debugEndpoint}?debug=1`);
   const sleep = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
   const timeoutMs = 30000;
   const warmupTimeoutMs = 50000;
@@ -815,11 +818,7 @@ export async function recognizeLicensePlateFromPhoto(file) {
     const controller = new AbortController();
     const timeoutId = window.setTimeout(() => controller.abort(), attemptTimeoutMs);
     try {
-      response = await fetch(url, {
-        method: 'POST',
-        body: formData,
-        signal: controller.signal,
-      });
+      response = await fetch(url, buildOcrRequestOptions(formData, controller.signal));
 
       if (!response.ok) {
         try {
@@ -831,13 +830,13 @@ export async function recognizeLicensePlateFromPhoto(file) {
 
         const message = String(lastHttpBody?.message || lastHttpBody?.error || '').toLowerCase();
         const isWarmingUp = message.includes('warming up') || message.includes('warming');
-        const isRetryableStatus = response.status === 503 || response.status === 504;
+        const isRetryableStatus = response.status === 502 || response.status === 503 || response.status === 504;
         const isRetryableMessage =
           message.includes('busy') ||
           message.includes('timeout') ||
           message.includes('warming') ||
           message.includes('preprocess');
-        const isRetryable = isRetryableStatus && isRetryableMessage;
+        const isRetryable = isRetryableStatus || isRetryableMessage;
 
         if (isRetryable && attempt < maxRetries) {
           if (isWarmingUp) {
@@ -983,11 +982,7 @@ export async function recognizeLicensePlateFromPhoto(file) {
       const compactTimeoutId = window.setTimeout(() => compactController.abort(), 70000);
       let compactResponse;
       try {
-        compactResponse = await fetch(debugUrl, {
-          method: 'POST',
-          body: compactForm,
-          signal: compactController.signal,
-        });
+        compactResponse = await fetch(url, buildOcrRequestOptions(compactForm, compactController.signal));
       } finally {
         window.clearTimeout(compactTimeoutId);
       }
@@ -1044,11 +1039,7 @@ export async function recognizeLicensePlateFromPhoto(file) {
     const fallbackTimeoutId = window.setTimeout(() => fallbackController.abort(), 55000);
     let fallbackResponse;
     try {
-      fallbackResponse = await fetch(debugUrl, {
-        method: 'POST',
-        body: fallbackForm,
-        signal: fallbackController.signal,
-      });
+      fallbackResponse = await fetch(debugUrl, buildOcrRequestOptions(fallbackForm, fallbackController.signal));
     } finally {
       window.clearTimeout(fallbackTimeoutId);
     }
