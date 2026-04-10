@@ -11,7 +11,6 @@ import {
   uploadPhoto,
   listForUser as listVehiclesForUser,
   attachServicedVehicles,
-  recognizeLicensePlateFromPhoto,
 } from '../api/dao/vehiclesDao';
 import useAuth from '../context/useAuth';
 import { brandModelYears } from '../data/vehicleData';
@@ -62,11 +61,6 @@ const VehicleDetailsContent = () => {
   const { user, isMaster, isAdmin } = useAuth();
   const isNewVehicle = !id;
 
-  const ocrDebugEnabled =
-    typeof window !== 'undefined' &&
-    (window.location?.search?.includes('ocrDebug=1') ||
-      window.location?.hash?.includes('ocrDebug=1'));
-
   const isMasterUser =
     typeof isMaster === 'function'
       ? isMaster()
@@ -116,8 +110,6 @@ const VehicleDetailsContent = () => {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [lookupLoading, setLookupLoading] = useState(false);
   const [lookupError, setLookupError] = useState(null);
-  const [plateOcrLoading, setPlateOcrLoading] = useState(false);
-  const [plateOcrDebug, setPlateOcrDebug] = useState(null);
   const [tabValue, setTabValue] = useState(0);
 
   const normalizeLookupText = (value) => {
@@ -619,75 +611,6 @@ const VehicleDetailsContent = () => {
         setPhotoPreview(reader.result);
       };
       reader.readAsDataURL(file);
-
-      (async () => {
-        setPlateOcrLoading(true);
-        setLookupError(null);
-        if (ocrDebugEnabled) setPlateOcrDebug(null);
-        try {
-          const plate = await recognizeLicensePlateFromPhoto(file);
-          if (ocrDebugEnabled && typeof window !== 'undefined') {
-            try {
-              setPlateOcrDebug(window.__OCR_DEBUG_PLATE__ || null);
-            } catch (err) {
-              void err;
-            }
-          }
-          const normalizedPlate = String(plate || '').trim().toUpperCase();
-          if (!normalizedPlate) {
-            setLookupError(t('vehicle.plateNotRecognized', 'Не вдалося розпізнати номер на фото'));
-            return;
-          }
-
-          setFormData((prev) => ({
-            ...prev,
-            licensePlate: normalizedPlate,
-          }));
-
-          try {
-            let filledFromDb = false;
-            try {
-              const lookupUserId = isMasterUser && ownerId ? String(ownerId) : '';
-              const local = await getByLicensePlate(
-                normalizedPlate,
-                lookupUserId ? { userId: lookupUserId } : undefined
-              );
-              if (local && (local.brand || local.make || local.model || local.vin)) {
-                filledFromDb = true;
-                setFormData((prev) => mergeLocalVehicleToForm(prev, local));
-              }
-            } catch (dbErr) {
-              void dbErr;
-            }
-
-            if (!filledFromDb) {
-              const registry = await lookupRegistryByLicensePlate(normalizedPlate);
-              setFormData((prev) => mergeRegistryVehicleToForm(prev, registry, normalizedPlate));
-            }
-          } catch (err) {
-            const msg = String(err?.message || '').trim();
-            if (msg) {
-              setLookupError(msg);
-            }
-          }
-        } catch (err) {
-          const rawMessage = String(err?.message || '');
-          if (ocrDebugEnabled && typeof window !== 'undefined') {
-            try {
-              setPlateOcrDebug(window.__OCR_DEBUG_PLATE__ || null);
-            } catch (debugErr) {
-              void debugErr;
-            }
-          }
-          if (rawMessage.toLowerCase().includes('ocr timeout') || rawMessage.toLowerCase().includes('timeout')) {
-            setLookupError(t('vehicle.plateNotRecognized', 'Не вдалося розпізнати номер на фото'));
-          } else {
-            setLookupError(rawMessage || t('errors.ocrFailed', 'Не вдалося розпізнати зображення'));
-          }
-        } finally {
-          setPlateOcrLoading(false);
-        }
-      })();
     }
   };
 
@@ -1027,9 +950,6 @@ const VehicleDetailsContent = () => {
               onLookupByPlate={handleLookupByPlate}
               lookupLoading={lookupLoading}
               lookupError={lookupError}
-              plateOcrLoading={plateOcrLoading}
-              plateOcrDebugEnabled={ocrDebugEnabled}
-              plateOcrDebug={plateOcrDebug}
               handlePhotoChange={handlePhotoChange}
               photoPreview={photoPreview}
             />

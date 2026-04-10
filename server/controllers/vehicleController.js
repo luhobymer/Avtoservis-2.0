@@ -55,6 +55,80 @@ const getVehicleColumnInfo = async (db) => {
   };
 };
 
+const getInlinePhotoUrl = (vehicle) => {
+  if (!vehicle) return null;
+  return vehicle.photo_url || vehicle.photoUrl || null;
+};
+
+const getMainVehiclePhotoUrl = async (db, vehicleId, vehicle) => {
+  const inlineUrl = getInlinePhotoUrl(vehicle);
+  if (!vehicleId) return inlineUrl;
+  try {
+    const row = await db
+      .prepare(
+        `SELECT url FROM photos WHERE object_type = 'vehicle' AND object_id = ? ORDER BY created_at DESC LIMIT 1`
+      )
+      .get(vehicleId);
+    return row?.url || inlineUrl || null;
+  } catch (_) {
+    return inlineUrl || null;
+  }
+};
+
+const saveVehiclePhotoUrl = async (db, {
+  vehicleId,
+  photoUrl,
+  now,
+  vehicleColumnNames,
+}) => {
+  const trimmed = String(photoUrl || '').trim();
+  if (!trimmed || !vehicleId) return;
+
+  const inlinePhotoColumn = vehicleColumnNames?.has('photo_url')
+    ? 'photo_url'
+    : vehicleColumnNames?.has('photoUrl')
+      ? 'photoUrl'
+      : null;
+
+  if (inlinePhotoColumn) {
+    try {
+      await db
+        .prepare(`UPDATE vehicles SET ${inlinePhotoColumn} = ?, updated_at = ? WHERE id = ?`)
+        .run(trimmed, now, vehicleId);
+    } catch (_) {
+      try {
+        await db
+          .prepare(`UPDATE vehicles SET ${inlinePhotoColumn} = ? WHERE id = ?`)
+          .run(trimmed, vehicleId);
+      } catch (__unused) {
+        void __unused;
+      }
+    }
+  }
+
+  try {
+    const existingPhoto = await db
+      .prepare(
+        `SELECT id FROM photos WHERE object_type = 'vehicle' AND object_id = ? ORDER BY created_at ASC LIMIT 1`
+      )
+      .get(vehicleId);
+    if (existingPhoto?.id) {
+      await db
+        .prepare(`UPDATE photos SET url = ?, updated_at = ? WHERE id = ?`)
+        .run(trimmed, now, existingPhoto.id);
+    } else {
+      await db
+        .prepare(
+          `INSERT INTO photos (id, object_id, object_type, url, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?)`
+        )
+        .run(crypto.randomUUID(), vehicleId, 'vehicle', trimmed, now, now);
+    }
+  } catch (__unused) {
+    void __unused;
+  }
+};
+
 const ownerColumnCandidates = ['user_id', 'UserId', 'userId'];
 
 const resolveOwnerColumn = async (db) => {
@@ -248,11 +322,7 @@ exports.getUserVehicles = async (req, res) => {
               .all(historyTarget)
           : [];
 
-        const mainPhoto = await db
-          .prepare(
-            `SELECT url FROM photos WHERE object_type = 'vehicle' AND object_id = ? ORDER BY created_at DESC LIMIT 1`
-          )
-          .get(vehicle.id);
+        const mainPhotoUrl = await getMainVehiclePhotoUrl(db, vehicle.id, vehicle);
 
         return {
           ...vehicle,
@@ -261,7 +331,7 @@ exports.getUserVehicles = async (req, res) => {
           licensePlate: getVehicleLicensePlate(vehicle, licenseColumn),
           appointments: appointments || [],
           service_history: serviceHistory || [],
-          photo_url: mainPhoto?.url || null,
+          photo_url: mainPhotoUrl,
         };
       })
     );
@@ -329,11 +399,7 @@ exports.getVehicleByVin = async (req, res) => {
           .all(historyTarget)
       : [];
 
-    const mainPhoto = await db
-      .prepare(
-        `SELECT url FROM photos WHERE object_type = 'vehicle' AND object_id = ? ORDER BY created_at DESC LIMIT 1`
-      )
-      .get(vehicle.id);
+    const mainPhotoUrl = await getMainVehiclePhotoUrl(db, vehicle.id, vehicle);
 
     const appointmentsWithDetails = await Promise.all(
       (appointments || []).map(async (appointment) => {
@@ -369,7 +435,7 @@ exports.getVehicleByVin = async (req, res) => {
       licensePlate: getVehicleLicensePlate(vehicle, licenseColumn),
       appointments: appointmentsWithDetails || [],
       service_history: serviceHistory || [],
-      photo_url: mainPhoto?.url || null,
+      photo_url: mainPhotoUrl,
     });
   } catch (err) {
     const includeDetails = true;
@@ -455,13 +521,12 @@ exports.addVehicle = async (req, res) => {
       .run(...values);
 
     if (photoUrl && String(photoUrl).trim()) {
-      const photoId = crypto.randomUUID();
-      await db
-        .prepare(
-          `INSERT INTO photos (id, object_id, object_type, url, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?)`
-        )
-        .run(photoId, vehicleId, 'vehicle', String(photoUrl).trim(), now, now);
+      await saveVehiclePhotoUrl(db, {
+        vehicleId,
+        photoUrl,
+        now,
+        vehicleColumnNames: columnNames,
+      });
     }
 
     // Додаємо базовий регламент обслуговування
@@ -590,18 +655,14 @@ exports.addVehicle = async (req, res) => {
       .prepare(`SELECT * FROM vehicles WHERE vin = ? AND ${ownerColumn} = ?`)
       .get(vin, ownerId);
 
-    const createdPhoto = await db
-      .prepare(
-        `SELECT url FROM photos WHERE object_type = 'vehicle' AND object_id = ? ORDER BY created_at DESC LIMIT 1`
-      )
-      .get(vehicleId);
+    const createdPhotoUrl = await getMainVehiclePhotoUrl(db, vehicleId, created);
 
     res.status(201).json({
       ...created,
       make: created?.[makeColumn] || created?.make || created?.brand,
       brand: created?.[makeColumn] || created?.brand || created?.make,
       licensePlate: getVehicleLicensePlate(created, licenseColumn),
-      photo_url: createdPhoto?.url || null,
+      photo_url: createdPhotoUrl,
     });
   } catch (err) {
     const message = err && err.message ? String(err.message) : String(err);
@@ -692,49 +753,27 @@ exports.updateVehicle = async (req, res) => {
     }
 
     if (payload.photoUrl && String(payload.photoUrl).trim()) {
-      const existingPhoto = await db
-        .prepare(
-          `SELECT id FROM photos WHERE object_type = 'vehicle' AND object_id = ? ORDER BY created_at ASC LIMIT 1`
-        )
-        .get(existing.id);
       const now = new Date().toISOString();
-      if (existingPhoto && existingPhoto.id) {
-        await db
-          .prepare(`UPDATE photos SET url = ?, updated_at = ? WHERE id = ?`)
-          .run(String(payload.photoUrl).trim(), now, existingPhoto.id);
-      } else {
-        await db
-          .prepare(
-            `INSERT INTO photos (id, object_id, object_type, url, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?)`
-          )
-          .run(
-            crypto.randomUUID(),
-            existing.id,
-            'vehicle',
-            String(payload.photoUrl).trim(),
-            now,
-            now
-          );
-      }
+      await saveVehiclePhotoUrl(db, {
+        vehicleId: existing.id,
+        photoUrl: payload.photoUrl,
+        now,
+        vehicleColumnNames: columnNames,
+      });
     }
 
     const updated = await db
       .prepare(`SELECT * FROM vehicles WHERE vin = ? AND ${ownerColumn} = ?`)
       .get(vin, targetUserId);
 
-    const updatedPhoto = await db
-      .prepare(
-        `SELECT url FROM photos WHERE object_type = 'vehicle' AND object_id = ? ORDER BY created_at DESC LIMIT 1`
-      )
-      .get(updated.id);
+    const updatedPhotoUrl = await getMainVehiclePhotoUrl(db, updated.id, updated);
 
     res.json({
       ...updated,
       make: updated?.[makeColumn] || updated?.make || updated?.brand,
       brand: updated?.[makeColumn] || updated?.brand || updated?.make,
       licensePlate: getVehicleLicensePlate(updated, licenseColumn),
-      photo_url: updatedPhoto?.url || null,
+      photo_url: updatedPhotoUrl,
     });
   } catch (err) {
     const message = err && err.message ? String(err.message) : String(err);

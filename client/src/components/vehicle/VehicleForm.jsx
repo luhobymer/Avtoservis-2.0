@@ -28,9 +28,6 @@ const VehicleForm = ({
   onLookupByPlate,
   lookupLoading,
   lookupError,
-  plateOcrLoading,
-  plateOcrDebugEnabled,
-  plateOcrDebug,
   handlePhotoChange,
   photoPreview
 }) => {
@@ -191,9 +188,7 @@ const VehicleForm = ({
               helperText={
                 errors.licensePlate ||
                 lookupError ||
-                (plateOcrLoading
-                  ? t('vehicle.plateRecognizing', 'Розпізнавання номера…')
-                  : t('validation.license_plate_format'))
+                t('validation.license_plate_format')
               }
               inputProps={{ maxLength: 10, autoCapitalize: 'characters', inputMode: 'text' }}
             />
@@ -202,7 +197,7 @@ const VehicleForm = ({
                 variant="outlined"
                 sx={{ mt: isMobile ? 0 : 1, height: isMobile ? 48 : undefined }}
                 onClick={onLookupByPlate}
-                disabled={lookupLoading || plateOcrLoading || !formData.licensePlate}
+                disabled={lookupLoading || !formData.licensePlate}
                 fullWidth={isMobile}
                 size={isMobile ? 'large' : 'medium'}
               >
@@ -210,29 +205,6 @@ const VehicleForm = ({
               </Button>
             )}
           </Box>
-          {plateOcrDebugEnabled && (
-            <Box sx={{ mt: 1 }}>
-              <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                OCR Debug
-              </Typography>
-              <Box
-                component="pre"
-                sx={{
-                  m: 0,
-                  p: 1,
-                  borderRadius: 1,
-                  bgcolor: 'rgba(255,255,255,0.06)',
-                  overflowX: 'auto',
-                  whiteSpace: 'pre-wrap',
-                  wordBreak: 'break-word',
-                  fontSize: 11,
-                  lineHeight: 1.25,
-                }}
-              >
-                {plateOcrDebug ? JSON.stringify(plateOcrDebug, null, 2) : 'no debug payload'}
-              </Box>
-            </Box>
-          )}
         </Grid>
 
         <Grid item xs={12} sm={6}>

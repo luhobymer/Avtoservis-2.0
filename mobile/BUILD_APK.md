@@ -61,7 +61,11 @@
    - .\adb.exe logcat -s AndroidRuntime ReactNativeJS *:E
 
 ## Вихідний файл
-62→- E:\Avtoservis 2.1\mobile\android\app\build\outputs\apk\release\app-release.apk
+- E:\Avtoservis 2.1\mobile\android\app\build\outputs\apk\release\app-release.apk
+
+## Примітка по OCR
+- OCR/авторозпізнавання номера тимчасово вимкнено до стабілізації базового функціоналу.
+- Поточний режим: просте додавання фото та ручне внесення даних авто.
 
 ## Типові проблеми
 - Якщо Metro/Gradle падає з помилкою на `react-native/index.js` типу
@@ -69,4 +73,3 @@
   - Перевірити, що у `E:\Avtoservis 2.1\mobile\package.json` в `devDependencies`
     стоїть `"@babel/core": "^7.27.6"`
   - Перезапустити `npm install` у теці `mobile` і повторити збірку
-E:\Avtoservis 2.1\mobile\android\app\build\outputs\apk\release\app-release.apk
