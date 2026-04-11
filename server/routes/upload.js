@@ -92,18 +92,7 @@ router.post(
       const extension = path.extname(req.file.originalname);
       const key = `${Date.now()}-${crypto.randomUUID()}${extension}`;
 
-      if (r2Client && r2Config) {
-        await r2Client.send(
-          new PutObjectCommand({
-            Bucket: r2Config.bucket,
-            Key: key,
-            Body: req.file.buffer,
-            ContentType: req.file.mimetype,
-          })
-        );
-        filename = key;
-        fileUrl = `${r2Config.publicBaseUrl.replace(/\/$/, '')}/${key}`;
-      } else {
+      const writeLocal = () => {
         const uploadsDir = path.join(__dirname, '..', 'public', 'uploads');
         if (!fs.existsSync(uploadsDir)) {
           fs.mkdirSync(uploadsDir, { recursive: true });
@@ -112,6 +101,26 @@ router.post(
         fs.writeFileSync(destPath, req.file.buffer);
         filename = key;
         fileUrl = `/api/uploads/${key}`;
+      };
+
+      if (r2Client && r2Config) {
+        try {
+          await r2Client.send(
+            new PutObjectCommand({
+              Bucket: r2Config.bucket,
+              Key: key,
+              Body: req.file.buffer,
+              ContentType: req.file.mimetype,
+            })
+          );
+          filename = key;
+          fileUrl = `${r2Config.publicBaseUrl.replace(/\/$/, '')}/${key}`;
+        } catch (err) {
+          console.error('R2 upload error, falling back to local storage:', err);
+          writeLocal();
+        }
+      } else {
+        writeLocal();
       }
       res.json({
         message: 'File uploaded successfully',
