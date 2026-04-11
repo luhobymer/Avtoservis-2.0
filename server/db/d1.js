@@ -841,7 +841,13 @@ const initDb = (dbId = null) => {
   }
 
   const client = createD1Client(config);
-  const readyPromise = dbId ? Promise.resolve() : ensureSchema(client);
+  const readyPromise = dbId
+    ? Promise.resolve()
+    : ensureSchema(client).catch((err) => {
+        // If D1 is misconfigured/unavailable (401, network, etc.), avoid crashing the process
+        // with an unhandled rejection. Query execution will fall back to SQLite/memory.
+        console.error('[D1] ensureSchema failed, falling back:', err?.message || err);
+      });
   return createDbAdapter(client, readyPromise);
 };
 
