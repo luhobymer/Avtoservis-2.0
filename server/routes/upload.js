@@ -57,9 +57,9 @@ const storage = multer.memoryStorage();
 
 const upload = multer({
   storage: storage,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+  limits: { fileSize: 15 * 1024 * 1024 }, // 15MB limit
   fileFilter: (req, file, cb) => {
-    const filetypes = /jpeg|jpg|png|webp/;
+    const filetypes = /jpeg|jpg|png|webp|heic|heif/;
     const mimetype = filetypes.test(file.mimetype);
     const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
 
@@ -77,7 +77,7 @@ router.post(
     upload.single('photo')(req, res, (err) => {
       if (!err) return next();
       if (err && err.code === 'LIMIT_FILE_SIZE') {
-        return res.status(413).json({ message: 'File is too large (max 5MB)' });
+        return res.status(413).json({ message: 'File is too large (max 15MB)' });
       }
       return res.status(400).json({ message: err?.message || 'Upload failed' });
     });
