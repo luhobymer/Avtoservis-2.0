@@ -31,7 +31,7 @@ const getD1Config = (overrideDbId = null) => {
       const tokenHash = apiToken
         ? crypto.createHash('sha256').update(tokenPreview).digest('hex').slice(0, 12)
         : null;
-      console.log('[D1] env', {
+      const envSnapshot = {
         hasAccountId: Boolean(accountId),
         hasDatabaseId: Boolean(databaseId),
         tokenSource,
@@ -40,7 +40,8 @@ const getD1Config = (overrideDbId = null) => {
         accountIdPrefix: accountId ? String(accountId).slice(0, 6) : null,
         databaseIdPrefix: databaseId ? String(databaseId).slice(0, 6) : null,
         tokenHash,
-      });
+      };
+      console.log(`[D1] env ${JSON.stringify(envSnapshot)}`);
     } catch (err) {
       console.log('[D1] env log failed');
       void err;
