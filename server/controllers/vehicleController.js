@@ -697,11 +697,18 @@ exports.updateVehicle = async (req, res) => {
       (typeof req.query?.user_id === 'string' ? req.query.user_id : null) ||
       null;
     const requestedUserId = requestedUserIdRaw ? String(requestedUserIdRaw).trim() : '';
-    const targetUserId = isMaster && requestedUserId ? requestedUserId : userId;
+    let targetUserId = isMaster && requestedUserId ? requestedUserId : userId;
 
-    const existing = await db
+    let existing = await db
       .prepare(`SELECT * FROM vehicles WHERE vin = ? AND ${ownerColumn} = ?`)
       .get(vin, targetUserId);
+
+    if (!existing && isMaster && !requestedUserId) {
+      existing = await db.prepare('SELECT * FROM vehicles WHERE vin = ? LIMIT 1').get(vin);
+      if (existing && existing[ownerColumn] != null) {
+        targetUserId = String(existing[ownerColumn]);
+      }
+    }
 
     if (!existing) {
       return res.status(404).json({ message: 'Автомобіль не знайдено' });

@@ -61,9 +61,11 @@ const upload = multer({
   fileFilter: (req, file, cb) => {
     const filetypes = /jpeg|jpg|png|webp|heic|heif/;
     const mimetype = filetypes.test(file.mimetype);
+    const isImageMime = typeof file.mimetype === 'string' && file.mimetype.toLowerCase().startsWith('image/');
+    const isOctetStream = typeof file.mimetype === 'string' && file.mimetype.toLowerCase() === 'application/octet-stream';
     const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
 
-    if (mimetype || extname) {
+    if (isImageMime || mimetype || extname || isOctetStream) {
       return cb(null, true);
     }
     cb(new Error('Only image files are allowed!'));
@@ -89,8 +91,18 @@ router.post(
       }
       let fileUrl = null;
       let filename = null;
-      const extension = path.extname(req.file.originalname);
-      const key = `${Date.now()}-${crypto.randomUUID()}${extension}`;
+      const originalExt = path.extname(req.file.originalname);
+      const safeExt = (() => {
+        const ext = (originalExt || '').trim();
+        if (ext) return ext;
+        const mime = String(req.file.mimetype || '').toLowerCase();
+        if (mime.includes('png')) return '.png';
+        if (mime.includes('webp')) return '.webp';
+        if (mime.includes('heic')) return '.heic';
+        if (mime.includes('heif')) return '.heif';
+        return '.jpg';
+      })();
+      const key = `${Date.now()}-${crypto.randomUUID()}${safeExt}`;
 
       const writeLocal = () => {
         const uploadsDir = path.join(__dirname, '..', 'public', 'uploads');

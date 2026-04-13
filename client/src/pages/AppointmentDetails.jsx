@@ -14,6 +14,7 @@ import { list as listVehicles, listForUser as listVehiclesForUser, getById as ge
 import { getCurrent as getCurrentMechanic, list as listMechanics } from '../api/dao/mechanicsDao';
 import { listMechanicServices } from '../api/dao/mechanicServicesDao';
 import { listForAppointment as listVehiclePartsForAppointment } from '../api/dao/vehiclePartsDao';
+import { createMechanicService } from '../api/dao/mechanicServicesDao';
 import {
   Container,
   Typography,
@@ -140,6 +141,12 @@ const AppointmentDetails = ({ isNew }) => {
   const [mechanics, setMechanics] = useState([]);
   const [success, setSuccess] = useState(false);
   const [appointmentUserId, setAppointmentUserId] = useState('');
+
+  const [servicesConfirmed, setServicesConfirmed] = useState(false);
+  const [addServiceDialogOpen, setAddServiceDialogOpen] = useState(false);
+  const [addServiceSaving, setAddServiceSaving] = useState(false);
+  const [addServiceError, setAddServiceError] = useState('');
+  const [addServiceForm, setAddServiceForm] = useState({ name: '', price: '', duration: '' });
 
   const [mechanicCity, setMechanicCity] = useState('');
   const [serviceCategoryId, setServiceCategoryId] = useState('');
@@ -381,6 +388,7 @@ const AppointmentDetails = ({ isNew }) => {
       const mechanicId = formData.mechanic_id;
       if (!mechanicId) {
         setServices([]);
+        setServicesConfirmed(false);
         return;
       }
       try {
@@ -525,6 +533,60 @@ const AppointmentDetails = ({ isNew }) => {
       appointment_price: selectedIds.length > 0 ? String(selectedPrice || '') : '',
       appointment_duration: selectedIds.length > 0 ? String(selectedDuration || '') : '',
     }));
+    if (isNewAppointment) {
+      setServicesConfirmed(false);
+    }
+  };
+
+  const handleConfirmServices = () => {
+    const hasSelection =
+      (formData.service_ids && formData.service_ids.length > 0) || Boolean(formData.service_id);
+    if (!hasSelection) return;
+    setServicesConfirmed(true);
+  };
+
+  const handleOpenAddService = () => {
+    setAddServiceError('');
+    setAddServiceForm({ name: '', price: '', duration: '' });
+    setAddServiceDialogOpen(true);
+  };
+
+  const handleCreateService = async () => {
+    const mechanicId = formData.mechanic_id ? String(formData.mechanic_id) : '';
+    if (!mechanicId) {
+      setAddServiceError(t('appointment.mechanicRequired', 'Оберіть майстра'));
+      return;
+    }
+    const name = String(addServiceForm.name || '').trim();
+    if (!name) {
+      setAddServiceError(t('services.nameRequired', "Назва послуги обов'язкова"));
+      return;
+    }
+    setAddServiceSaving(true);
+    setAddServiceError('');
+    try {
+      const payload = {
+        name,
+        price: addServiceForm.price !== '' ? Number(addServiceForm.price) : null,
+        duration: addServiceForm.duration !== '' ? Number(addServiceForm.duration) : null,
+      };
+      const created = await createMechanicService(mechanicId, payload);
+      const createdId = created?.service_id || created?.serviceId || created?.id;
+
+      const rows = await listMechanicServices(mechanicId, { enabled: isNewAppointment });
+      const safeRows = Array.isArray(rows) ? rows : [];
+      setServices(safeRows);
+
+      if (createdId) {
+        const nextId = String(createdId);
+        handleServiceChange({ target: { value: [nextId] } });
+      }
+      setAddServiceDialogOpen(false);
+    } catch (err) {
+      setAddServiceError(err?.message || t('common.error', 'Помилка'));
+    } finally {
+      setAddServiceSaving(false);
+    }
   };
 
   const handleMechanicChange = (e) => {
@@ -537,6 +599,9 @@ const AppointmentDetails = ({ isNew }) => {
       appointment_price: '',
       appointment_duration: ''
     }));
+    if (isNewAppointment) {
+      setServicesConfirmed(false);
+    }
   };
 
   const handleMechanicCityChange = (e) => {
@@ -703,20 +768,33 @@ const AppointmentDetails = ({ isNew }) => {
         focusField('scheduledDate');
         throw new Error(t('errors.invalidScheduledDate', 'Некоректна дата'));
       }
+
+      if (!formData.vehicle_vin) {
+        focusField('vehicle_vin');
+        throw new Error(t('errors.vehicleRequired', 'Оберіть авто'));
+      }
+
+      if (!formData.mechanic_id) {
+        focusField('mechanic_id');
+        throw new Error(t('errors.mechanicRequired', 'Оберіть майстра'));
+      }
+
       if (!formData.service_id && (!formData.service_ids || formData.service_ids.length === 0)) {
         focusField('service_ids');
         throw new Error(t('errors.serviceRequired', 'Оберіть послугу'));
       }
-      if (!formData.mechanic_id) {
-        focusField('mechanic_id');
-        throw new Error(t('errors.mechanicRequired', 'Оберіть механіка'));
+
+      if (isNewAppointment && !servicesConfirmed) {
+        focusField('service_ids');
+        throw new Error(t('errors.confirmServices', 'Підтвердіть вибір послуг'));
       }
-      
+
       const isClientUser = String(user?.role || '').toLowerCase() === 'client';
       const effectiveServiceIds =
         formData.service_ids && formData.service_ids.length > 0
           ? formData.service_ids
           : (formData.service_id ? [String(formData.service_id)] : []);
+
       const payload = {
         user_id: isClientUser ? (user?.id || null) : (clientId || null),
         service_id: formData.service_id || effectiveServiceIds[0] || null,
@@ -728,18 +806,24 @@ const AppointmentDetails = ({ isNew }) => {
         status: formData.status,
         description: formData.description || '',
         notes: formData.notes || '',
-        estimated_completion_date: formData.estimatedCompletionDate ? new Date(formData.estimatedCompletionDate).toISOString() : null,
+        estimated_completion_date: formData.estimatedCompletionDate
+          ? new Date(formData.estimatedCompletionDate).toISOString()
+          : null,
       };
 
-      if (formData.appointment_price) payload.appointment_price = Number(formData.appointment_price);
-      if (formData.appointment_duration) payload.appointment_duration = Number(formData.appointment_duration);
+      if (formData.appointment_price !== '' && formData.appointment_price != null) {
+        payload.appointment_price = Number(formData.appointment_price);
+      }
+      if (formData.appointment_duration !== '' && formData.appointment_duration != null) {
+        payload.appointment_duration = Number(formData.appointment_duration);
+      }
 
       if (isNewAppointment && clientParts.length > 0) {
         payload.parts = clientParts.map((p) => ({
           name: p.name,
           quantity: p.quantity,
           notes: p.notes,
-          purchased_by: 'owner'
+          purchased_by: 'owner',
         }));
       }
 
@@ -755,7 +839,7 @@ const AppointmentDetails = ({ isNew }) => {
       setSuccess(true);
       setTimeout(() => navigate('/appointments'), 1500);
     } catch (err) {
-      setError(err.message || t('errors.failedToSaveAppointment'));
+      setError(err?.message || t('errors.failedToSaveAppointment'));
     } finally {
       setSaving(false);
     }
@@ -919,6 +1003,37 @@ const AppointmentDetails = ({ isNew }) => {
                       </Select>
                    </FormControl>
                 </Grid>
+                {isNewAppointment && (
+                  <Grid item xs={12}>
+                    <Box sx={{ display: 'flex', gap: 2, flexDirection: isMobile ? 'column' : 'row' }}>
+                      <Button
+                        type="button"
+                        variant={servicesConfirmed ? 'contained' : 'outlined'}
+                        color={servicesConfirmed ? 'success' : 'primary'}
+                        onClick={handleConfirmServices}
+                        disabled={!formData.mechanic_id || !serviceCategoryId || (formData.service_ids || []).length === 0}
+                        size="large"
+                        fullWidth={isMobile}
+                      >
+                        {servicesConfirmed
+                          ? t('appointment.servicesConfirmed', 'Послуги підтверджено')
+                          : t('appointment.confirmServices', 'Підтвердити вибір послуг')}
+                      </Button>
+                      {isMasterUser && (
+                        <Button
+                          type="button"
+                          variant="text"
+                          onClick={handleOpenAddService}
+                          disabled={!formData.mechanic_id}
+                          size="large"
+                          fullWidth={isMobile}
+                        >
+                          {t('services.add', 'Додати послугу')}
+                        </Button>
+                      )}
+                    </Box>
+                  </Grid>
+                )}
               <Grid item xs={12} sm={6}>
                 <TextField
                   fullWidth
@@ -1012,13 +1127,54 @@ const AppointmentDetails = ({ isNew }) => {
               )}
               <Grid item xs={12}>
                 <Box sx={{ display: 'flex', gap: 2, flexDirection: isMobile ? 'column' : 'row' }}>
-                  <Button type="submit" variant="contained" color="primary" disabled={saving} size="large" fullWidth={isMobile}>{isNewAppointment ? t('appointment.schedule') : t('common.save')}</Button>
+                  <Button type="submit" variant="contained" color="primary" disabled={saving || (isNewAppointment && !servicesConfirmed)} size="large" fullWidth={isMobile}>{isNewAppointment ? t('appointment.schedule') : t('common.save')}</Button>
                   {!isNewAppointment && <Button type="button" variant="outlined" color="error" onClick={() => setDeleteDialogOpen(true)} size="large" fullWidth={isMobile}>{t('appointment.cancelAppointment')}</Button>}
                 </Box>
               </Grid>
             </Grid>
           </Box>
       </Paper>
+
+      <Dialog open={addServiceDialogOpen} onClose={() => setAddServiceDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>{t('services.add', 'Додати послугу')}</DialogTitle>
+        <DialogContent>
+          {addServiceError ? <Alert severity="error" sx={{ mb: 2 }}>{addServiceError}</Alert> : null}
+          <TextField
+            fullWidth
+            label={t('services.name', 'Назва')}
+            value={addServiceForm.name}
+            onChange={(e) => setAddServiceForm((prev) => ({ ...prev, name: e.target.value }))}
+            margin="normal"
+            required
+          />
+          <TextField
+            fullWidth
+            type="number"
+            inputProps={{ inputMode: 'decimal' }}
+            label={t('services.price', 'Ціна')}
+            value={addServiceForm.price}
+            onChange={(e) => setAddServiceForm((prev) => ({ ...prev, price: e.target.value }))}
+            margin="normal"
+          />
+          <TextField
+            fullWidth
+            type="number"
+            inputProps={{ inputMode: 'numeric', min: 0, step: 1 }}
+            label={t('services.duration', 'Час (хв)')}
+            value={addServiceForm.duration}
+            onChange={(e) => setAddServiceForm((prev) => ({ ...prev, duration: e.target.value }))}
+            margin="normal"
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setAddServiceDialogOpen(false)} disabled={addServiceSaving}>
+            {t('common.cancel', 'Скасувати')}
+          </Button>
+          <Button onClick={handleCreateService} variant="contained" disabled={addServiceSaving}>
+            {t('common.add', 'Додати')}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Completion Dialog with OCR */}
       <Dialog open={completionDialogOpen} onClose={() => setCompletionDialogOpen(false)} maxWidth="md" fullWidth>
