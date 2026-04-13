@@ -53,6 +53,24 @@ const getNotificationSentColumn = async (db) => {
   return ['notification_sent', 'notificationSent'].find((column) => columnNames.has(column));
 };
 
+const getReminderEnabledColumn = async (db) => {
+  const columns = await db.prepare('PRAGMA table_info(reminders)').all();
+  const columnNames = new Set(columns.map((column) => column.name));
+  return ['is_enabled', 'enabled'].find((column) => columnNames.has(column));
+};
+
+const ensureReminderEnabledColumn = async (db) => {
+  try {
+    const enabledCol = await getReminderEnabledColumn(db);
+    if (enabledCol) return enabledCol;
+    await db.prepare('ALTER TABLE reminders ADD COLUMN is_enabled INTEGER DEFAULT 1').run();
+    return 'is_enabled';
+  } catch (err) {
+    logger.warn('[reminders] failed to ensure is_enabled column:', { message: err?.message });
+    return await getReminderEnabledColumn(db);
+  }
+};
+
 /**
  * Перевірка нагадувань, які потрібно відправити
  */
@@ -63,6 +81,7 @@ const checkAndSendReminders = async () => {
     created: 0,
     skipped_existing: 0,
     skipped_flag: 0,
+    skipped_disabled: 0,
     errors: 0,
   };
   try {
@@ -73,6 +92,8 @@ const checkAndSendReminders = async () => {
     tomorrow.setDate(tomorrow.getDate() + 1);
 
     const db = await getDb();
+
+    await ensureReminderEnabledColumn(db);
 
     const notificationSentColumn = await getNotificationSentColumn(db);
     const notificationSentFilter = notificationSentColumn
@@ -117,6 +138,7 @@ const checkAndSendReminders = async () => {
       if (result?.created) report.created += 1;
       if (result?.reason === 'existing') report.skipped_existing += 1;
       if (result?.reason === 'flag') report.skipped_flag += 1;
+      if (result?.reason === 'disabled') report.skipped_disabled += 1;
       if (result?.reason === 'error') report.errors += 1;
     }
 
@@ -135,6 +157,17 @@ const checkAndSendReminders = async () => {
  */
 const processReminder = async (reminder) => {
   try {
+    const isEnabled = (() => {
+      if (typeof reminder?.is_enabled !== 'undefined') return Boolean(reminder.is_enabled);
+      if (typeof reminder?.enabled !== 'undefined') return Boolean(reminder.enabled);
+      return true;
+    })();
+
+    if (!isEnabled) {
+      logger.info(`Нагадування ${reminder.id} вимкнене (is_enabled=0), пропускаємо`);
+      return { created: false, reason: 'disabled' };
+    }
+
     // Перевіряємо, чи не було вже відправлено сповіщення
     const db = await getDb();
     const readColumn = await getExistingColumn('notifications', ['is_read', 'read']);

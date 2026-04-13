@@ -75,6 +75,8 @@ router.post('/', auth, async (req, res) => {
       is_recurring,
       recurrence_interval,
       recurring_interval,
+      is_enabled,
+      enabled,
       priority,
     } = req.body;
 
@@ -85,8 +87,8 @@ router.post('/', auth, async (req, res) => {
       .prepare(
         `INSERT INTO reminders
         (id, user_id, vehicle_vin, title, description, reminder_type, due_date, due_mileage,
-        is_completed, is_recurring, recurrence_interval, priority, notification_sent, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        is_completed, is_recurring, recurrence_interval, priority, is_enabled, notification_sent, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         reminderId,
@@ -101,6 +103,7 @@ router.post('/', auth, async (req, res) => {
         normalizeBoolean(is_recurring),
         recurrence_interval || recurring_interval || null,
         priority || 'medium',
+        normalizeBoolean(typeof is_enabled !== 'undefined' ? is_enabled : typeof enabled !== 'undefined' ? enabled : true),
         0,
         now,
         now
@@ -134,6 +137,8 @@ router.put('/:id', auth, async (req, res) => {
       is_recurring,
       recurrence_interval,
       recurring_interval,
+      is_enabled,
+      enabled,
       priority,
     } = req.body;
 
@@ -143,7 +148,7 @@ router.put('/:id', auth, async (req, res) => {
       .prepare(
         `UPDATE reminders
          SET title = ?, description = ?, reminder_type = ?, due_date = ?, due_mileage = ?,
-             is_completed = ?, is_recurring = ?, recurrence_interval = ?, priority = ?,
+             is_completed = ?, is_recurring = ?, recurrence_interval = ?, priority = ?, is_enabled = ?,
              vehicle_vin = ?, updated_at = ?
          WHERE id = ? AND user_id = ?`
       )
@@ -157,6 +162,7 @@ router.put('/:id', auth, async (req, res) => {
         normalizeBoolean(is_recurring),
         recurrence_interval || recurring_interval || null,
         priority || 'medium',
+        normalizeBoolean(typeof is_enabled !== 'undefined' ? is_enabled : typeof enabled !== 'undefined' ? enabled : true),
         vehicle_vin || null,
         now,
         reminderId,

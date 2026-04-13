@@ -123,7 +123,13 @@ const buildReminderPayload = (reminder, overrides = {}) => {
     is_completed: !!base.is_completed,
     is_recurring: !!base.is_recurring,
     recurrence_interval: base.recurrence_interval || base.recurring_interval || null,
-    priority: base.priority || 'medium'
+    priority: base.priority || 'medium',
+    is_enabled:
+      typeof base.is_enabled !== 'undefined'
+        ? !!base.is_enabled
+        : typeof base.__enabled !== 'undefined'
+          ? !!base.__enabled
+          : true
   };
 };
 
@@ -133,26 +139,6 @@ const normalizeNotificationPermission = () => {
     return Notification.permission || 'default';
   } catch (_) {
     return 'default';
-  }
-};
-
-const readReminderEnabled = (id) => {
-  try {
-    if (!id) return true;
-    const raw = localStorage.getItem(`reminder_enabled_${id}`);
-    if (raw == null) return true;
-    return JSON.parse(raw) === true;
-  } catch (_) {
-    return true;
-  }
-};
-
-const writeReminderEnabled = (id, enabled) => {
-  try {
-    if (!id) return;
-    localStorage.setItem(`reminder_enabled_${id}`, JSON.stringify(!!enabled));
-  } catch (_) {
-    void _;
   }
 };
 
@@ -183,7 +169,10 @@ const Reminders = () => {
     try {
       if (user?.id) {
         const remindersData = await remindersApi.list();
-        setReminders(remindersData);
+        setReminders((remindersData || []).map((r) => ({
+          ...r,
+          __enabled: typeof r?.is_enabled !== 'undefined' ? !!r.is_enabled : true,
+        })));
         const role = String(user?.role || '').toLowerCase();
         const isMaster = ['master', 'mechanic', 'admin'].includes(role);
         const vehiclesData = isMaster
@@ -279,8 +268,19 @@ const Reminders = () => {
       }
     }
 
-    writeReminderEnabled(id, enabled);
-    setReminders((prev) => (prev || []).map((r) => (r.id === id ? { ...r, __enabled: enabled } : r)));
+    try {
+      const updated = await remindersApi.update(id, buildReminderPayload(reminder, { is_enabled: enabled }));
+      if (updated) {
+        setReminders((prev) => (prev || []).map((r) => {
+          if (r.id !== id) return r;
+          return { ...updated, __enabled: typeof updated?.is_enabled !== 'undefined' ? !!updated.is_enabled : enabled };
+        }));
+      } else {
+        setReminders((prev) => (prev || []).map((r) => (r.id === id ? { ...r, __enabled: enabled } : r)));
+      }
+    } catch (err) {
+      alert(err?.message || t('common.error', 'Помилка'));
+    }
   };
 
   const handleDelete = async (id) => {
@@ -500,7 +500,9 @@ const Reminders = () => {
                       checked={
                         typeof reminder.__enabled === 'boolean'
                           ? reminder.__enabled
-                          : readReminderEnabled(reminder.id)
+                          : typeof reminder.is_enabled !== 'undefined'
+                            ? !!reminder.is_enabled
+                            : true
                       }
                       onClick={(e) => e.stopPropagation()}
                       onChange={(_, checked) => handleToggleEnabled(reminder, checked)}

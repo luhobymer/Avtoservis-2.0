@@ -15,6 +15,6 @@ router.post('/parse', auth, upload.single('image'), ocrController.parsePartsFrom
 router.post('/plate', auth, upload.single('image'), ocrController.parseLicensePlateFromImage);
 
 // Temporary debug endpoint without auth for testing
-router.post('/plate-debug', upload.single('image'), ocrController.parseLicensePlateFromImage);
+router.post('/plate-debug', auth, upload.single('image'), ocrController.parseLicensePlateFromImage);
 
 module.exports = router;

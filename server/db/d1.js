@@ -450,6 +450,8 @@ const ensureSchemaSqliteSync = (sqliteDb) => {
   ]);
   ensureColumnsSync('service_records', [{ name: 'appointment_id', def: 'TEXT' }]);
 
+  ensureColumnsSync('reminders', [{ name: 'is_enabled', def: 'INTEGER DEFAULT 1' }]);
+
   sqliteDb.exec(`
     CREATE TABLE IF NOT EXISTS vehicle_parts (
       id TEXT PRIMARY KEY,
@@ -686,6 +688,8 @@ const ensureSchema = async (client) => {
     { name: 'completion_mileage', def: 'INTEGER' },
   ]);
   await ensureTableColumns(client, 'service_records', [{ name: 'appointment_id', def: 'TEXT' }]);
+
+  await ensureTableColumns(client, 'reminders', [{ name: 'is_enabled', def: 'INTEGER DEFAULT 1' }]);
 
   await client.query(`
     CREATE TABLE IF NOT EXISTS vehicle_parts (

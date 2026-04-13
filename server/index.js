@@ -105,6 +105,10 @@ app.use('/api/web-push', webPushRoutes);
 const telegramRoutes = require('./routes/telegram');
 app.use('/api/telegram', telegramRoutes);
 
+// Роут для Viber інтеграції
+const viberRoutes = require('./routes/viber');
+app.use('/api/viber', viberRoutes);
+
 const clientDistPath = path.resolve(__dirname, '..', 'client', 'dist');
 const clientIndexPath = path.join(clientDistPath, 'index.html');
 const hasClientDist = fs.existsSync(clientIndexPath);
