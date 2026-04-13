@@ -26,9 +26,12 @@ import WarningIcon from '@mui/icons-material/Warning';
 import ErrorIcon from '@mui/icons-material/Error';
 
 // API helper (since we don't have a dao file yet, defining here or usually in api/dao)
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+const resolveUrl = (url) => (url.startsWith('http') ? url : `${API_BASE_URL}${url}`);
+
 const fetchJson = async (url, options = {}) => {
   const token = localStorage.getItem('auth_token');
-  const res = await fetch(url, {
+  const res = await fetch(resolveUrl(url), {
     ...options,
     headers: {
       'Content-Type': 'application/json',
@@ -36,7 +39,16 @@ const fetchJson = async (url, options = {}) => {
       ...(options.headers || {})
     }
   });
-  if (!res.ok) throw new Error('Request failed');
+  if (!res.ok) {
+    let details = null;
+    try {
+      details = await res.json();
+    } catch (_) {
+      void _;
+    }
+    const message = details?.message || `Request failed (${res.status})`;
+    throw new Error(message);
+  }
   return res.json();
 };
 

@@ -248,7 +248,7 @@ exports.initDefaultSchedule = async (req, res) => {
     const db = await getDb();
 
     // Verify ownership
-    const vehicle = await db.prepare('SELECT user_id FROM vehicles WHERE vin = ?').get(vin);
+    const vehicle = await db.prepare('SELECT user_id, mileage FROM vehicles WHERE vin = ?').get(vin);
     if (!vehicle) {
       return res.status(404).json({ message: 'Vehicle not found' });
     }
@@ -267,8 +267,8 @@ exports.initDefaultSchedule = async (req, res) => {
     const now = new Date().toISOString();
     const maintenanceInsert = db.prepare(`
       INSERT INTO maintenance_schedules (
-        id, vehicle_vin, service_item, interval_km, interval_months, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        id, vehicle_vin, service_item, interval_km, interval_months, last_service_date, last_service_mileage, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     for (const task of defaultMaintenanceTasks) {
@@ -278,6 +278,8 @@ exports.initDefaultSchedule = async (req, res) => {
         task.service_item,
         task.interval_km,
         task.interval_months,
+        now,
+        vehicle.mileage != null ? vehicle.mileage : null,
         now,
         now
       );

@@ -533,8 +533,8 @@ exports.addVehicle = async (req, res) => {
     try {
       const maintenanceInsert = db.prepare(`
         INSERT INTO maintenance_schedules (
-          id, vehicle_vin, service_item, interval_km, interval_months, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+          id, vehicle_vin, service_item, interval_km, interval_months, last_service_date, last_service_mileage, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
       for (const task of defaultMaintenanceTasks) {
@@ -544,6 +544,8 @@ exports.addVehicle = async (req, res) => {
           task.service_item,
           task.interval_km,
           task.interval_months,
+          now,
+          row.mileage != null ? row.mileage : null,
           now,
           now
         );

@@ -112,6 +112,15 @@ const VehicleDetailsContent = () => {
   const [lookupError, setLookupError] = useState(null);
   const [tabValue, setTabValue] = useState(0);
 
+  const [maintenanceWizardOpen, setMaintenanceWizardOpen] = useState(false);
+  const [maintenanceWizardLoading, setMaintenanceWizardLoading] = useState(false);
+  const [maintenanceWizardSaving, setMaintenanceWizardSaving] = useState(false);
+  const [maintenanceWizardError, setMaintenanceWizardError] = useState('');
+  const [maintenanceWizardItems, setMaintenanceWizardItems] = useState([]);
+  const [maintenanceWizardSelected, setMaintenanceWizardSelected] = useState({});
+  const [maintenanceWizardLastDate, setMaintenanceWizardLastDate] = useState('');
+  const [maintenanceWizardLastMileage, setMaintenanceWizardLastMileage] = useState('');
+
   const normalizeLookupText = (value) => {
     const translitMap = {
       а: 'a',
@@ -614,6 +623,110 @@ const VehicleDetailsContent = () => {
     }
   };
 
+  const requestJson = async (url, options = {}) => {
+    const token = localStorage.getItem('auth_token');
+    const response = await fetch(resolveUrl(url), {
+      method: options.method || 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(options.headers || {}),
+      },
+      body: options.body ? JSON.stringify(options.body) : undefined,
+    });
+
+    if (!response.ok) {
+      let message = `Request failed (${response.status})`;
+      try {
+        const body = await response.json();
+        if (body?.message) message = body.message;
+      } catch (err) {
+        void err;
+      }
+      throw new Error(message);
+    }
+    return response.json();
+  };
+
+  const openMaintenanceWizard = async ({ vin, mileage }) => {
+    if (!vin) return;
+    setMaintenanceWizardOpen(true);
+    setMaintenanceWizardError('');
+
+    const today = new Date();
+    const yyyy = String(today.getFullYear());
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const dd = String(today.getDate()).padStart(2, '0');
+    setMaintenanceWizardLastDate(`${yyyy}-${mm}-${dd}`);
+    setMaintenanceWizardLastMileage(
+      mileage !== undefined && mileage !== null && mileage !== '' ? String(mileage) : ''
+    );
+
+    setMaintenanceWizardLoading(true);
+    try {
+      const items = await requestJson(`/api/maintenance/${encodeURIComponent(vin)}`);
+      const map = {};
+      (items || []).forEach((it) => {
+        map[String(it.id)] = false;
+      });
+      setMaintenanceWizardSelected(map);
+      setMaintenanceWizardItems(items || []);
+    } catch (err) {
+      setMaintenanceWizardError(err?.message || t('errors.loadFailed', 'Не вдалося завантажити регламент'));
+    } finally {
+      setMaintenanceWizardLoading(false);
+    }
+  };
+
+  const closeMaintenanceWizard = () => {
+    setMaintenanceWizardOpen(false);
+    setMaintenanceWizardLoading(false);
+    setMaintenanceWizardSaving(false);
+    setMaintenanceWizardError('');
+    setMaintenanceWizardItems([]);
+    setMaintenanceWizardSelected({});
+    setMaintenanceWizardLastDate('');
+    setMaintenanceWizardLastMileage('');
+  };
+
+  const applyMaintenanceWizard = async () => {
+    setMaintenanceWizardSaving(true);
+    setMaintenanceWizardError('');
+    try {
+      const selectedIds = Object.entries(maintenanceWizardSelected)
+        .filter(([, v]) => Boolean(v))
+        .map(([k]) => k);
+
+      if (selectedIds.length === 0) {
+        throw new Error(t('maintenance.selectAtLeastOne', 'Оберіть хоча б один пункт'));
+      }
+
+      const payload = {
+        last_service_date: maintenanceWizardLastDate || null,
+        last_service_mileage:
+          maintenanceWizardLastMileage !== '' && maintenanceWizardLastMileage != null
+            ? Number(maintenanceWizardLastMileage)
+            : null,
+      };
+
+      await Promise.all(
+        selectedIds.map((id) =>
+          requestJson(`/api/maintenance/${encodeURIComponent(id)}`, {
+            method: 'PUT',
+            body: payload,
+          })
+        )
+      );
+
+      closeMaintenanceWizard();
+      navigate('/vehicles');
+    } catch (err) {
+      setMaintenanceWizardError(err?.message || t('errors.saveFailed', 'Помилка збереження'));
+    } finally {
+      setMaintenanceWizardSaving(false);
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSaving(true);
@@ -686,6 +799,9 @@ const VehicleDetailsContent = () => {
         };
         const targetUserId = isMasterUser ? ownerId : user?.id || null;
         await createVehicle(payload, targetUserId);
+        setSaving(false);
+        await openMaintenanceWizard({ vin: formData.vin, mileage: mileageValue });
+        return;
       } else {
         const payload = {
           make: formData.brand,
@@ -978,6 +1094,94 @@ const VehicleDetailsContent = () => {
         onClose={() => setDeleteDialogOpen(false)}
         onConfirm={handleDelete}
       />
+
+      <Dialog
+        open={maintenanceWizardOpen}
+        onClose={() => {
+          if (maintenanceWizardSaving) return;
+          closeMaintenanceWizard();
+          navigate('/vehicles');
+        }}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>{t('maintenance.setupTitle', 'Налаштування регламенту')}</DialogTitle>
+        <DialogContent>
+          {maintenanceWizardError && <Alert severity="error" sx={{ mb: 2 }}>{maintenanceWizardError}</Alert>}
+          {maintenanceWizardLoading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
+              <CircularProgress />
+            </Box>
+          ) : (
+            <>
+              <Typography variant="body2" sx={{ mb: 2 }}>
+                {t(
+                  'maintenance.setupHint',
+                  'Оберіть роботи, які виконувались востаннє, та вкажіть дату/пробіг цього обслуговування.'
+                )}
+              </Typography>
+
+              <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', mb: 2 }}>
+                <TextField
+                  label={t('maintenance.lastDate', 'Дата')}
+                  type="date"
+                  InputLabelProps={{ shrink: true }}
+                  value={maintenanceWizardLastDate}
+                  onChange={(e) => setMaintenanceWizardLastDate(e.target.value)}
+                  disabled={maintenanceWizardSaving}
+                />
+                <TextField
+                  label={t('maintenance.lastMileage', 'Пробіг (км)')}
+                  type="number"
+                  value={maintenanceWizardLastMileage}
+                  onChange={(e) => setMaintenanceWizardLastMileage(e.target.value)}
+                  disabled={maintenanceWizardSaving}
+                />
+              </Box>
+
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                {(maintenanceWizardItems || []).map((it) => (
+                  <FormControlLabel
+                    key={it.id}
+                    control={
+                      <Checkbox
+                        checked={Boolean(maintenanceWizardSelected[String(it.id)])}
+                        onChange={(e) =>
+                          setMaintenanceWizardSelected((prev) => ({
+                            ...prev,
+                            [String(it.id)]: e.target.checked,
+                          }))
+                        }
+                        disabled={maintenanceWizardSaving}
+                      />
+                    }
+                    label={it.service_item}
+                  />
+                ))}
+              </Box>
+            </>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => {
+              if (maintenanceWizardSaving) return;
+              closeMaintenanceWizard();
+              navigate('/vehicles');
+            }}
+            disabled={maintenanceWizardSaving}
+          >
+            {t('common.skip', 'Пропустити')}
+          </Button>
+          <Button
+            variant="contained"
+            onClick={applyMaintenanceWizard}
+            disabled={maintenanceWizardSaving || maintenanceWizardLoading}
+          >
+            {t('common.save', 'Зберегти')}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Snackbar
         open={snackbar.open}
