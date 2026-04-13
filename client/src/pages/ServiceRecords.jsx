@@ -221,19 +221,18 @@ const ServiceRecords = ({ vehicleId: vehicleIdProp, ownerId: ownerIdProp, vehicl
           </Button>
         </Box>
       </Box>
-
       {records.length === 0 ? (
         <Alert severity="info">{t('serviceRecord.noRecords')}</Alert>
       ) : (
         <TableContainer component={Paper}>
-          <Table sx={{ minWidth: 650 }}>
+          <Table sx={{ minWidth: { xs: 0, sm: 650 } }}>
             <TableHead>
               <TableRow>
                 <TableCell>{t('serviceRecord.serviceDate')}</TableCell>
-                {!filteredVehicleId && <TableCell>{t('vehicle.title')}</TableCell>}
+                {!filteredVehicleId && <TableCell>{t('serviceRecord.vehicle')}</TableCell>}
                 <TableCell>{t('serviceRecord.serviceType')}</TableCell>
                 <TableCell>{t('serviceRecord.mileage')}</TableCell>
-                <TableCell>{t('serviceRecord.performedBy')}</TableCell>
+                <TableCell>{t('serviceRecord.performedBy', 'Виконано')}</TableCell>
                 <TableCell>{t('serviceRecord.cost')}</TableCell>
                 <TableCell align="right">{t('common.edit')}</TableCell>
               </TableRow>
@@ -262,39 +261,39 @@ const ServiceRecords = ({ vehicleId: vehicleIdProp, ownerId: ownerIdProp, vehicl
                     : t('common.notAvailable')
                   : t('common.notAvailable');
                 return (
-                <TableRow key={record.id || `record-${index}`}>
-                  <TableCell component="th" scope="row">
-                    {formattedServiceDate}
-                  </TableCell>
-                  {!filteredVehicleId && (
-                    <TableCell>
-                      {(() => {
-                        return resolvedVehicle ? (
-                          <Link to={`/vehicles/${vehicleVin || ''}`}>
-                            {resolvedVehicle.brand || resolvedVehicle.make}{' '}
-                            {resolvedVehicle.model}{' '}
-                            {resolvedVehicle.year ? `(${resolvedVehicle.year})` : ''}
-                          </Link>
-                        ) : (
-                          <span style={{color: 'red'}}>{t('vehicle.notFound', 'Авто не знайдено')}</span>
-                        );
-                      })()}
+                  <TableRow key={record.id || `record-${index}`}>
+                    <TableCell component="th" scope="row">
+                      {formattedServiceDate}
                     </TableCell>
-                  )}
-                  <TableCell>{record.serviceName || record.serviceType || record.service_type}</TableCell>
-                  <TableCell>{record.mileage ? `${record.mileage} km` : t('common.notAvailable')}</TableCell>
-                  <TableCell>{record.performedBy || record.performed_by}</TableCell>
-                  <TableCell>{record.cost || t('common.notAvailable')}</TableCell>
-                  <TableCell align="right">
-                    <Button 
-                      size="small" 
-                      component={Link} 
-                      to={`/service-records/${record.id}`}
-                    >
-                      {t('common.edit')}
-                    </Button>
-                  </TableCell>
-                </TableRow>
+                    {!filteredVehicleId && (
+                      <TableCell>
+                        {(() => {
+                          return resolvedVehicle ? (
+                            <Link to={`/vehicles/${vehicleVin || ''}`}>
+                              {resolvedVehicle.brand || resolvedVehicle.make}{' '}
+                              {resolvedVehicle.model}{' '}
+                              {resolvedVehicle.year ? `(${resolvedVehicle.year})` : ''}
+                            </Link>
+                          ) : (
+                            <span style={{color: 'red'}}>{t('vehicle.notFound', 'Авто не знайдено')}</span>
+                          );
+                        })()}
+                      </TableCell>
+                    )}
+                    <TableCell>{record.serviceName || record.serviceType || record.service_type}</TableCell>
+                    <TableCell>{record.mileage ? `${record.mileage} km` : t('common.notAvailable')}</TableCell>
+                    <TableCell>{record.performedBy || record.performed_by}</TableCell>
+                    <TableCell>{record.cost || t('common.notAvailable')}</TableCell>
+                    <TableCell align="right">
+                      <Button
+                        size="small"
+                        component={Link}
+                        to={`/service-records/${record.id}`}
+                      >
+                        {t('common.edit')}
+                      </Button>
+                    </TableCell>
+                  </TableRow>
                 );
               })}
             </TableBody>

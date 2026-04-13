@@ -336,7 +336,7 @@ const MyParts = () => {
         </Alert>
       ) : (
         <TableContainer component={Paper}>
-          <Table sx={{ minWidth: 650 }}>
+          <Table sx={{ minWidth: { xs: 0, sm: 650 } }}>
             <TableHead>
               <TableRow>
                 <TableCell>{t('parts.name', 'Назва')}</TableCell>

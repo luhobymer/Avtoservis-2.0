@@ -268,6 +268,7 @@ const MainLayout = () => {
           width: { sm: `calc(100% - ${drawerWidth}px)` },
           mt: 8,
           pb: { xs: 'calc(80px + env(safe-area-inset-bottom))', sm: 3 },
+          overflowX: 'hidden',
         }}
       >
         <Box

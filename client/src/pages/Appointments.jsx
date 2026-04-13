@@ -172,7 +172,7 @@ const Appointments = () => {
 
       {loading ? (
         <TableContainer component={Paper}>
-          <Table sx={{ minWidth: 650 }}>
+          <Table sx={{ minWidth: { xs: 0, sm: 650 } }}>
             <TableHead>
               <TableRow>
                 <TableCell>{t('appointment.scheduledDate')}</TableCell>
@@ -207,7 +207,7 @@ const Appointments = () => {
         </Alert>
       ) : (
         <TableContainer component={Paper}>
-          <Table sx={{ minWidth: 650 }}>
+          <Table sx={{ minWidth: { xs: 0, sm: 650 } }}>
               <TableHead>
                 <TableRow>
                   <TableCell>{t('appointment.scheduledDate')}</TableCell>
