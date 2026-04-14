@@ -42,9 +42,14 @@ router.get('/', auth, async (req, res) => {
   try {
     const isMaster = req.user && req.user.role === 'master';
     const isAdminView = isMaster && String(req.query.admin || '') === '1';
+    const mechanicId = req.query.mechanic_id;
 
     if (isAdminView) {
       return appointmentController.getAllAppointments(req, res);
+    }
+
+    if (mechanicId) {
+      return appointmentController.getMechanicAppointments(req, res);
     }
 
     if (!req.user || !req.user.id) {
