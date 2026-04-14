@@ -184,7 +184,7 @@ const Dashboard = () => {
         ]);
 
         setVehicles(Array.isArray(vehiclesList) ? vehiclesList : []);
-        
+
         const normalizedAppointments = (appointmentsList || []).map(a => ({
           id: a.id,
           vehicleVin: a.vehicle_vin,
@@ -195,7 +195,7 @@ const Dashboard = () => {
           status: a.status,
           notes: a.notes || ''
         }));
-        
+
         const upcomingAppointments = normalizedAppointments
           .filter(app => app.status !== 'completed' && app.status !== 'cancelled')
           .sort((a, b) => new Date(a.scheduledTime) - new Date(b.scheduledTime))

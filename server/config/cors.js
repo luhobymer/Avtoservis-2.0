@@ -3,6 +3,8 @@ const defaultOrigins = [
   'http://127.0.0.1:3000',
   'http://localhost:5173',
   'http://127.0.0.1:5173',
+  'https://avtoservis.pages.dev',
+  'https://*.pages.dev',
 ];
 
 const parseOrigins = (value) => {
