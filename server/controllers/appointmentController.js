@@ -350,14 +350,19 @@ exports.getUserAppointments = async (req, res) => {
 exports.getMechanicAppointments = async (req, res) => {
   try {
     const mechanicId = req.query.mechanic_id;
+    console.log('[getMechanicAppointments] mechanicId:', mechanicId);
     if (!mechanicId) {
       return res.status(400).json({ message: 'mechanic_id parameter is required' });
     }
 
     const db = await getDb();
+    console.log('[getMechanicAppointments] DB obtained');
     const { hasServiceId, hasMechanicId } = await getAppointmentColumnInfo(db);
+    console.log('[getMechanicAppointments] Column info:', { hasServiceId, hasMechanicId });
     const mechanicSpec = await getMechanicSpecializationConfig(db);
+    console.log('[getMechanicAppointments] Mechanic spec:', mechanicSpec);
     const serviceColumns = await getServiceColumnConfig(db);
+    console.log('[getMechanicAppointments] Service columns:', serviceColumns);
 
     let selectClause = 'a.*, u.id AS user_id_ref, u.email AS user_email';
     let joinClause = 'LEFT JOIN users u ON u.id = a.user_id';
@@ -378,6 +383,7 @@ exports.getMechanicAppointments = async (req, res) => {
         ', NULL AS mechanic_id_ref, NULL AS mechanic_first_name, NULL AS mechanic_last_name, NULL AS mechanic_specialization';
     }
 
+    console.log('[getMechanicAppointments] Query:', `SELECT ${selectClause} FROM appointments a ${joinClause} WHERE a.mechanic_id = ?`);
     const rows = await db
       .prepare(
         `SELECT ${selectClause}
@@ -387,16 +393,20 @@ exports.getMechanicAppointments = async (req, res) => {
         ORDER BY a.scheduled_time ASC`
       )
       .all(mechanicId);
+    console.log('[getMechanicAppointments] Rows:', rows?.length || 0);
 
     const allServiceIds = [];
     for (const row of rows || []) {
       allServiceIds.push(...collectServiceIdsFromRow(row));
     }
+    console.log('[getMechanicAppointments] Service IDs:', allServiceIds);
     const serviceMap = await buildServiceMap(db, allServiceIds);
+    console.log('[getMechanicAppointments] Service map size:', serviceMap.size);
     res.json((rows || []).map((row) => mapAppointmentRow(row, serviceMap)));
   } catch (err) {
-    console.error('Get mechanic appointments error:', err);
-    res.status(500).json({ message: 'Помилка сервера' });
+    console.error('[getMechanicAppointments] Error:', err);
+    console.error('[getMechanicAppointments] Stack:', err.stack);
+    res.status(500).json({ message: 'Помилка сервера', details: err?.message });
   }
 };
 
