@@ -1,3 +1,5 @@
+<<<<<<< E:/Avtoservis 2.1/server/index.js
+=======
 const path = require('path');
 const fs = require('fs');
 require('dotenv').config({ path: path.resolve(__dirname, '..', '.env') });
@@ -33,6 +35,7 @@ const interactionRoutes = require('./routes/interactions');
 const deviceRoutes = require('./routes/deviceTokens');
 const registryRoutes = require('./routes/registry');
 const uploadRoutes = require('./routes/upload');
+const scheduleRoutes = require('./routes/schedule');
 const relationshipRoutes = require('./routes/relationships');
 const partsRoutes = require('./routes/parts');
 const vehiclePartsRoutes = require('./routes/vehicleParts');
@@ -82,6 +85,7 @@ app.use('/api/stations', serviceStationRoutes);
 app.use('/api/services', serviceRoutes);
 app.use('/api/service-categories', serviceCategoryRoutes);
 app.use('/api/appointments', appointmentRoutes);
+app.use('/api/schedule', scheduleRoutes);
 app.use('/api/mechanics', mechanicRoutes);
 app.use('/api/vehicles', vehicleRoutes);
 app.use('/api/service-records', serviceRecordRoutes);
@@ -171,3 +175,4 @@ if (require.main === module) {
 }
 
 module.exports = app;
+>>>>>>> C:/Users/BMW/.windsurf/worktrees/Avtoservis 2.1/Avtoservis 2.1-b6ca489f/server/index.js
