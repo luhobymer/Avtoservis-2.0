@@ -1,5 +1,3 @@
-<<<<<<< E:/Avtoservis 2.1/server/index.js
-=======
 const path = require('path');
 const fs = require('fs');
 require('dotenv').config({ path: path.resolve(__dirname, '..', '.env') });
@@ -175,4 +173,3 @@ if (require.main === module) {
 }
 
 module.exports = app;
->>>>>>> C:/Users/BMW/.windsurf/worktrees/Avtoservis 2.1/Avtoservis 2.1-b6ca489f/server/index.js
