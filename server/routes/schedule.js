@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { auth } = require('../middleware/auth');
+const auth = require('../middleware/auth');
 
 // Отримати статус зайнятості механіка
 router.get('/busy-status', auth, async (req, res) => {
