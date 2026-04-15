@@ -300,132 +300,32 @@ exports.getMechanicAppointments = async (req, res) => {
     console.log('[getMechanicAppointments] mechanicId:', mechanicId);
     if (!mechanicId) {
       return res.status(400).json({ message: 'mechanic_id parameter is required' });
-<<<<<<< E:/Avtoservis 2.1/server/controllers/appointmentController.js
-<<<<<<< E:/Avtoservis 2.1/server/controllers/appointmentController.js
-<<<<<<< E:/Avtoservis 2.1/server/controllers/appointmentController.js
     }
 
     const db = await getDb();
     console.log('[getMechanicAppointments] DB obtained');
 
-    // Спрощений запит без JOIN для діагностики
+    const columnInfo = await getAppointmentColumnInfo(db);
+    const mechanicIdColumn = columnInfo?.mechanicIdColumn;
+    if (!mechanicIdColumn) {
+      console.log('[getMechanicAppointments] mechanic_id column is missing in appointments table');
+      return res.json([]);
+    }
+
     const rows = await db
       .prepare(
-        `SELECT * FROM appointments WHERE mechanic_id = ? ORDER BY scheduled_time ASC`
+        `SELECT * FROM appointments WHERE ${mechanicIdColumn} = ? ORDER BY scheduled_time ASC`
       )
       .all(mechanicId);
+
     console.log('[getMechanicAppointments] Rows count:', rows?.length || 0);
     console.log('[getMechanicAppointments] First row:', rows?.[0] || 'No rows');
 
-    res.json(rows || []);
+    return res.json(rows || []);
   } catch (err) {
     console.error('[getMechanicAppointments] Error:', err);
     console.error('[getMechanicAppointments] Stack:', err.stack);
-    res.status(500).json({ message: 'Помилка сервера', details: err?.message });
-  }
-};
-
-// Отримати записи механіка
-exports.getMechanicAppointments = async (req, res) => {
-  try {
-    const mechanicId = req.query.mechanic_id;
-    console.log('[getMechanicAppointments] mechanicId:', mechanicId);
-    if (!mechanicId) {
-      return res.status(400).json({ message: 'mechanic_id parameter is required' });
-    }
-
-    const db = await getDb();
-    console.log('[getMechanicAppointments] DB obtained');
-    const { hasServiceId, hasMechanicId } = await getAppointmentColumnInfo(db);
-    console.log('[getMechanicAppointments] Column info:', { hasServiceId, hasMechanicId });
-    const mechanicSpec = await getMechanicSpecializationConfig(db);
-    console.log('[getMechanicAppointments] Mechanic spec:', mechanicSpec);
-    const serviceColumns = await getServiceColumnConfig(db);
-    console.log('[getMechanicAppointments] Service columns:', serviceColumns);
-
-    let selectClause = 'a.*, u.id AS user_id_ref, u.email AS user_email';
-    let joinClause = 'LEFT JOIN users u ON u.id = a.user_id';
-
-    if (hasServiceId) {
-      selectClause += `, s.id AS service_id_ref, s.name AS service_name, s.${serviceColumns.price} AS service_price, s.${serviceColumns.duration} AS service_duration`;
-      joinClause += ' LEFT JOIN services s ON s.id = a.service_id';
-    } else {
-      selectClause +=
-        ', NULL AS service_id_ref, NULL AS service_name, NULL AS service_price, NULL AS service_duration';
-=======
->>>>>>> C:/Users/BMW/.windsurf/worktrees/Avtoservis 2.1/Avtoservis 2.1-b6ca489f/server/controllers/appointmentController.js
-=======
->>>>>>> C:/Users/BMW/.windsurf/worktrees/Avtoservis 2.1/Avtoservis 2.1-b6ca489f/server/controllers/appointmentController.js
-=======
->>>>>>> C:/Users/BMW/.windsurf/worktrees/Avtoservis 2.1/Avtoservis 2.1-b6ca489f/server/controllers/appointmentController.js
-    }
-
-    const db = await getDb();
-    console.log('[getMechanicAppointments] DB obtained');
-
-<<<<<<< E:/Avtoservis 2.1/server/controllers/appointmentController.js
-<<<<<<< E:/Avtoservis 2.1/server/controllers/appointmentController.js
-<<<<<<< E:/Avtoservis 2.1/server/controllers/appointmentController.js
-    console.log('[getMechanicAppointments] Query:', `SELECT ${selectClause} FROM appointments a ${joinClause} WHERE a.mechanic_id = ?`);
-    const rows = await db
-      .prepare(
-        `SELECT ${selectClause}
-        FROM appointments a
-        ${joinClause}
-        WHERE a.mechanic_id = ?
-        ORDER BY a.scheduled_time ASC`
-      )
-      .all(mechanicId);
-    console.log('[getMechanicAppointments] Rows:', rows?.length || 0);
-
-    const allServiceIds = [];
-    for (const row of rows || []) {
-      allServiceIds.push(...collectServiceIdsFromRow(row));
-    }
-    console.log('[getMechanicAppointments] Service IDs:', allServiceIds);
-    const serviceMap = await buildServiceMap(db, allServiceIds);
-    console.log('[getMechanicAppointments] Service map size:', serviceMap.size);
-    res.json((rows || []).map((row) => mapAppointmentRow(row, serviceMap)));
-=======
-    // Спрощений запит без JOIN для діагностики
-    const rows = await db
-      .prepare(
-        `SELECT * FROM appointments WHERE mechanic_id = ? ORDER BY scheduled_time ASC`
-      )
-      .all(mechanicId);
-    console.log('[getMechanicAppointments] Rows count:', rows?.length || 0);
-    console.log('[getMechanicAppointments] First row:', rows?.[0] || 'No rows');
-
-    res.json(rows || []);
->>>>>>> C:/Users/BMW/.windsurf/worktrees/Avtoservis 2.1/Avtoservis 2.1-b6ca489f/server/controllers/appointmentController.js
-=======
-    // Спрощений запит без JOIN для діагностики
-    const rows = await db
-      .prepare(
-        `SELECT * FROM appointments WHERE mechanic_id = ? ORDER BY scheduled_time ASC`
-      )
-      .all(mechanicId);
-    console.log('[getMechanicAppointments] Rows count:', rows?.length || 0);
-    console.log('[getMechanicAppointments] First row:', rows?.[0] || 'No rows');
-
-    res.json(rows || []);
->>>>>>> C:/Users/BMW/.windsurf/worktrees/Avtoservis 2.1/Avtoservis 2.1-b6ca489f/server/controllers/appointmentController.js
-=======
-    // Спрощений запит без JOIN для діагностики
-    const rows = await db
-      .prepare(
-        `SELECT * FROM appointments WHERE mechanic_id = ? ORDER BY scheduled_time ASC`
-      )
-      .all(mechanicId);
-    console.log('[getMechanicAppointments] Rows count:', rows?.length || 0);
-    console.log('[getMechanicAppointments] First row:', rows?.[0] || 'No rows');
-
-    res.json(rows || []);
->>>>>>> C:/Users/BMW/.windsurf/worktrees/Avtoservis 2.1/Avtoservis 2.1-b6ca489f/server/controllers/appointmentController.js
-  } catch (err) {
-    console.error('[getMechanicAppointments] Error:', err);
-    console.error('[getMechanicAppointments] Stack:', err.stack);
-    res.status(500).json({ message: 'Помилка сервера', details: err?.message });
+    return res.status(500).json({ message: 'Помилка сервера', details: err?.message });
   }
 };
 
