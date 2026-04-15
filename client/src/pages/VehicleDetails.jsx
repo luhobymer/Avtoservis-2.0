@@ -323,6 +323,7 @@ const VehicleDetailsContent = () => {
   const loadVehicleData = useCallback(async () => {
     try {
       const v = await getVehicleById(id);
+      const resolvedPhotoUrl = v.photoUrl || v.photo_url || '';
       setFormData({
         brand: v.brand || v.make || '',
         model: v.model || '',
@@ -334,7 +335,7 @@ const VehicleDetailsContent = () => {
         engineVolume: v.engineVolume || v.engine_capacity || '',
         color: v.color || '',
         mileage: v.mileage || '',
-        photoUrl: v.photoUrl || ''
+        photoUrl: resolvedPhotoUrl
       });
       setVehicleMeta({
         id: v.id || null,
@@ -344,8 +345,8 @@ const VehicleDetailsContent = () => {
       setInitialMileage(
         v.mileage !== undefined && v.mileage !== null && v.mileage !== '' ? Number(v.mileage) : null
       );
-      if (v.photoUrl) {
-        setPhotoPreview(resolveUrl(v.photoUrl));
+      if (resolvedPhotoUrl) {
+        setPhotoPreview(resolveUrl(resolvedPhotoUrl));
       }
       setLoading(false);
     } catch (err) {

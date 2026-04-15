@@ -28,6 +28,13 @@ const corsOptions = {
       return callback(null, true);
     }
 
+    const normalizedOrigin = String(origin).trim();
+    const hasPagesDevWildcard =
+      allowedOrigins.includes('https://*.pages.dev') || allowedOrigins.includes('*.pages.dev');
+    if (hasPagesDevWildcard && /^https:\/\/.+\.pages\.dev$/i.test(normalizedOrigin)) {
+      return callback(null, true);
+    }
+
     const isDev = String(process.env.NODE_ENV || '').toLowerCase() !== 'production';
     if (isDev) {
       const devAllowed = [

@@ -296,14 +296,31 @@ exports.getAppointmentById = async (req, res) => {
 // Отримати записи механіка
 exports.getMechanicAppointments = async (req, res) => {
   try {
-    const mechanicId = req.query.mechanic_id;
-    console.log('[getMechanicAppointments] mechanicId:', mechanicId);
-    if (!mechanicId) {
+    const requestedMechanicId = req.query.mechanic_id;
+    console.log('[getMechanicAppointments] mechanicId:', requestedMechanicId);
+    if (!requestedMechanicId) {
       return res.status(400).json({ message: 'mechanic_id parameter is required' });
+    }
+
+    const role = String(req.user?.role || '').toLowerCase();
+    const currentUserId = req.user?.id ? String(req.user.id) : '';
+    const requestedId = String(requestedMechanicId);
+    const canViewOtherMechanic = ['admin', 'master'].includes(role);
+    if (currentUserId && requestedId && requestedId !== currentUserId && !canViewOtherMechanic) {
+      return res.status(403).json({ message: 'Недостатньо прав для перегляду записів іншого механіка' });
     }
 
     const db = await getDb();
     console.log('[getMechanicAppointments] DB obtained');
+
+    const mechanic = await resolveCurrentMechanic(req.user, {
+      createIfMissing: true,
+      enableAllServices: true,
+    });
+    if (!mechanic?.id) {
+      return res.json([]);
+    }
+    const effectiveMechanicId = String(mechanic.id);
 
     const columnInfo = await getAppointmentColumnInfo(db);
     const mechanicIdColumn = columnInfo?.mechanicIdColumn;
@@ -316,7 +333,7 @@ exports.getMechanicAppointments = async (req, res) => {
       .prepare(
         `SELECT * FROM appointments WHERE ${mechanicIdColumn} = ? ORDER BY scheduled_time ASC`
       )
-      .all(mechanicId);
+      .all(effectiveMechanicId);
 
     console.log('[getMechanicAppointments] Rows count:', rows?.length || 0);
     console.log('[getMechanicAppointments] First row:', rows?.[0] || 'No rows');
