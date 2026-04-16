@@ -62,13 +62,14 @@ const getInlinePhotoUrl = (vehicle) => {
 
 const getMainVehiclePhotoUrl = async (db, vehicleId, vehicle) => {
   const inlineUrl = getInlinePhotoUrl(vehicle);
-  if (!vehicleId) return inlineUrl;
+  const effectiveVehicleId = vehicleId || vehicle?.id || vehicle?.vin || null;
+  if (!effectiveVehicleId) return inlineUrl;
   try {
     const row = await db
       .prepare(
         `SELECT url FROM photos WHERE object_type = 'vehicle' AND object_id = ? ORDER BY created_at DESC LIMIT 1`
       )
-      .get(vehicleId);
+      .get(String(effectiveVehicleId));
     return row?.url || inlineUrl || null;
   } catch (_) {
     return inlineUrl || null;
@@ -322,7 +323,7 @@ exports.getUserVehicles = async (req, res) => {
               .all(historyTarget)
           : [];
 
-        const mainPhotoUrl = await getMainVehiclePhotoUrl(db, vehicle.id, vehicle);
+        const mainPhotoUrl = await getMainVehiclePhotoUrl(db, vehicle.id || vehicle.vin, vehicle);
 
         return {
           ...vehicle,
@@ -399,7 +400,7 @@ exports.getVehicleByVin = async (req, res) => {
           .all(historyTarget)
       : [];
 
-    const mainPhotoUrl = await getMainVehiclePhotoUrl(db, vehicle.id, vehicle);
+    const mainPhotoUrl = await getMainVehiclePhotoUrl(db, vehicle.id || vehicle.vin, vehicle);
 
     const appointmentsWithDetails = await Promise.all(
       (appointments || []).map(async (appointment) => {
@@ -521,8 +522,9 @@ exports.addVehicle = async (req, res) => {
       .run(...values);
 
     if (photoUrl && String(photoUrl).trim()) {
+      const vehiclePhotoObjectId = columnNames.has('id') ? vehicleId : vin;
       await saveVehiclePhotoUrl(db, {
-        vehicleId,
+        vehicleId: vehiclePhotoObjectId,
         photoUrl,
         now,
         vehicleColumnNames: columnNames,
@@ -657,7 +659,11 @@ exports.addVehicle = async (req, res) => {
       .prepare(`SELECT * FROM vehicles WHERE vin = ? AND ${ownerColumn} = ?`)
       .get(vin, ownerId);
 
-    const createdPhotoUrl = await getMainVehiclePhotoUrl(db, vehicleId, created);
+    const createdPhotoUrl = await getMainVehiclePhotoUrl(
+      db,
+      created?.id || created?.vin || vehicleId,
+      created
+    );
 
     res.status(201).json({
       ...created,
@@ -764,7 +770,7 @@ exports.updateVehicle = async (req, res) => {
     if (payload.photoUrl && String(payload.photoUrl).trim()) {
       const now = new Date().toISOString();
       await saveVehiclePhotoUrl(db, {
-        vehicleId: existing.id,
+        vehicleId: existing.id || existing.vin || vin,
         photoUrl: payload.photoUrl,
         now,
         vehicleColumnNames: columnNames,
@@ -775,7 +781,7 @@ exports.updateVehicle = async (req, res) => {
       .prepare(`SELECT * FROM vehicles WHERE vin = ? AND ${ownerColumn} = ?`)
       .get(vin, targetUserId);
 
-    const updatedPhotoUrl = await getMainVehiclePhotoUrl(db, updated.id, updated);
+    const updatedPhotoUrl = await getMainVehiclePhotoUrl(db, updated.id || updated.vin, updated);
 
     res.json({
       ...updated,
