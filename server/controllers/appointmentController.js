@@ -177,9 +177,15 @@ const mapAppointmentRow = (row, serviceMap) => {
 const getAppointmentColumnInfo = async (db) => {
   const columns = await db.prepare('PRAGMA table_info(appointments)').all();
   const columnNames = new Set(columns.map((column) => column.name));
+  const mechanicIdColumn = columnNames.has('mechanic_id')
+    ? 'mechanic_id'
+    : columnNames.has('mechanicId')
+      ? 'mechanicId'
+      : null;
   return {
     hasServiceId: columnNames.has('service_id'),
-    hasMechanicId: columnNames.has('mechanic_id'),
+    hasMechanicId: !!mechanicIdColumn,
+    mechanicIdColumn,
     hasVehicleId: columnNames.has('vehicle_id'),
     hasNotes: columnNames.has('notes'),
     hasCarInfo: columnNames.has('car_info'),
