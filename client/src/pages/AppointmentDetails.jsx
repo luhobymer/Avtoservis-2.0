@@ -52,6 +52,7 @@ import {
 import { DateTimePicker } from '@mui/x-date-pickers';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
+import { uk } from 'date-fns/locale';
 import DeleteIcon from '@mui/icons-material/Delete';
 import AddIcon from '@mui/icons-material/Add';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
@@ -1059,11 +1060,13 @@ const AppointmentDetails = ({ isNew }) => {
                 />
               </Grid>
               <Grid item xs={12} sm={6}>
-                <LocalizationProvider dateAdapter={AdapterDateFns}>
+                <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={uk}>
                   <DateTimePicker
                     label={t('appointment.scheduledDate')}
                     value={formData.scheduledDate}
                     onChange={(date) => handleDateChange('scheduledDate', date)}
+                    ampm={false}
+                    format="dd.MM.yyyy HH:mm"
                     slotProps={{
                       textField: {
                         id: 'scheduledDate',
