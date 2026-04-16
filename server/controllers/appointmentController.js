@@ -250,6 +250,65 @@ exports.getAllAppointments = async (req, res) => {
   }
 };
 
+// Отримати записи користувача ("Мої записи")
+exports.getUserAppointments = async (req, res) => {
+  try {
+    if (!req.user || !req.user.id) {
+      return res.status(401).json({ msg: 'Unauthorized' });
+    }
+
+    const role = String(req.user?.role || '').toLowerCase();
+    const canViewOtherUser = ['admin', 'master'].includes(role);
+    const requestedUserId = req.query.user_id ? String(req.query.user_id) : '';
+    const effectiveUserId = canViewOtherUser && requestedUserId ? requestedUserId : String(req.user.id);
+
+    const db = await getDb();
+    const { hasServiceId, hasMechanicId } = await getAppointmentColumnInfo(db);
+    const mechanicSpec = await getMechanicSpecializationConfig(db);
+    const serviceColumns = await getServiceColumnConfig(db);
+
+    let selectClause = 'a.*, u.id AS user_id_ref, u.email AS user_email';
+    let joinClause = 'LEFT JOIN users u ON u.id = a.user_id';
+
+    if (hasServiceId) {
+      selectClause += `, s.id AS service_id_ref, s.name AS service_name, s.${serviceColumns.price} AS service_price, s.${serviceColumns.duration} AS service_duration`;
+      joinClause += ' LEFT JOIN services s ON s.id = a.service_id';
+    } else {
+      selectClause +=
+        ', NULL AS service_id_ref, NULL AS service_name, NULL AS service_price, NULL AS service_duration';
+    }
+
+    if (hasMechanicId) {
+      selectClause += `, m.id AS mechanic_id_ref, m.first_name AS mechanic_first_name, m.last_name AS mechanic_last_name, ${mechanicSpec.select}`;
+      joinClause += ` LEFT JOIN mechanics m ON m.id = a.mechanic_id ${mechanicSpec.join}`;
+    } else {
+      selectClause +=
+        ', NULL AS mechanic_id_ref, NULL AS mechanic_first_name, NULL AS mechanic_last_name, NULL AS mechanic_specialization';
+    }
+
+    const rows = await db
+      .prepare(
+        `SELECT ${selectClause}
+        FROM appointments a
+        ${joinClause}
+        WHERE a.user_id = ?
+        ORDER BY a.scheduled_time DESC`
+      )
+      .all(effectiveUserId);
+
+    const allServiceIds = [];
+    for (const row of rows || []) {
+      allServiceIds.push(...collectServiceIdsFromRow(row));
+    }
+    const serviceMap = await buildServiceMap(db, allServiceIds);
+
+    return res.json((rows || []).map((row) => mapAppointmentRow(row, serviceMap)));
+  } catch (err) {
+    console.error('[getUserAppointments] Error:', err);
+    return res.status(500).json({ message: 'Помилка сервера', details: err?.message });
+  }
+};
+
 // Отримати запис за ID
 exports.getAppointmentById = async (req, res) => {
   try {
