@@ -4,6 +4,22 @@ const auth = require('../middleware/auth');
 const { getDb } = require('../db/d1');
 const { resolveCurrentMechanic } = require('../utils/resolveCurrentMechanic');
 
+async function getMechanicsBusyColumns(db) {
+  try {
+    const columns = await db.prepare('PRAGMA table_info(mechanics)').all();
+    const names = new Set((columns || []).map((c) => c.name));
+    return {
+      hasBusyUntil: names.has('busy_until'),
+      hasBusyReason: names.has('busy_reason'),
+    };
+  } catch (_) {
+    return {
+      hasBusyUntil: false,
+      hasBusyReason: false,
+    };
+  }
+}
+
 // Отримати статус зайнятості механіка
 router.get('/busy-status', auth, async (req, res) => {
   try {
@@ -24,9 +40,20 @@ router.get('/busy-status', auth, async (req, res) => {
     if (!effectiveMechanicId) {
       return res.json({ busy_until: null, busy_reason: null });
     }
+
+    const busyColumns = await getMechanicsBusyColumns(db);
+    if (!busyColumns.hasBusyUntil && !busyColumns.hasBusyReason) {
+      return res.json({ busy_until: null, busy_reason: null });
+    }
+
+    const selectParts = [];
+    if (busyColumns.hasBusyUntil) selectParts.push('busy_until');
+    if (busyColumns.hasBusyReason) selectParts.push('busy_reason');
+    const selectClause = selectParts.join(', ');
+
     const row = await db
       .prepare(
-        `SELECT busy_until, busy_reason FROM mechanics WHERE id = ?`
+        `SELECT ${selectClause} FROM mechanics WHERE id = ?`
       )
       .get(effectiveMechanicId);
 
@@ -35,8 +62,8 @@ router.get('/busy-status', auth, async (req, res) => {
     }
 
     res.json({
-      busy_until: row.busy_until,
-      busy_reason: row.busy_reason
+      busy_until: busyColumns.hasBusyUntil ? row.busy_until ?? null : null,
+      busy_reason: busyColumns.hasBusyReason ? row.busy_reason ?? null : null
     });
   } catch (err) {
     console.error('[schedule][busy-status] Error:', err);
@@ -65,11 +92,28 @@ router.post('/busy-status', auth, async (req, res) => {
     if (!effectiveMechanicId) {
       return res.status(400).json({ message: 'mechanic_id is required' });
     }
+
+    const busyColumns = await getMechanicsBusyColumns(db);
+    const setParts = [];
+    const values = [];
+    if (busyColumns.hasBusyUntil) {
+      setParts.push('busy_until = ?');
+      values.push(busy_until || null);
+    }
+    if (busyColumns.hasBusyReason) {
+      setParts.push('busy_reason = ?');
+      values.push(busy_reason || null);
+    }
+
+    if (setParts.length === 0) {
+      return res.json({ success: true });
+    }
+
     await db
       .prepare(
-        `UPDATE mechanics SET busy_until = ?, busy_reason = ? WHERE id = ?`
+        `UPDATE mechanics SET ${setParts.join(', ')} WHERE id = ?`
       )
-      .run(busy_until || null, busy_reason || null, effectiveMechanicId);
+      .run(...values, effectiveMechanicId);
 
     res.json({ success: true });
   } catch (err) {
