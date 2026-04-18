@@ -8,6 +8,13 @@
  - План прибирання репозиторію: [CLEANUP_PLAN.md](./CLEANUP_PLAN.md)
 - План міграції на Render і деплой проекту: [DEPLOY_RENDER_PLAN.md](./DEPLOY_RENDER_PLAN.md)
 - Гайд по формі створення запису: [APPOINTMENT_FORM_GUIDE.md](./APPOINTMENT_FORM_GUIDE.md)
+- План переходу на PWA: [PWA_MIGRATION_PLAN.md](./PWA_MIGRATION_PLAN.md)
+
+## Продуктова Політика
+
+- Основний клієнт: **Web/PWA**.
+- Окремий APK-реліз більше не є цільовим напрямком.
+- Папка `mobile/` вважається legacy до повного завершення міграції.
 
 ## Тимчасові обмеження
 
