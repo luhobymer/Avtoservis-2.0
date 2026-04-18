@@ -292,7 +292,7 @@ exports.getUserAppointments = async (req, res) => {
         FROM appointments a
         ${joinClause}
         WHERE a.user_id = ?
-        ORDER BY a.scheduled_time DESC`
+        ORDER BY a.scheduled_time ASC`
       )
       .all(effectiveUserId);
 
