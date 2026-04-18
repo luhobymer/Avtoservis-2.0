@@ -505,6 +505,134 @@ export const brandModelYears = {
     XC70: generateYears(2000, 2016),
     XC90: generateYears(2002),
   },
+  Abarth: {
+    '500': generateYears(2008),
+    '595': generateYears(2012),
+    '124 Spider': generateYears(2016, 2019),
+  },
+  BYD: {
+    Atto3: generateYears(2022),
+    Dolphin: generateYears(2021),
+    Han: generateYears(2020),
+    Qin: generateYears(2012),
+    Seal: generateYears(2022),
+    Tang: generateYears(2015),
+    Yuan: generateYears(2015),
+  },
+  Cadillac: {
+    ATS: generateYears(2012, 2019),
+    CT5: generateYears(2019),
+    Escalade: generateYears(1998),
+    XT4: generateYears(2018),
+    XT5: generateYears(2016),
+    XT6: generateYears(2019),
+  },
+  Chery: {
+    Amulet: generateYears(2003, 2010),
+    Arrizo: generateYears(2013),
+    Eastar: generateYears(2003, 2015),
+    QQ: generateYears(2003, 2022),
+    Tiggo2: generateYears(2016),
+    Tiggo4: generateYears(2017),
+    Tiggo7: generateYears(2016),
+    Tiggo8: generateYears(2018),
+  },
+  Chrysler: {
+    '200': generateYears(2010, 2017),
+    '300': generateYears(2004),
+    Pacifica: generateYears(2003),
+    Voyager: generateYears(1988),
+  },
+  Cupra: {
+    Born: generateYears(2021),
+    Formentor: generateYears(2020),
+    Leon: generateYears(2020),
+  },
+  DS: {
+    DS3: generateYears(2009),
+    DS4: generateYears(2011),
+    DS7: generateYears(2017),
+  },
+  GMC: {
+    Acadia: generateYears(2006),
+    Sierra: generateYears(1987),
+    Terrain: generateYears(2009),
+    Yukon: generateYears(1992),
+  },
+  GreatWall: {
+    H3: generateYears(2005, 2015),
+    H5: generateYears(2010, 2021),
+    Poer: generateYears(2019),
+    Wingle: generateYears(2006),
+  },
+  Haval: {
+    H2: generateYears(2014, 2021),
+    H6: generateYears(2011),
+    Jolion: generateYears(2020),
+    M6: generateYears(2017),
+  },
+  Isuzu: {
+    D_Max: generateYears(2002),
+    MU_X: generateYears(2013),
+    N_Series: generateYears(1984),
+    Trooper: generateYears(1981, 2005),
+  },
+  Iveco: {
+    Daily: generateYears(1978),
+    Eurocargo: generateYears(1991),
+  },
+  Lada: {
+    Granta: generateYears(2011),
+    Kalina: generateYears(2004, 2018),
+    Niva: generateYears(1977),
+    Priora: generateYears(2007, 2018),
+    Vesta: generateYears(2015),
+    XRay: generateYears(2015, 2022),
+  },
+  Lincoln: {
+    Aviator: generateYears(2003),
+    MKC: generateYears(2014, 2019),
+    MKX: generateYears(2006, 2018),
+    Navigator: generateYears(1998),
+  },
+  MG: {
+    '3': generateYears(2011),
+    '5': generateYears(2012),
+    HS: generateYears(2018),
+    MarvelR: generateYears(2021),
+    ZS: generateYears(2017),
+    ZS_EV: generateYears(2019),
+  },
+  RAM: {
+    '1500': generateYears(1981),
+    '2500': generateYears(1981),
+    '3500': generateYears(1981),
+    Promaster: generateYears(2013),
+  },
+  SsangYong: {
+    Actyon: generateYears(2005, 2018),
+    Korando: generateYears(1983),
+    Kyron: generateYears(2005, 2014),
+    Musso: generateYears(1993),
+    Rexton: generateYears(2001),
+    Tivoli: generateYears(2015),
+  },
+  UAZ: {
+    Hunter: generateYears(2003),
+    Patriot: generateYears(2005),
+    Pickup: generateYears(2008),
+    '452': generateYears(1965),
+  },
+  VAZ: {
+    '2101': generateYears(1970, 1988),
+    '2106': generateYears(1976, 2006),
+    '2107': generateYears(1982, 2012),
+    '2108': generateYears(1984, 2003),
+    '2109': generateYears(1987, 2011),
+    '2110': generateYears(1995, 2009),
+    '2114': generateYears(2001, 2013),
+    Niva: generateYears(1977),
+  },
   ZAZ: {
     Forza: generateYears(2011, 2017),
     Lanos: generateYears(1998, 2017),
@@ -526,7 +654,7 @@ export const getVehicleSpecs = (brand, model, year) => {
   const yearNum = parseInt(year);
 
   // Logic for electric cars
-  const isElectricModel = 
+  const isElectricModel =
     brand === 'Tesla' || 
     model.startsWith('ID') || 
     model.startsWith('EQ') ||
@@ -539,7 +667,11 @@ export const getVehicleSpecs = (brand, model, year) => {
     model === 'bZ4X' ||
     model === 'i3' || 
     model === 'iX' ||
-    model === 'Taycan';
+    model === 'Taycan' ||
+    model === 'EV6' ||
+    model === 'Ioniq 5' ||
+    model === 'Ioniq' ||
+    model.includes('_EV');
 
   if (isElectricModel) {
     return {
@@ -571,7 +703,7 @@ export const getVehicleSpecs = (brand, model, year) => {
   // Refine by brand/model specifics (examples)
   
   // ZAZ/Daewoo/Lanos - usually manual, simple engines
-  if (['ZAZ', 'Daewoo', 'Vaz'].includes(brand)) {
+  if (['ZAZ', 'Daewoo', 'VAZ', 'Lada', 'UAZ'].includes(brand)) {
     transmissions = ['manual', 'automatic']; // Auto is rare but exists on some
     engines = ['petrol', 'gas']; // Diesel is rare on Lanos
   }

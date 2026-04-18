@@ -16,10 +16,38 @@ const parseMinNumber = (text) => {
   return Number.isFinite(num) ? num : null;
 };
 
+const normalizeServiceName = (value) =>
+  String(value || '')
+    .toLowerCase()
+    .replace(/[()]/g, ' ')
+    .replace(/[.,/\\+\-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+const dedupePriceList = (catalog) => {
+  const categoryMap = new Map();
+  for (const group of catalog || []) {
+    const category = String(group?.category || '').trim();
+    if (!category) continue;
+    if (!categoryMap.has(category)) categoryMap.set(category, []);
+    const existingItems = categoryMap.get(category);
+    const existingKeys = new Set(existingItems.map((item) => normalizeServiceName(item?.name)));
+    for (const item of group?.items || []) {
+      const name = String(item?.name || '').trim();
+      if (!name) continue;
+      const key = normalizeServiceName(name);
+      if (existingKeys.has(key)) continue;
+      existingItems.push({ ...item, name });
+      existingKeys.add(key);
+    }
+  }
+  return Array.from(categoryMap.entries()).map(([category, items]) => ({ category, items }));
+};
+
 const buildPriceList = () => {
   const hourly = { duration: 60, duration_text: 'за 1 год' };
 
-  return [
+  const catalog = [
     {
       category: 'Діагностика',
       items: [
@@ -183,6 +211,53 @@ const buildPriceList = () => {
       ],
     },
     {
+      category: 'Планове ТО',
+      items: [
+        { name: 'Заміна моторного масла', price_text: 'від 300-600', price: 300 },
+        { name: 'Заміна масляного фільтра', price_text: 'від 120-250', price: 120 },
+        { name: 'Заміна повітряного фільтра', price_text: 'від 120-250', price: 120 },
+        { name: 'Заміна салонного фільтра', price_text: 'від 150-400', price: 150 },
+        { name: 'Заміна паливного фільтра', price_text: 'від 250-900', price: 250 },
+        { name: 'Заміна ременя навісного обладнання', price_text: 'від 350-900', price: 350 },
+        { name: 'Комплексне ТО (масло + всі фільтри)', price_text: 'від 900-1800', price: 900 },
+      ],
+    },
+    {
+      category: 'Підвіска та рульове керування',
+      items: [
+        { name: 'Заміна амортизатора', price_text: 'від 350-700 / шт.', price: 350 },
+        { name: 'Заміна пружини підвіски', price_text: 'від 400-800 / шт.', price: 400 },
+        { name: 'Заміна кульової опори', price_text: 'від 300-600', price: 300 },
+        { name: 'Заміна сайлентблоку', price_text: 'від 300-800', price: 300 },
+        { name: 'Заміна стійки стабілізатора', price_text: 'від 200-450', price: 200 },
+        { name: 'Заміна рульового наконечника', price_text: 'від 250-500', price: 250 },
+        { name: 'Заміна рульової тяги', price_text: 'від 300-650', price: 300 },
+        { name: 'Розвал-сходження', price_text: 'від 600-1200', price: 600 },
+      ],
+    },
+    {
+      category: 'Трансмісія',
+      items: [
+        { name: 'Заміна масла МКПП', price_text: 'від 300-600', price: 300 },
+        { name: 'Заміна масла АКПП (часткова)', price_text: 'від 1000-2500', price: 1000 },
+        { name: 'Заміна масла АКПП (повна)', price_text: 'від 2500-6000', price: 2500 },
+        { name: 'Заміна ШРУСа (гранати)', price_text: 'від 700-1400', price: 700 },
+        { name: 'Заміна пильника ШРУСа', price_text: 'від 500-1200', price: 500 },
+        { name: 'Заміна сальника приводу', price_text: 'від 450-900', price: 450 },
+        { name: 'Заміна підшипника ступиці', price_text: 'від 450-1000', price: 450 },
+      ],
+    },
+    {
+      category: 'Кліматична система',
+      items: [
+        { name: 'Діагностика кондиціонера', price_text: 'від 300-700', price: 300 },
+        { name: 'Заправка кондиціонера', price_text: 'від 1000-2200', price: 1000 },
+        { name: 'Антибактеріальна чистка кондиціонера', price_text: 'від 500-1200', price: 500 },
+        { name: 'Заміна компресора кондиціонера', price_text: 'від 1500-4000', price: 1500 },
+        { name: 'Заміна радіатора кондиціонера', price_text: 'від 900-2200', price: 900 },
+      ],
+    },
+    {
       category: 'Додаткові послуги',
       items: [
         { name: 'Зняття/встановлення захисту', price_text: 'від 150', price: 150 },
@@ -206,6 +281,7 @@ const buildPriceList = () => {
       ],
     },
   ];
+  return dedupePriceList(catalog);
 };
 
 async function seedPriceList(options = {}) {

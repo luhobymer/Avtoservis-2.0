@@ -47,6 +47,7 @@ import {
   IconButton,
   Chip,
   LinearProgress,
+  Autocomplete,
   useMediaQuery,
   useTheme
 } from '@mui/material';
@@ -517,8 +518,7 @@ const AppointmentDetails = ({ isNew }) => {
     setFormData({ ...formData, [name]: date });
   };
 
-  const handleServiceChange = (e) => {
-    const { value } = e.target;
+  const handleServiceChange = (value) => {
     const selectedIds = Array.isArray(value)
       ? value.map((v) => String(v)).filter(Boolean)
       : (value ? [String(value)] : []);
@@ -589,7 +589,7 @@ const AppointmentDetails = ({ isNew }) => {
 
       if (createdId) {
         const nextId = String(createdId);
-        handleServiceChange({ target: { value: [nextId] } });
+        handleServiceChange([nextId]);
       }
       setAddServiceDialogOpen(false);
     } catch (err) {
@@ -923,6 +923,16 @@ const AppointmentDetails = ({ isNew }) => {
     });
   }, [services, serviceCategoryId]);
 
+  const selectedCategory = useMemo(
+    () => serviceCategories.find((cat) => String(cat.id) === String(serviceCategoryId)) || null,
+    [serviceCategories, serviceCategoryId]
+  );
+
+  const selectedServices = useMemo(() => {
+    const ids = new Set((formData.service_ids || []).map((sid) => String(sid)));
+    return filteredServices.filter((service) => ids.has(String(service.id)));
+  }, [filteredServices, formData.service_ids]);
+
   if (loading) {
     return <Container sx={{ mt: 4, display: 'flex', justifyContent: 'center' }}><CircularProgress /></Container>;
   }
@@ -1007,35 +1017,59 @@ const AppointmentDetails = ({ isNew }) => {
                  null
               )}
                 <Grid item xs={12} sm={6}>
-                  <FormControl fullWidth required disabled={!formData.mechanic_id || services.length === 0}>
-                    <InputLabel>{t('services.category')}</InputLabel>
-                    <Select id="service_category" value={serviceCategoryId || ''} onChange={(e) => { setServiceCategoryId(String(e.target.value)); setFormData(prev => ({...prev, service_id: null, service_ids: []})); }} label={t('services.category')}>
-                      {serviceCategories.map((cat) => <MenuItem key={cat.id} value={cat.id}>{cat.name}</MenuItem>)}
-                    </Select>
-                  </FormControl>
+                  <Autocomplete
+                    id="service_category"
+                    disabled={!formData.mechanic_id || services.length === 0}
+                    options={serviceCategories}
+                    value={selectedCategory}
+                    onChange={(_, nextCategory) => {
+                      setServiceCategoryId(nextCategory ? String(nextCategory.id) : '');
+                      setFormData((prev) => ({ ...prev, service_id: null, service_ids: [] }));
+                    }}
+                    isOptionEqualToValue={(option, value) => String(option.id) === String(value.id)}
+                    getOptionLabel={(option) => String(option?.name || '')}
+                    renderInput={(params) => (
+                      <TextField
+                        {...params}
+                        label={t('services.category')}
+                        required
+                        placeholder={t('common.search', 'Пошук')}
+                      />
+                    )}
+                  />
                 </Grid>
                 <Grid item xs={12} sm={6}>
-                   <FormControl fullWidth required disabled={!serviceCategoryId}>
-                      <InputLabel>{t('appointment.serviceType')}</InputLabel>
-                      <Select
-                        id="service_ids"
-                        multiple
-                        name="service_id"
-                        value={formData.service_ids || []}
-                        onChange={handleServiceChange}
+                  <Autocomplete
+                    id="service_ids"
+                    multiple
+                    disableCloseOnSelect
+                    options={filteredServices}
+                    value={selectedServices}
+                    disabled={!serviceCategoryId}
+                    onChange={(_, values) => handleServiceChange(values.map((service) => String(service.id)))}
+                    isOptionEqualToValue={(option, value) => String(option.id) === String(value.id)}
+                    getOptionLabel={(option) =>
+                      `${option?.name || ''}${formatServicePrice(option) ? ` ${formatServicePrice(option)}` : ''}`
+                    }
+                    renderTags={(value, getTagProps) =>
+                      value.map((option, index) => (
+                        <Chip
+                          label={option?.name || option?.id}
+                          size="small"
+                          {...getTagProps({ index })}
+                          key={option?.id || index}
+                        />
+                      ))
+                    }
+                    renderInput={(params) => (
+                      <TextField
+                        {...params}
                         label={t('appointment.serviceType')}
-                        renderValue={(selected) => (
-                          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                            {selected.map((id) => {
-                              const service = filteredServices.find((s) => String(s.id) === String(id));
-                              return <Chip key={id} label={service ? service.name : id} size="small" />;
-                            })}
-                          </Box>
-                        )}
-                      >
-                         {filteredServices.map((service) => <MenuItem key={service.id} value={service.id}>{service.name} {formatServicePrice(service)}</MenuItem>)}
-                      </Select>
-                   </FormControl>
+                        required
+                        placeholder={t('common.search', 'Пошук')}
+                      />
+                    )}
+                  />
                 </Grid>
                 {isNewAppointment && (
                   <Grid item xs={12}>

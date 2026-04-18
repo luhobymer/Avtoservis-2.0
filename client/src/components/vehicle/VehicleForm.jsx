@@ -3,14 +3,10 @@ import { useTranslation } from 'react-i18next';
 import {
   Grid,
   TextField,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
+  Autocomplete,
   Button,
   Box,
   CircularProgress,
-  FormHelperText,
   Typography,
   useMediaQuery,
   useTheme
@@ -39,6 +35,21 @@ const VehicleForm = ({
     engines: ['petrol', 'diesel', 'gas', 'hybrid', 'electric'],
     transmissions: ['manual', 'automatic', 'robot', 'variator']
   });
+  const brands = Object.keys(brandModelYears).sort();
+  const models = formData.brand && brandModelYears[formData.brand]
+    ? Object.keys(brandModelYears[formData.brand]).sort()
+    : [];
+  const yearsBase = (formData.brand && formData.model && brandModelYears[formData.brand] && brandModelYears[formData.brand][formData.model])
+    ? brandModelYears[formData.brand][formData.model]
+    : [];
+  const years = formData.year && !yearsBase.includes(Number(formData.year))
+    ? [Number(formData.year), ...yearsBase]
+    : yearsBase;
+  const colors = ['black', 'white', 'gray', 'silver', 'red', 'blue', 'green', 'yellow', 'brown'];
+
+  const emitChange = (name, value) => {
+    handleChange({ target: { name, value } });
+  };
 
   // Оновлення доступних специфікацій при зміні авто/року
   useEffect(() => {
@@ -208,83 +219,69 @@ const VehicleForm = ({
         </Grid>
 
         <Grid item xs={12} sm={6}>
-          <FormControl fullWidth error={!!errors.brand}>
-            <InputLabel>{t('vehicle.brand', 'Марка')} *</InputLabel>
-            <Select
-              id="brand"
-              name="brand"
-              value={formData.brand}
-              label={t('vehicle.brand', 'Марка') + ' *'}
-              onChange={handleChange}
-              required
-            >
-              {Object.keys(brandModelYears).sort().map((brand) => (
-                <MenuItem key={brand} value={brand}>{brand}</MenuItem>
-              ))}
-            </Select>
-            {errors.brand && <FormHelperText>{errors.brand}</FormHelperText>}
-          </FormControl>
+          <Autocomplete
+            options={brands}
+            value={formData.brand || null}
+            onChange={(_, value) => {
+              emitChange('brand', value || '');
+              emitChange('model', '');
+              emitChange('year', '');
+            }}
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                id="brand"
+                label={t('vehicle.brand', 'Марка') + ' *'}
+                required
+                error={!!errors.brand}
+                helperText={errors.brand}
+                placeholder={t('common.search', 'Пошук')}
+              />
+            )}
+          />
         </Grid>
 
         <Grid item xs={12} sm={6}>
-          <FormControl fullWidth error={!!errors.model}>
-            <InputLabel>{t('vehicle.model', 'Модель')} *</InputLabel>
-            <Select
-              id="model"
-              name="model"
-              value={formData.model}
-              label={t('vehicle.model', 'Модель') + ' *'}
-              onChange={handleChange}
-              disabled={!formData.brand}
-              required
-            >
-              {formData.brand &&
-                formData.model &&
-                brandModelYears[formData.brand] &&
-                !Object.prototype.hasOwnProperty.call(brandModelYears[formData.brand], formData.model) && (
-                  <MenuItem key={`custom-model-${formData.model}`} value={formData.model}>
-                    {formData.model}
-                  </MenuItem>
-                )}
-              {formData.brand && brandModelYears[formData.brand] && 
-                Object.keys(brandModelYears[formData.brand]).sort().map((model) => (
-                  <MenuItem key={model} value={model}>{model}</MenuItem>
-                ))
-              }
-            </Select>
-            {errors.model && <FormHelperText>{errors.model}</FormHelperText>}
-          </FormControl>
+          <Autocomplete
+            options={models}
+            value={formData.model || null}
+            disabled={!formData.brand}
+            onChange={(_, value) => {
+              emitChange('model', value || '');
+              emitChange('year', '');
+            }}
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                id="model"
+                label={t('vehicle.model', 'Модель') + ' *'}
+                required
+                error={!!errors.model}
+                helperText={errors.model}
+                placeholder={t('common.search', 'Пошук')}
+              />
+            )}
+          />
         </Grid>
 
         <Grid item xs={12} sm={6}>
-          <FormControl fullWidth error={!!errors.year}>
-            <InputLabel>{t('vehicle.year', 'Рік випуску')} *</InputLabel>
-            <Select
-              id="year"
-              name="year"
-              value={formData.year}
-              label={t('vehicle.year', 'Рік випуску') + ' *'}
-              onChange={handleChange}
-              disabled={!formData.brand || !formData.model}
-              required
-            >
-              {formData.brand &&
-                formData.model &&
-                formData.year &&
-                Array.isArray(brandModelYears?.[formData.brand]?.[formData.model]) &&
-                !brandModelYears[formData.brand][formData.model].includes(Number(formData.year)) && (
-                  <MenuItem key={`custom-year-${formData.year}`} value={formData.year}>
-                    {formData.year}
-                  </MenuItem>
-                )}
-              {formData.brand && formData.model && brandModelYears[formData.brand] && brandModelYears[formData.brand][formData.model] &&
-                brandModelYears[formData.brand][formData.model].map((year) => (
-                  <MenuItem key={year} value={year}>{year}</MenuItem>
-                ))
-              }
-            </Select>
-            {errors.year && <FormHelperText>{errors.year}</FormHelperText>}
-          </FormControl>
+          <Autocomplete
+            options={years}
+            value={formData.year ? Number(formData.year) : null}
+            disabled={!formData.brand || !formData.model}
+            onChange={(_, value) => emitChange('year', value ? Number(value) : '')}
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                id="year"
+                label={t('vehicle.year', 'Рік випуску') + ' *'}
+                required
+                error={!!errors.year}
+                helperText={errors.year}
+                placeholder={t('common.search', 'Пошук')}
+              />
+            )}
+          />
         </Grid>
 
         <Grid item xs={12} sm={6}>
@@ -302,41 +299,37 @@ const VehicleForm = ({
         </Grid>
 
         <Grid item xs={12} sm={6}>
-          <FormControl fullWidth>
-            <InputLabel>{t('vehicle.engineType', 'Тип двигуна')}</InputLabel>
-            <Select
-              name="engineType"
-              value={formData.engineType}
-              label={t('vehicle.engineType', 'Тип двигуна')}
-              onChange={handleChange}
-              disabled={!formData.year}
-            >
-              {availableSpecs.engines.map((type) => (
-                <MenuItem key={type} value={type}>
-                  {t(`vehicle.engineTypes.${type}`, type)}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
+          <Autocomplete
+            options={availableSpecs.engines}
+            value={formData.engineType || null}
+            disabled={!formData.year}
+            onChange={(_, value) => emitChange('engineType', value || '')}
+            getOptionLabel={(option) => t(`vehicle.engineTypes.${option}`, option)}
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                label={t('vehicle.engineType', 'Тип двигуна')}
+                placeholder={t('common.search', 'Пошук')}
+              />
+            )}
+          />
         </Grid>
 
         <Grid item xs={12} sm={6}>
-          <FormControl fullWidth>
-            <InputLabel>{t('vehicle.transmission', 'Коробка передач')}</InputLabel>
-            <Select
-              name="transmission"
-              value={formData.transmission || ''}
-              label={t('vehicle.transmission', 'Коробка передач')}
-              onChange={handleChange}
-              disabled={!formData.year}
-            >
-              {availableSpecs.transmissions.map((type) => (
-                <MenuItem key={type} value={type}>
-                  {t(`vehicle.transmissionTypes.${type}`, type)}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
+          <Autocomplete
+            options={availableSpecs.transmissions}
+            value={formData.transmission || null}
+            disabled={!formData.year}
+            onChange={(_, value) => emitChange('transmission', value || '')}
+            getOptionLabel={(option) => t(`vehicle.transmissionTypes.${option}`, option)}
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                label={t('vehicle.transmission', 'Коробка передач')}
+                placeholder={t('common.search', 'Пошук')}
+              />
+            )}
+          />
         </Grid>
 
         <Grid item xs={12} sm={6}>
@@ -361,21 +354,19 @@ const VehicleForm = ({
         </Grid>
 
         <Grid item xs={12} sm={6}>
-          <FormControl fullWidth>
-            <InputLabel>{t('vehicle.color', 'Забарвлення')}</InputLabel>
-            <Select
-              name="color"
-              value={formData.color}
-              label={t('vehicle.color', 'Забарвлення')}
-              onChange={handleChange}
-            >
-              {['black', 'white', 'gray', 'silver', 'red', 'blue', 'green', 'yellow', 'brown'].map((color) => (
-                <MenuItem key={color} value={color}>
-                  {t(`vehicle.colors.${color}`, color)}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
+          <Autocomplete
+            options={colors}
+            value={formData.color || null}
+            onChange={(_, value) => emitChange('color', value || '')}
+            getOptionLabel={(option) => t(`vehicle.colors.${option}`, option)}
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                label={t('vehicle.color', 'Забарвлення')}
+                placeholder={t('common.search', 'Пошук')}
+              />
+            )}
+          />
         </Grid>
 
         <Grid item xs={12} sm={6}>
