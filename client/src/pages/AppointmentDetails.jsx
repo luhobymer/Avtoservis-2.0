@@ -15,6 +15,7 @@ import { getCurrent as getCurrentMechanic, list as listMechanics } from '../api/
 import { listMechanicServices } from '../api/dao/mechanicServicesDao';
 import { listForAppointment as listVehiclePartsForAppointment } from '../api/dao/vehiclePartsDao';
 import { createMechanicService } from '../api/dao/mechanicServicesDao';
+import { listServiceCategories } from '../api/dao/serviceCategoriesDao';
 import {
   Container,
   Typography,
@@ -147,7 +148,14 @@ const AppointmentDetails = ({ isNew }) => {
   const [addServiceDialogOpen, setAddServiceDialogOpen] = useState(false);
   const [addServiceSaving, setAddServiceSaving] = useState(false);
   const [addServiceError, setAddServiceError] = useState('');
-  const [addServiceForm, setAddServiceForm] = useState({ name: '', price: '', duration: '' });
+  const [addServiceForm, setAddServiceForm] = useState({
+    name: '',
+    price: '',
+    duration: '',
+    category_id: '',
+  });
+  const [addServiceCategories, setAddServiceCategories] = useState([]);
+  const [servicesAction, setServicesAction] = useState('');
 
   const [mechanicCity, setMechanicCity] = useState('');
   const [serviceCategoryId, setServiceCategoryId] = useState('');
@@ -548,7 +556,7 @@ const AppointmentDetails = ({ isNew }) => {
 
   const handleOpenAddService = () => {
     setAddServiceError('');
-    setAddServiceForm({ name: '', price: '', duration: '' });
+    setAddServiceForm({ name: '', price: '', duration: '', category_id: '' });
     setAddServiceDialogOpen(true);
   };
 
@@ -570,6 +578,7 @@ const AppointmentDetails = ({ isNew }) => {
         name,
         price: addServiceForm.price !== '' ? Number(addServiceForm.price) : null,
         duration: addServiceForm.duration !== '' ? Number(addServiceForm.duration) : null,
+        category_id: addServiceForm.category_id || null,
       };
       const created = await createMechanicService(mechanicId, payload);
       const createdId = created?.service_id || created?.serviceId || created?.id;
@@ -587,6 +596,30 @@ const AppointmentDetails = ({ isNew }) => {
       setAddServiceError(err?.message || t('common.error', 'Помилка'));
     } finally {
       setAddServiceSaving(false);
+    }
+  };
+
+  useEffect(() => {
+    const run = async () => {
+      try {
+        const rows = await listServiceCategories();
+        setAddServiceCategories(Array.isArray(rows) ? rows : []);
+      } catch (_) {
+        setAddServiceCategories([]);
+      }
+    };
+    run();
+  }, []);
+
+  const handleServicesActionChange = (e) => {
+    const action = e.target.value;
+    setServicesAction('');
+    if (action === 'confirm') {
+      handleConfirmServices();
+      return;
+    }
+    if (action === 'add') {
+      handleOpenAddService();
     }
   };
 
@@ -1006,33 +1039,33 @@ const AppointmentDetails = ({ isNew }) => {
                 </Grid>
                 {isNewAppointment && (
                   <Grid item xs={12}>
-                    <Box sx={{ display: 'flex', gap: 2, flexDirection: isMobile ? 'column' : 'row' }}>
-                      <Button
-                        type="button"
-                        variant={servicesConfirmed ? 'contained' : 'outlined'}
-                        color={servicesConfirmed ? 'success' : 'primary'}
-                        onClick={handleConfirmServices}
-                        disabled={!formData.mechanic_id || !serviceCategoryId || (formData.service_ids || []).length === 0}
-                        size="large"
-                        fullWidth={isMobile}
+                    <FormControl fullWidth>
+                      <InputLabel id="services-actions-label">
+                        {t('appointment.servicesActions', 'Дії з роботами')}
+                      </InputLabel>
+                      <Select
+                        labelId="services-actions-label"
+                        id="services-actions"
+                        value={servicesAction}
+                        onChange={handleServicesActionChange}
+                        label={t('appointment.servicesActions', 'Дії з роботами')}
                       >
-                        {servicesConfirmed
-                          ? t('appointment.servicesConfirmed', 'Послуги підтверджено')
-                          : t('appointment.confirmServices', 'Підтвердити вибір послуг')}
-                      </Button>
-                      {isMasterUser && (
-                        <Button
-                          type="button"
-                          variant="text"
-                          onClick={handleOpenAddService}
-                          disabled={!formData.mechanic_id}
-                          size="large"
-                          fullWidth={isMobile}
+                        <MenuItem value="" disabled>
+                          {t('appointment.selectAction', 'Оберіть дію')}
+                        </MenuItem>
+                        <MenuItem
+                          value="confirm"
+                          disabled={!formData.mechanic_id || !serviceCategoryId || (formData.service_ids || []).length === 0}
                         >
+                          {servicesConfirmed
+                            ? t('appointment.servicesConfirmed', 'Послуги підтверджено')
+                            : t('appointment.confirmServices', 'Підтвердити вибір послуг')}
+                        </MenuItem>
+                        <MenuItem value="add" disabled={!isMasterUser || !formData.mechanic_id}>
                           {t('services.add', 'Додати послугу')}
-                        </Button>
-                      )}
-                    </Box>
+                        </MenuItem>
+                      </Select>
+                    </FormControl>
                   </Grid>
                 )}
               <Grid item xs={12} sm={6}>
@@ -1159,6 +1192,28 @@ const AppointmentDetails = ({ isNew }) => {
             onChange={(e) => setAddServiceForm((prev) => ({ ...prev, price: e.target.value }))}
             margin="normal"
           />
+          <FormControl fullWidth margin="normal">
+            <InputLabel id="add-service-category-label">
+              {t('services.category', 'Категорія')}
+            </InputLabel>
+            <Select
+              labelId="add-service-category-label"
+              value={addServiceForm.category_id}
+              label={t('services.category', 'Категорія')}
+              onChange={(e) =>
+                setAddServiceForm((prev) => ({ ...prev, category_id: e.target.value }))
+              }
+            >
+              <MenuItem value="">
+                {t('services.noCategory', 'Без категорії')}
+              </MenuItem>
+              {addServiceCategories.map((category) => (
+                <MenuItem key={category.id} value={String(category.id)}>
+                  {category.name}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
           <TextField
             fullWidth
             type="number"

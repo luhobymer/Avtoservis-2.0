@@ -7,6 +7,7 @@
  - План покращення та синхронізації (Web vs Mobile): [IMPROVEMENT_PLAN.md](./IMPROVEMENT_PLAN.md)
  - План прибирання репозиторію: [CLEANUP_PLAN.md](./CLEANUP_PLAN.md)
 - План міграції на Render і деплой проекту: [DEPLOY_RENDER_PLAN.md](./DEPLOY_RENDER_PLAN.md)
+- Гайд по формі створення запису: [APPOINTMENT_FORM_GUIDE.md](./APPOINTMENT_FORM_GUIDE.md)
 
 ## Тимчасові обмеження
 
