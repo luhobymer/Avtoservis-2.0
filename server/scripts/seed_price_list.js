@@ -19,15 +19,39 @@ const parseMinNumber = (text) => {
 const normalizeServiceName = (value) =>
   String(value || '')
     .toLowerCase()
+    .replace(/\([^)]*\)/g, ' ')
+    .replace(/\b(v6|v8|8кл|16кл|4\s*цил|6\s*цил|8\s*цил|бенз|дизель)\b/gi, ' ')
     .replace(/[()]/g, ' ')
     .replace(/[.,/\\+\-]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 
+const canonicalCategoryName = (value) => {
+  const normalized = String(value || '')
+    .toLowerCase()
+    .replace(/[^a-zа-яіїєґ0-9\s]+/giu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!normalized) return '';
+  if (normalized.includes('діагност')) return 'Діагностика';
+  if (normalized.includes('двигун')) return 'Двигун';
+  if (normalized.includes('зчеп')) return 'Зчеплення';
+  if (normalized.includes('гальм')) return 'Гальмівна система';
+  if (normalized.includes('охолод')) return 'Система охолодження';
+  if (normalized.includes('запал')) return 'Система запалювання';
+  if (normalized.includes('вихлоп') || normalized.includes('глуш')) return 'Вихлопна система';
+  if (normalized.includes('електр')) return 'Автоелектрика';
+  if (normalized.includes('підвіск') || normalized.includes('рульов')) return 'Підвіска та рульове';
+  if (normalized.includes('трансм')) return 'Трансмісія';
+  if (normalized.includes('клімат') || normalized.includes('кондиц')) return 'Кліматична система';
+  if (normalized.includes('то') || normalized.includes('обслугов')) return 'Планове ТО';
+  return String(value || '').trim();
+};
+
 const dedupePriceList = (catalog) => {
   const categoryMap = new Map();
   for (const group of catalog || []) {
-    const category = String(group?.category || '').trim();
+    const category = canonicalCategoryName(group?.category);
     if (!category) continue;
     if (!categoryMap.has(category)) categoryMap.set(category, []);
     const existingItems = categoryMap.get(category);

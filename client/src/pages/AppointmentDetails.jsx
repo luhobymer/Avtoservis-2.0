@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState, useEffect } from 'react';
+import React, { useMemo, useRef, useState, useEffect, useCallback } from 'react';
 import { Alert } from '@mui/material';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -156,7 +156,6 @@ const AppointmentDetails = ({ isNew }) => {
     category_id: '',
   });
   const [addServiceCategories, setAddServiceCategories] = useState([]);
-  const [servicesAction, setServicesAction] = useState('');
 
   const [mechanicCity, setMechanicCity] = useState('');
   const [serviceCategoryId, setServiceCategoryId] = useState('');
@@ -178,6 +177,7 @@ const AppointmentDetails = ({ isNew }) => {
     appointment_price: '',
     appointment_duration: ''
   });
+  const [serviceSelectOpen, setServiceSelectOpen] = useState(false);
 
   // ... (Keep existing fetch effects and helper functions)
   // Re-implementing them briefly to ensure file integrity
@@ -187,6 +187,40 @@ const AppointmentDetails = ({ isNew }) => {
     if (service?.price != null) return `${service.price} грн`;
     return '';
   };
+
+  const normalizeCategoryLabel = useCallback((value) =>
+    String(value || '')
+      .toLowerCase()
+      .replace(/[^a-zа-яіїєґ0-9\s]+/giu, ' ')
+      .replace(/\s+/g, ' ')
+      .trim(), []);
+
+  const canonicalCategoryLabel = useCallback((value) => {
+    const normalized = normalizeCategoryLabel(value);
+    if (!normalized) return t('services.noCategory', 'Без категорії');
+    if (normalized.includes('діагност')) return 'Діагностика';
+    if (normalized.includes('двигун')) return 'Двигун';
+    if (normalized.includes('зчеп')) return 'Зчеплення';
+    if (normalized.includes('гальм')) return 'Гальмівна система';
+    if (normalized.includes('охолод')) return 'Система охолодження';
+    if (normalized.includes('запал')) return 'Система запалювання';
+    if (normalized.includes('вихлоп') || normalized.includes('глуш')) return 'Вихлопна система';
+    if (normalized.includes('електр')) return 'Автоелектрика';
+    if (normalized.includes('підвіск') || normalized.includes('рульов')) return 'Підвіска та рульове';
+    if (normalized.includes('трансм')) return 'Трансмісія';
+    if (normalized.includes('клімат') || normalized.includes('кондиц')) return 'Кліматична система';
+    if (normalized.includes('то') || normalized.includes('обслугов')) return 'Планове ТО';
+    return String(value || '').trim();
+  }, [normalizeCategoryLabel, t]);
+
+  const normalizeServiceLabel = useCallback((value) =>
+    String(value || '')
+      .toLowerCase()
+      .replace(/\([^)]*\)/g, ' ')
+      .replace(/\b(v6|v8|8кл|16кл|4\s*цил|6\s*цил|8\s*цил|бенз|дизель)\b/giu, ' ')
+      .replace(/[^a-zа-яіїєґ0-9\s]+/giu, ' ')
+      .replace(/\s+/g, ' ')
+      .trim(), []);
 
   useEffect(() => {
     const fetchVehicles = async () => {
@@ -418,18 +452,59 @@ const AppointmentDetails = ({ isNew }) => {
     run();
   }, [formData.mechanic_id, t, isNewAppointment]);
 
+  const serviceOptions = useMemo(() => {
+    const grouped = new Map();
+    for (const s of services || []) {
+      const rawCategoryName =
+        (s?.category && s.category.name) || s?.category_name || s?.categoryName || t('services.noCategory', 'Без категорії');
+      const categoryName = canonicalCategoryLabel(rawCategoryName);
+      const categoryKey = normalizeCategoryLabel(categoryName) || '__none__';
+      const serviceName = String(s?.name || '').trim();
+      if (!serviceName) continue;
+      if (!grouped.has(categoryKey)) grouped.set(categoryKey, []);
+      grouped.get(categoryKey).push({
+        ...s,
+        category_key: categoryKey,
+        category_name: categoryName,
+        display_name: serviceName,
+      });
+    }
+
+    const result = [];
+    for (const [categoryKey, rows] of grouped.entries()) {
+      const sortedRows = [...rows].sort((a, b) =>
+        String(a.display_name || '').length - String(b.display_name || '').length
+      );
+      const seen = [];
+      for (const row of sortedRows) {
+        const normalized = normalizeServiceLabel(row.display_name);
+        if (!normalized) continue;
+        const alreadySeen = seen.some((saved) => {
+          if (saved === normalized) return true;
+          if (saved.includes(normalized) && saved.length - normalized.length <= 8) return true;
+          if (normalized.includes(saved) && normalized.length - saved.length <= 8) return true;
+          return false;
+        });
+        if (alreadySeen) continue;
+        seen.push(normalized);
+        result.push({ ...row, category_key: categoryKey });
+      }
+    }
+    return result;
+  }, [canonicalCategoryLabel, normalizeCategoryLabel, normalizeServiceLabel, services, t]);
+
   const serviceCategories = useMemo(() => {
     const map = new Map();
-    for (const s of services || []) {
-      const id = (s?.category && s.category.id) || s?.category_id || s?.categoryId || '';
-      const name = (s?.category && s.category.name) || s?.category_name || s?.categoryName || '';
-      const key = id || '__none__';
-      if (!map.has(key)) {
-        map.set(key, { id: key, name: name || t('services.noCategory', 'Без категорії') });
+    for (const option of serviceOptions) {
+      if (!map.has(option.category_key)) {
+        map.set(option.category_key, {
+          id: option.category_key,
+          name: option.category_name || t('services.noCategory', 'Без категорії'),
+        });
       }
     }
     return Array.from(map.values()).sort((a, b) => String(a.name).localeCompare(String(b.name)));
-  }, [services, t]);
+  }, [serviceOptions, t]);
 
   useEffect(() => {
     if (!services || services.length === 0) {
@@ -440,22 +515,18 @@ const AppointmentDetails = ({ isNew }) => {
       ? formData.service_ids[0]
       : formData.service_id;
     const selectedService = selectedServiceId
-      ? (services || []).find((s) => String(s.id) === String(selectedServiceId))
+      ? (serviceOptions || []).find((s) => String(s.id) === String(selectedServiceId))
       : null;
 
     if (selectedService) {
-      const selectedCategory =
-        (selectedService?.category && selectedService.category.id) ||
-        selectedService?.category_id ||
-        selectedService?.categoryId ||
-        '__none__';
+      const selectedCategory = selectedService?.category_key || '__none__';
       
       // Force update category ID if it doesn't match
       if (serviceCategoryId !== String(selectedCategory)) {
           setServiceCategoryId(String(selectedCategory));
       }
       return;
-    } else if (formData.service_id && services.length > 0) {
+    } else if (formData.service_id && serviceOptions.length > 0) {
         // Service ID exists but not found in services list? 
         // Try to find if it's because of type mismatch or something.
         // Or maybe services list is incomplete?
@@ -474,7 +545,7 @@ const AppointmentDetails = ({ isNew }) => {
     if (!serviceCategoryId && serviceCategories.length > 0 && isNewAppointment) {
       setServiceCategoryId(String(serviceCategories[0].id));
     }
-  }, [services, formData.service_id, formData.service_ids, serviceCategories, serviceCategoryId, isNewAppointment]);
+  }, [serviceOptions, formData.service_id, formData.service_ids, serviceCategories, serviceCategoryId, isNewAppointment, services]);
 
   useEffect(() => {
     if (!mechanics || mechanics.length === 0) return;
@@ -522,7 +593,7 @@ const AppointmentDetails = ({ isNew }) => {
     const selectedIds = Array.isArray(value)
       ? value.map((v) => String(v)).filter(Boolean)
       : (value ? [String(value)] : []);
-    const selectedServices = (services || []).filter((s) =>
+    const selectedServices = (serviceOptions || []).filter((s) =>
       selectedIds.includes(String(s.id))
     );
     const selectedPrice = selectedServices
@@ -610,18 +681,6 @@ const AppointmentDetails = ({ isNew }) => {
     };
     run();
   }, []);
-
-  const handleServicesActionChange = (e) => {
-    const action = e.target.value;
-    setServicesAction('');
-    if (action === 'confirm') {
-      handleConfirmServices();
-      return;
-    }
-    if (action === 'add') {
-      handleOpenAddService();
-    }
-  };
 
   const handleMechanicChange = (e) => {
     const { value } = e.target;
@@ -917,11 +976,10 @@ const AppointmentDetails = ({ isNew }) => {
 
   const filteredServices = useMemo(() => {
     if (!serviceCategoryId) return [];
-    return (services || []).filter((s) => {
-      const cid = (s?.category && s.category.id) || s?.category_id || s?.categoryId || '';
-      return String(cid || '__none__') === String(serviceCategoryId);
-    });
-  }, [services, serviceCategoryId]);
+    return (serviceOptions || []).filter(
+      (s) => String(s?.category_key || '__none__') === String(serviceCategoryId)
+    );
+  }, [serviceOptions, serviceCategoryId]);
 
   const selectedCategory = useMemo(
     () => serviceCategories.find((cat) => String(cat.id) === String(serviceCategoryId)) || null,
@@ -930,8 +988,8 @@ const AppointmentDetails = ({ isNew }) => {
 
   const selectedServices = useMemo(() => {
     const ids = new Set((formData.service_ids || []).map((sid) => String(sid)));
-    return filteredServices.filter((service) => ids.has(String(service.id)));
-  }, [filteredServices, formData.service_ids]);
+    return (serviceOptions || []).filter((service) => ids.has(String(service.id)));
+  }, [serviceOptions, formData.service_ids]);
 
   if (loading) {
     return <Container sx={{ mt: 4, display: 'flex', justifyContent: 'center' }}><CircularProgress /></Container>;
@@ -1025,6 +1083,7 @@ const AppointmentDetails = ({ isNew }) => {
                     onChange={(_, nextCategory) => {
                       setServiceCategoryId(nextCategory ? String(nextCategory.id) : '');
                       setFormData((prev) => ({ ...prev, service_id: null, service_ids: [] }));
+                      setServiceSelectOpen(false);
                     }}
                     isOptionEqualToValue={(option, value) => String(option.id) === String(value.id)}
                     getOptionLabel={(option) => String(option?.name || '')}
@@ -1042,10 +1101,13 @@ const AppointmentDetails = ({ isNew }) => {
                   <Autocomplete
                     id="service_ids"
                     multiple
+                    open={serviceSelectOpen}
                     disableCloseOnSelect
                     options={filteredServices}
                     value={selectedServices}
                     disabled={!serviceCategoryId}
+                    onOpen={() => setServiceSelectOpen(true)}
+                    onClose={() => setServiceSelectOpen(false)}
                     onChange={(_, values) => handleServiceChange(values.map((service) => String(service.id)))}
                     isOptionEqualToValue={(option, value) => String(option.id) === String(value.id)}
                     getOptionLabel={(option) =>
@@ -1070,38 +1132,49 @@ const AppointmentDetails = ({ isNew }) => {
                       />
                     )}
                   />
-                </Grid>
-                {isNewAppointment && (
-                  <Grid item xs={12}>
-                    <FormControl fullWidth>
-                      <InputLabel id="services-actions-label">
-                        {t('appointment.servicesActions', 'Дії з роботами')}
-                      </InputLabel>
-                      <Select
-                        labelId="services-actions-label"
-                        id="services-actions"
-                        value={servicesAction}
-                        onChange={handleServicesActionChange}
-                        label={t('appointment.servicesActions', 'Дії з роботами')}
+                  <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mt: 1 }}>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      onClick={() => handleServiceChange([])}
+                      disabled={(formData.service_ids || []).length === 0}
+                    >
+                      {t('common.clear', 'Очистити')}
+                    </Button>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      onClick={() => setServiceSelectOpen(false)}
+                      disabled={!serviceSelectOpen}
+                    >
+                      {t('common.done', 'Готово')}
+                    </Button>
+                    {isNewAppointment && (
+                      <Button
+                        size="small"
+                        variant="contained"
+                        onClick={handleConfirmServices}
+                        disabled={(formData.service_ids || []).length === 0}
                       >
-                        <MenuItem value="" disabled>
-                          {t('appointment.selectAction', 'Оберіть дію')}
-                        </MenuItem>
-                        <MenuItem
-                          value="confirm"
-                          disabled={!formData.mechanic_id || !serviceCategoryId || (formData.service_ids || []).length === 0}
-                        >
-                          {servicesConfirmed
-                            ? t('appointment.servicesConfirmed', 'Послуги підтверджено')
-                            : t('appointment.confirmServices', 'Підтвердити вибір послуг')}
-                        </MenuItem>
-                        <MenuItem value="add" disabled={!isMasterUser || !formData.mechanic_id}>
-                          {t('services.add', 'Додати послугу')}
-                        </MenuItem>
-                      </Select>
-                    </FormControl>
+                        {servicesConfirmed
+                          ? t('appointment.servicesConfirmed', 'Послуги підтверджено')
+                          : t('appointment.confirmServices', 'Підтвердити вибір послуг')}
+                      </Button>
+                    )}
+                  </Box>
+                </Grid>
+                {isNewAppointment && isMasterUser ? (
+                  <Grid item xs={12}>
+                    <Button
+                      variant="text"
+                      size="small"
+                      onClick={handleOpenAddService}
+                      disabled={!formData.mechanic_id}
+                    >
+                      {t('services.add', 'Додати послугу')}
+                    </Button>
                   </Grid>
-                )}
+                ) : null}
               <Grid item xs={12} sm={6}>
                 <TextField
                   fullWidth

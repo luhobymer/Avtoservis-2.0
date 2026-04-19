@@ -35,6 +35,8 @@ import {
   Box,
   Snackbar,
   TextField,
+  useMediaQuery,
+  useTheme,
 } from '@mui/material';
 import VehicleForm from '../components/vehicle/VehicleForm';
 import DeleteVehicleDialog from '../components/vehicle/DeleteVehicleDialog';
@@ -60,6 +62,8 @@ const VehicleDetailsContent = () => {
   const { t } = useTranslation();
   const { user, isMaster, isAdmin } = useAuth();
   const isNewVehicle = !id;
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
   const isMasterUser =
     typeof isMaster === 'function'
@@ -886,10 +890,10 @@ const VehicleDetailsContent = () => {
   }
 
   return (
-    <Container maxWidth="md" sx={{ mt: 4 }}>
-      <Paper sx={{ p: 3 }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-          <Typography variant="h5">
+    <Container maxWidth="md" sx={{ mt: { xs: 2, sm: 4 } }}>
+      <Paper sx={{ p: { xs: 2, sm: 3 } }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2, gap: 1 }}>
+          <Typography variant={isMobile ? 'h6' : 'h5'} sx={{ wordBreak: 'break-word', pr: 1 }}>
             {isNewVehicle ? t('vehicle.new', 'Новий автомобіль') : `${formData.brand} ${formData.model} (${formData.licensePlate})`}
           </Typography>
         </Box>
@@ -902,7 +906,21 @@ const VehicleDetailsContent = () => {
 
         {!isNewVehicle && (
           <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
-            <Tabs value={tabValue} onChange={(e, v) => setTabValue(v)}>
+            <Tabs
+              value={tabValue}
+              onChange={(e, v) => setTabValue(v)}
+              variant={isMobile ? 'scrollable' : 'standard'}
+              allowScrollButtonsMobile
+              scrollButtons={isMobile ? 'auto' : false}
+              sx={{
+                '& .MuiTab-root': {
+                  textTransform: 'none',
+                  minHeight: { xs: 44, sm: 48 },
+                  fontSize: { xs: '0.78rem', sm: '0.875rem' },
+                  px: { xs: 1, sm: 2 },
+                },
+              }}
+            >
               <Tab label={t('vehicle.info', 'Інформація')} />
               <Tab label={t('vehicle.maintenance', 'Регламент ТО')} />
               <Tab label={t('serviceRecord.title', 'Сервісна книга')} />
