@@ -33,7 +33,12 @@ import {
 } from '@mui/icons-material';
 import useAuth from '../context/useAuth';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+const DEFAULT_API_BASE_URL = 'https://avtoservis-server.onrender.com';
+const API_BASE_URL = (
+  import.meta.env.VITE_API_BASE_URL || DEFAULT_API_BASE_URL
+)
+  .trim()
+  .replace(/\/+$/, '');
 const resolveUrl = (url) => (url.startsWith('http') ? url : `${API_BASE_URL}${url}`);
 
 // Mock API calls (replace with real ones later or move to dao)
@@ -43,6 +48,9 @@ const api = {
     const res = await fetch(resolveUrl('/api/relationships/mechanics'), {
       headers: { Authorization: `Bearer ${token}` }
     });
+    if (!res.ok) {
+      throw new Error('Failed to load mechanics');
+    }
     return res.json();
   },
   searchMasters: async (city, name) => {
@@ -54,6 +62,9 @@ const api = {
     const res = await fetch(resolveUrl(`/api/relationships/search-masters?${params.toString()}`), {
       headers: { Authorization: `Bearer ${token}` }
     });
+    if (!res.ok) {
+      throw new Error('Failed to search mechanics');
+    }
     return res.json();
   },
   inviteMechanic: async (mechanicId) => {

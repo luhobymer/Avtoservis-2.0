@@ -5,6 +5,7 @@ import { useAuth } from '../context/useAuth';
 import * as vehiclesDao from '../api/dao/vehiclesDao';
 import * as appointmentsDao from '../api/dao/appointmentsDao';
 import * as serviceRecordsDao from '../api/dao/serviceRecordsDao';
+import { getCurrent as getCurrentMechanic } from '../api/dao/mechanicsDao';
 import {
   Container,
   Grid,
@@ -176,13 +177,38 @@ const Dashboard = () => {
           return;
         }
 
+        let mechanicId = null;
+        if (isMasterUser) {
+          try {
+            const mechanic = await getCurrentMechanic();
+            mechanicId = mechanic?.id ? String(mechanic.id) : null;
+          } catch (_) {
+            mechanicId = null;
+          }
+        }
+
         const vehiclesPromise = isMasterUser
           ? vehiclesDao.list({ serviced: true })
           : vehiclesDao.listForUser(user.id);
         const appointmentsPromise = isMasterUser
-          ? appointmentsDao.listForMechanic(user.id)
+          ? (async () => {
+              if (!mechanicId) return [];
+              const direct = await appointmentsDao.listForMechanic(mechanicId);
+              if (Array.isArray(direct) && direct.length > 0) return direct;
+              try {
+                const adminRows = await appointmentsDao.listAdmin();
+                return (Array.isArray(adminRows) ? adminRows : []).filter((a) => {
+                  const rawMechanicId = a.mechanic_id ?? a.mechanicId ?? a.mechanics?.id ?? null;
+                  return rawMechanicId != null && String(rawMechanicId) === String(mechanicId);
+                });
+              } catch (_) {
+                return Array.isArray(direct) ? direct : [];
+              }
+            })()
           : appointmentsDao.listForUser(user.id);
-        const serviceRecordsPromise = serviceRecordsDao.listForUser(user.id);
+        const serviceRecordsPromise = isMasterUser
+          ? serviceRecordsDao.listAdmin()
+          : serviceRecordsDao.listForUser(user.id);
 
         const [vehiclesResult, appointmentsResult, serviceRecordsResult] =
           await Promise.allSettled([vehiclesPromise, appointmentsPromise, serviceRecordsPromise]);
@@ -222,21 +248,20 @@ const Dashboard = () => {
         
         setServiceRecords(Array.isArray(serviceRecordsList) ? serviceRecordsList : []);
 
-        // Fetch master data if applicable
+        // Build master data if applicable
         if (isMasterUser) {
           try {
-            const adminAppointments = await appointmentsDao.listAdmin();
             const now = new Date();
             const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
             const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
             
-            const today = (adminAppointments || []).filter((a) => {
+            const today = (appointmentsList || []).filter((a) => {
               if (!a.scheduledDate) return false;
               const d = new Date(a.scheduledDate);
               return d >= startOfToday && d < endOfToday;
             });
             
-            const upcoming = (adminAppointments || [])
+            const upcoming = (appointmentsList || [])
               .filter((a) => {
                 if (!a.scheduledDate) return false;
                 const d = new Date(a.scheduledDate);

@@ -77,7 +77,19 @@ const MasterDashboard = () => {
           appointmentsDao.listForMechanic(currentMechanic.id),
           scheduleDao.getMasterBusyStatus(currentMechanic.id)
         ]);
-        const list = Array.isArray(rows) ? rows : [];
+        let list = Array.isArray(rows) ? rows : [];
+        if (list.length === 0) {
+          try {
+            const adminRows = await appointmentsDao.listAdmin();
+            const mechanicIdText = String(currentMechanic.id);
+            list = (Array.isArray(adminRows) ? adminRows : []).filter((a) => {
+              const rawMechanicId = a.mechanic_id ?? a.mechanicId ?? a.mechanics?.id ?? null;
+              return rawMechanicId != null && String(rawMechanicId) === mechanicIdText;
+            });
+          } catch (_) {
+            void _;
+          }
+        }
         setAppointments(list);
         const now = new Date();
         const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());

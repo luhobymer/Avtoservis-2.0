@@ -187,6 +187,18 @@ const Reminders = () => {
     }
   }, [user?.id, user?.role, t]);
 
+  const openEditDialog = useCallback((reminder) => {
+    setEditingReminder(reminder);
+    setNewReminder({
+      title: reminder.title || '',
+      date: resolveReminderDate(reminder) || '',
+      vehicleVin: reminder.vehicle_vin || reminder.vehicleVin || '',
+      type: reminder.reminder_type || reminder.type || 'maintenance',
+      priority: reminder.priority || 'medium'
+    });
+    setDialogOpen(true);
+  }, []);
+
   useEffect(() => {
     fetchData();
   }, [fetchData]);
@@ -309,18 +321,6 @@ const Reminders = () => {
     setNewReminder({ title: '', date: '', vehicleVin: '', type: 'maintenance', priority: 'medium' });
     setDialogOpen(true);
   };
-
-  const openEditDialog = useCallback((reminder) => {
-    setEditingReminder(reminder);
-    setNewReminder({
-      title: reminder.title || '',
-      date: resolveReminderDate(reminder) || '',
-      vehicleVin: reminder.vehicle_vin || reminder.vehicleVin || '',
-      type: reminder.reminder_type || reminder.type || 'maintenance',
-      priority: reminder.priority || 'medium'
-    });
-    setDialogOpen(true);
-  }, []);
 
   const handleRunCheck = async () => {
     setRunCheckLoading(true);

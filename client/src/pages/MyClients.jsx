@@ -28,7 +28,12 @@ import {
   CheckCircle as CheckCircleIcon
 } from '@mui/icons-material';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+const DEFAULT_API_BASE_URL = 'https://avtoservis-server.onrender.com';
+const API_BASE_URL = (
+  import.meta.env.VITE_API_BASE_URL || DEFAULT_API_BASE_URL
+)
+  .trim()
+  .replace(/\/+$/, '');
 const resolveUrl = (url) => (url.startsWith('http') ? url : `${API_BASE_URL}${url}`);
 
 const api = {
@@ -37,6 +42,9 @@ const api = {
     const res = await fetch(resolveUrl('/api/relationships/clients'), {
       headers: { Authorization: `Bearer ${token}` }
     });
+    if (!res.ok) {
+      throw new Error('Failed to load clients');
+    }
     return res.json();
   },
   updateStatus: async (id, status) => {
