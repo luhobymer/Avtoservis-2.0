@@ -176,16 +176,34 @@ const Dashboard = () => {
           return;
         }
 
-        // Fetch user data
-        const [vehiclesList, appointmentsList, serviceRecordsList] = await Promise.all([
-          vehiclesDao.listForUser(user.id),
-          appointmentsDao.listForUser(user.id),
-          serviceRecordsDao.listForUser(user.id)
-        ]);
+        const vehiclesPromise = isMasterUser
+          ? vehiclesDao.list({ serviced: true })
+          : vehiclesDao.listForUser(user.id);
+        const appointmentsPromise = isMasterUser
+          ? appointmentsDao.listForMechanic(user.id)
+          : appointmentsDao.listForUser(user.id);
+        const serviceRecordsPromise = serviceRecordsDao.listForUser(user.id);
+
+        const [vehiclesResult, appointmentsResult, serviceRecordsResult] =
+          await Promise.allSettled([vehiclesPromise, appointmentsPromise, serviceRecordsPromise]);
+
+        const vehiclesList = vehiclesResult.status === 'fulfilled' ? vehiclesResult.value : [];
+        const appointmentsList =
+          appointmentsResult.status === 'fulfilled' ? appointmentsResult.value : [];
+        const serviceRecordsList =
+          serviceRecordsResult.status === 'fulfilled' ? serviceRecordsResult.value : [];
+
+        if (vehiclesResult.status === 'rejected' && appointmentsResult.status === 'rejected') {
+          throw new Error(
+            appointmentsResult.reason?.message ||
+              vehiclesResult.reason?.message ||
+              t('errors.unknownError', 'Виникла невідома помилка')
+          );
+        }
 
         setVehicles(Array.isArray(vehiclesList) ? vehiclesList : []);
 
-        const normalizedAppointments = (appointmentsList || []).map(a => ({
+        const normalizedAppointments = (appointmentsList || []).map((a) => ({
           id: a.id,
           vehicleVin: a.vehicle_vin,
           serviceId: a.serviceId || null,
@@ -197,7 +215,7 @@ const Dashboard = () => {
         }));
 
         const upcomingAppointments = normalizedAppointments
-          .filter(app => app.status !== 'completed' && app.status !== 'cancelled')
+          .filter((app) => app.status !== 'completed' && app.status !== 'cancelled')
           .sort((a, b) => new Date(a.scheduledTime) - new Date(b.scheduledTime))
           .slice(0, 3);
         setAppointments(upcomingAppointments);

@@ -106,7 +106,7 @@ export async function listAdmin() {
 export async function listForUser(userId, options = {}) {
   if (!userId) return [];
   const params = new URLSearchParams();
-  params.set('user_id', encodeURIComponent(userId));
+  params.set('user_id', String(userId));
   if (options.vehicleId) {
     params.set('vehicle_id', options.vehicleId);
   }

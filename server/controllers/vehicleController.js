@@ -45,12 +45,40 @@ const getVehicleColumnInfo = async (db) => {
       : columnNames.has('registration_number')
         ? 'registration_number'
         : 'license_plate';
+  const engineTypeColumn = columnNames.has('engine_type')
+    ? 'engine_type'
+    : columnNames.has('engineType')
+      ? 'engineType'
+      : columnNames.has('fuel_type')
+        ? 'fuel_type'
+        : null;
+  const transmissionColumn = columnNames.has('transmission')
+    ? 'transmission'
+    : columnNames.has('transmission_type')
+      ? 'transmission_type'
+      : columnNames.has('gearbox')
+        ? 'gearbox'
+        : columnNames.has('gear_box')
+          ? 'gear_box'
+          : null;
+  const engineVolumeColumn = columnNames.has('engine_volume')
+    ? 'engine_volume'
+    : columnNames.has('engine_capacity')
+      ? 'engine_capacity'
+      : columnNames.has('engineVolume')
+        ? 'engineVolume'
+        : columnNames.has('engine_capacity_l')
+          ? 'engine_capacity_l'
+          : null;
 
   return {
     columnNames,
     makeColumn,
     ownerColumn,
     licenseColumn,
+    engineTypeColumn,
+    transmissionColumn,
+    engineVolumeColumn,
     hasCreatedAt: columnNames.has('created_at'),
   };
 };
@@ -469,6 +497,12 @@ exports.addVehicle = async (req, res) => {
       registration_number,
       photoUrl,
       user_id,
+      engineType,
+      transmission,
+      engineVolume,
+      engine_type,
+      engine_volume,
+      engine_capacity,
     } = req.body || {};
 
     const normalizedPlate = normalizeLicensePlate(
@@ -476,7 +510,22 @@ exports.addVehicle = async (req, res) => {
     );
 
     const db = await getDb();
-    const { columnNames, makeColumn, licenseColumn, ownerColumn } = await getVehicleColumnInfo(db);
+    const {
+      columnNames,
+      makeColumn,
+      licenseColumn,
+      ownerColumn,
+      engineTypeColumn,
+      transmissionColumn,
+      engineVolumeColumn,
+    } = await getVehicleColumnInfo(db);
+
+    const parsedEngineVolume = (() => {
+      const raw = engineVolume ?? engine_volume ?? engine_capacity ?? null;
+      if (raw === null || raw === undefined || String(raw).trim() === '') return null;
+      const parsed = Number(raw);
+      return Number.isFinite(parsed) ? parsed : null;
+    })();
 
     const ownerId = canAssignOwner && user_id ? user_id : userId;
 
@@ -506,6 +555,11 @@ exports.addVehicle = async (req, res) => {
       color: color || null,
       mileage: mileage != null ? Number(mileage) : null,
       [licenseColumn]: normalizedPlate || null,
+      ...(engineTypeColumn
+        ? { [engineTypeColumn]: engineType ?? engine_type ?? null }
+        : {}),
+      ...(transmissionColumn ? { [transmissionColumn]: transmission ?? null } : {}),
+      ...(engineVolumeColumn ? { [engineVolumeColumn]: parsedEngineVolume } : {}),
       created_at: now,
       updated_at: now,
     };
@@ -697,7 +751,15 @@ exports.updateVehicle = async (req, res) => {
     }
 
     const db = await getDb();
-    const { columnNames, makeColumn, licenseColumn, ownerColumn } = await getVehicleColumnInfo(db);
+    const {
+      columnNames,
+      makeColumn,
+      licenseColumn,
+      ownerColumn,
+      engineTypeColumn,
+      transmissionColumn,
+      engineVolumeColumn,
+    } = await getVehicleColumnInfo(db);
     const role = String(req.user?.role || '').toLowerCase();
     const isMaster = ['master', 'mechanic', 'admin'].includes(role);
     const requestedUserIdRaw =
@@ -741,16 +803,39 @@ exports.updateVehicle = async (req, res) => {
       year: payload.year !== undefined ? Number(payload.year) : undefined,
       color: payload.color !== undefined ? payload.color : undefined,
       mileage: payload.mileage !== undefined ? Number(payload.mileage) : undefined,
-      engine_type: payload.engineType !== undefined ? payload.engineType : undefined,
-      transmission: payload.transmission !== undefined ? payload.transmission : undefined,
-      engine_volume:
-        payload.engineVolume !== undefined &&
-        payload.engineVolume !== null &&
-        payload.engineVolume !== ''
-          ? Number(payload.engineVolume)
-          : payload.engineVolume !== undefined
-            ? null
-            : undefined,
+      ...(engineTypeColumn
+        ? {
+            [engineTypeColumn]:
+              payload.engineType !== undefined || payload.engine_type !== undefined
+                ? payload.engineType ?? payload.engine_type ?? null
+                : undefined,
+          }
+        : {}),
+      ...(transmissionColumn
+        ? {
+            [transmissionColumn]:
+              payload.transmission !== undefined ? payload.transmission : undefined,
+          }
+        : {}),
+      ...(engineVolumeColumn
+        ? {
+            [engineVolumeColumn]:
+              payload.engineVolume !== undefined ||
+              payload.engine_volume !== undefined ||
+              payload.engine_capacity !== undefined
+                ? (() => {
+                    const raw =
+                      payload.engineVolume ??
+                      payload.engine_volume ??
+                      payload.engine_capacity ??
+                      '';
+                    if (raw === null || raw === undefined || String(raw).trim() === '') return null;
+                    const parsed = Number(raw);
+                    return Number.isFinite(parsed) ? parsed : null;
+                  })()
+                : undefined,
+          }
+        : {}),
       [licenseColumn]: normalizedPlate !== undefined ? normalizedPlate || null : undefined,
       updated_at: new Date().toISOString(),
     };
