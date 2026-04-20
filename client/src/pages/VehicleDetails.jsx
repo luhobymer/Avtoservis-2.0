@@ -876,7 +876,7 @@ const VehicleDetailsContent = () => {
     return (
       <Container maxWidth="md" sx={{ mt: 4, display: 'flex', justifyContent: 'center' }}>
         <CircularProgress />
-        <Typography sx={{ ml: 2 }}>Loading...</Typography>
+        <Typography sx={{ ml: 2 }}>{t('common.loading', 'Завантаження...')}</Typography>
       </Container>
     );
   }

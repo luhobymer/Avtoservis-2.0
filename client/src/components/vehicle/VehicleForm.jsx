@@ -222,6 +222,7 @@ const VehicleForm = ({
           <Autocomplete
             options={brands}
             value={formData.brand || null}
+            noOptionsText={t('common.noResults', 'Нічого не знайдено')}
             onChange={(_, value) => {
               emitChange('brand', value || '');
               emitChange('model', '');
@@ -246,6 +247,7 @@ const VehicleForm = ({
             options={models}
             value={formData.model || null}
             disabled={!formData.brand}
+            noOptionsText={t('common.noResults', 'Нічого не знайдено')}
             onChange={(_, value) => {
               emitChange('model', value || '');
               emitChange('year', '');
@@ -269,6 +271,7 @@ const VehicleForm = ({
             options={years}
             value={formData.year ? Number(formData.year) : null}
             disabled={!formData.brand || !formData.model}
+            noOptionsText={t('common.noResults', 'Нічого не знайдено')}
             onChange={(_, value) => emitChange('year', value ? Number(value) : '')}
             renderInput={(params) => (
               <TextField
@@ -303,6 +306,7 @@ const VehicleForm = ({
             options={availableSpecs.engines}
             value={formData.engineType || null}
             disabled={!formData.year}
+            noOptionsText={t('common.noResults', 'Нічого не знайдено')}
             onChange={(_, value) => emitChange('engineType', value || '')}
             getOptionLabel={(option) => t(`vehicle.engineTypes.${option}`, option)}
             renderInput={(params) => (
@@ -320,6 +324,7 @@ const VehicleForm = ({
             options={availableSpecs.transmissions}
             value={formData.transmission || null}
             disabled={!formData.year}
+            noOptionsText={t('common.noResults', 'Нічого не знайдено')}
             onChange={(_, value) => emitChange('transmission', value || '')}
             getOptionLabel={(option) => t(`vehicle.transmissionTypes.${option}`, option)}
             renderInput={(params) => (
@@ -357,6 +362,7 @@ const VehicleForm = ({
           <Autocomplete
             options={colors}
             value={formData.color || null}
+            noOptionsText={t('common.noResults', 'Нічого не знайдено')}
             onChange={(_, value) => emitChange('color', value || '')}
             getOptionLabel={(option) => t(`vehicle.colors.${option}`, option)}
             renderInput={(params) => (

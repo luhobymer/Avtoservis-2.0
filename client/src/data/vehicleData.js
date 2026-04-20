@@ -519,6 +519,12 @@ export const brandModelYears = {
     Tang: generateYears(2015),
     Yuan: generateYears(2015),
   },
+  Bogdan: {
+    '2110': generateYears(2009, 2014),
+    '2111': generateYears(2009, 2014),
+    '2112': generateYears(2009, 2014),
+    '2310': generateYears(2009, 2014),
+  },
   Cadillac: {
     ATS: generateYears(2012, 2019),
     CT5: generateYears(2019),
@@ -537,6 +543,14 @@ export const brandModelYears = {
     Tiggo7: generateYears(2016),
     Tiggo8: generateYears(2018),
   },
+  Changan: {
+    Alsvin: generateYears(2018),
+    CS35: generateYears(2012),
+    CS55: generateYears(2017),
+    CS75: generateYears(2014),
+    UNI_K: generateYears(2021),
+    UNI_T: generateYears(2020),
+  },
   Chrysler: {
     '200': generateYears(2010, 2017),
     '300': generateYears(2004),
@@ -552,6 +566,17 @@ export const brandModelYears = {
     DS3: generateYears(2009),
     DS4: generateYears(2011),
     DS7: generateYears(2017),
+  },
+  Dongfeng: {
+    AX7: generateYears(2014),
+    Glory580: generateYears(2016),
+    Rich: generateYears(2018),
+    S30: generateYears(2009, 2017),
+  },
+  Exeed: {
+    LX: generateYears(2020),
+    TXL: generateYears(2019),
+    VX: generateYears(2020),
   },
   GMC: {
     Acadia: generateYears(2006),
@@ -581,6 +606,18 @@ export const brandModelYears = {
     Daily: generateYears(1978),
     Eurocargo: generateYears(1991),
   },
+  JAC: {
+    J7: generateYears(2019),
+    JS4: generateYears(2018),
+    S2: generateYears(2015),
+    S3: generateYears(2013),
+    T8: generateYears(2018),
+  },
+  Jetour: {
+    Dashing: generateYears(2022),
+    X70: generateYears(2018),
+    X90: generateYears(2019),
+  },
   Lada: {
     Granta: generateYears(2011),
     Kalina: generateYears(2004, 2018),
@@ -602,6 +639,15 @@ export const brandModelYears = {
     MarvelR: generateYears(2021),
     ZS: generateYears(2017),
     ZS_EV: generateYears(2019),
+  },
+  Omoda: {
+    C5: generateYears(2022),
+    E5: generateYears(2023),
+  },
+  Polestar: {
+    '2': generateYears(2020),
+    '3': generateYears(2023),
+    '4': generateYears(2023),
   },
   RAM: {
     '1500': generateYears(1981),

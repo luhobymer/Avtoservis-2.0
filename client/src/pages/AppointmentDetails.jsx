@@ -618,6 +618,14 @@ const AppointmentDetails = ({ isNew }) => {
     }
   };
 
+  const handleClearServices = () => {
+    handleServiceChange([]);
+  };
+
+  const handleDoneServices = () => {
+    setServiceSelectOpen(false);
+  };
+
   const handleConfirmServices = () => {
     const hasSelection =
       (formData.service_ids && formData.service_ids.length > 0) || Boolean(formData.service_id);
@@ -1080,6 +1088,7 @@ const AppointmentDetails = ({ isNew }) => {
                     disabled={!formData.mechanic_id || services.length === 0}
                     options={serviceCategories}
                     value={selectedCategory}
+                    noOptionsText={t('common.noResults', 'Нічого не знайдено')}
                     onChange={(_, nextCategory) => {
                       setServiceCategoryId(nextCategory ? String(nextCategory.id) : '');
                       setFormData((prev) => ({ ...prev, service_id: null, service_ids: [] }));
@@ -1106,10 +1115,60 @@ const AppointmentDetails = ({ isNew }) => {
                     options={filteredServices}
                     value={selectedServices}
                     disabled={!serviceCategoryId}
+                    noOptionsText={t('common.noResults', 'Нічого не знайдено')}
                     onOpen={() => setServiceSelectOpen(true)}
                     onClose={() => setServiceSelectOpen(false)}
                     onChange={(_, values) => handleServiceChange(values.map((service) => String(service.id)))}
                     isOptionEqualToValue={(option, value) => String(option.id) === String(value.id)}
+                    PaperComponent={(props) => (
+                      <Paper {...props}>
+                        {props.children}
+                        <Box
+                          sx={{
+                            display: 'flex',
+                            gap: 1,
+                            flexWrap: 'wrap',
+                            p: 1,
+                            borderTop: (theme) => `1px solid ${theme.palette.divider}`,
+                            position: 'sticky',
+                            bottom: 0,
+                            backgroundColor: 'background.paper',
+                            zIndex: 1,
+                          }}
+                        >
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={handleClearServices}
+                            disabled={(formData.service_ids || []).length === 0}
+                          >
+                            {t('common.clear', 'Очистити')}
+                          </Button>
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={handleDoneServices}
+                          >
+                            {t('common.done', 'Готово')}
+                          </Button>
+                          {isNewAppointment && (
+                            <Button
+                              size="small"
+                              variant="contained"
+                              onMouseDown={(e) => e.preventDefault()}
+                              onClick={handleConfirmServices}
+                              disabled={(formData.service_ids || []).length === 0}
+                            >
+                              {servicesConfirmed
+                                ? t('appointment.servicesConfirmed', 'Послуги підтверджено')
+                                : t('appointment.confirmServices', 'Підтвердити вибір послуг')}
+                            </Button>
+                          )}
+                        </Box>
+                      </Paper>
+                    )}
                     getOptionLabel={(option) =>
                       `${option?.name || ''}${formatServicePrice(option) ? ` ${formatServicePrice(option)}` : ''}`
                     }
@@ -1127,41 +1186,14 @@ const AppointmentDetails = ({ isNew }) => {
                       <TextField
                         {...params}
                         label={t('appointment.serviceType')}
-                        required
                         placeholder={t('common.search', 'Пошук')}
+                        helperText={t('appointment.selectedServicesCount', {
+                          defaultValue: 'Обрано: {{count}}',
+                          count: (formData.service_ids || []).length,
+                        })}
                       />
                     )}
                   />
-                  <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mt: 1 }}>
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      onClick={() => handleServiceChange([])}
-                      disabled={(formData.service_ids || []).length === 0}
-                    >
-                      {t('common.clear', 'Очистити')}
-                    </Button>
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      onClick={() => setServiceSelectOpen(false)}
-                      disabled={!serviceSelectOpen}
-                    >
-                      {t('common.done', 'Готово')}
-                    </Button>
-                    {isNewAppointment && (
-                      <Button
-                        size="small"
-                        variant="contained"
-                        onClick={handleConfirmServices}
-                        disabled={(formData.service_ids || []).length === 0}
-                      >
-                        {servicesConfirmed
-                          ? t('appointment.servicesConfirmed', 'Послуги підтверджено')
-                          : t('appointment.confirmServices', 'Підтвердити вибір послуг')}
-                      </Button>
-                    )}
-                  </Box>
                 </Grid>
                 {isNewAppointment && isMasterUser ? (
                   <Grid item xs={12}>

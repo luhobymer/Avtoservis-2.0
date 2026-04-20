@@ -25,6 +25,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import AddIcon from '@mui/icons-material/Add';
 import useAuth from '../context/useAuth';
 import { getCurrent as getCurrentMechanic, list as listMechanics } from '../api/dao/mechanicsDao';
+import { listServiceCategories } from '../api/dao/serviceCategoriesDao';
 import {
   listMechanicServices,
   createMechanicService,
@@ -43,6 +44,23 @@ const normalizeCategoryKey = (service) => {
 const getCategoryLabel = (service, t) => {
   const name = service?.category?.name ? String(service.category.name) : '';
   return name || t('services.noCategory', 'Без категорії');
+};
+
+const normalizeCategoryLabel = (label) => {
+  const raw = String(label || '')
+    .toLowerCase()
+    .replace(/[._/,+-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!raw) return 'без категорії';
+  if (raw.includes('двигун')) return 'Ремонт двигуна';
+  if (raw.includes('ходов')) return 'Ходова частина';
+  if (raw.includes('гальм')) return 'Гальмівна система';
+  if (raw.includes('підвіск')) return 'Підвіска';
+  if (raw.includes('електр')) return 'Електрика';
+  if (raw.includes('діагност')) return 'Діагностика';
+  if (raw.includes('грм')) return 'ГРМ';
+  return label;
 };
 
 const formatServicePrice = (service) => {
@@ -82,6 +100,7 @@ const MyServices = () => {
   const [mechanics, setMechanics] = useState([]);
   const [mechanicId, setMechanicId] = useState('');
   const [services, setServices] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -95,6 +114,7 @@ const MyServices = () => {
     id: '',
     name: '',
     description: '',
+    category_id: '',
     price: '',
     duration: '',
     isOwned: true
@@ -120,6 +140,8 @@ const MyServices = () => {
         setError('');
         setCanSelectMechanic(false);
         if (isMasterUser) {
+          const categoryRows = await listServiceCategories();
+          setCategories(Array.isArray(categoryRows) ? categoryRows : []);
           try {
             const current = await getCurrentMechanic();
             if (current?.id) {
@@ -138,9 +160,10 @@ const MyServices = () => {
           return;
         }
 
-        const list = await listMechanics();
+        const [list, categoryRows] = await Promise.all([listMechanics(), listServiceCategories()]);
         setMechanics(list);
-        if (!mechanicId && list.length > 0) {
+        setCategories(Array.isArray(categoryRows) ? categoryRows : []);
+        if (!mechanicId && (list || []).length > 0) {
           setMechanicId(String(list[0].id));
         }
         setCanSelectMechanic((list || []).length > 1);
@@ -173,7 +196,15 @@ const MyServices = () => {
   }, [mechanicId, reloadServices, t]);
 
   const openAdd = () => {
-    setDraft({ id: '', name: '', description: '', price: '', duration: '', isOwned: true });
+    setDraft({
+      id: '',
+      name: '',
+      description: '',
+      category_id: '',
+      price: '',
+      duration: '',
+      isOwned: true
+    });
     setAddOpen(true);
   };
 
@@ -183,6 +214,7 @@ const MyServices = () => {
       id: service?.id || '',
       name: service?.name || '',
       description: service?.description || '',
+      category_id: service?.category?.id ? String(service.category.id) : '',
       price: service?.price_text != null ? String(service.price_text) : service?.price != null ? String(service.price) : '',
       duration: service?.duration_text != null ? String(service.duration_text) : service?.duration != null ? String(service.duration) : '',
       isOwned
@@ -205,6 +237,7 @@ const MyServices = () => {
       await createMechanicService(mechanicId, {
         name,
         description: String(draft.description || '').trim() || null,
+        category_id: draft.category_id || null,
         price: priceParsed.number,
         price_text: priceParsed.text,
         duration: durationParsed.number,
@@ -252,6 +285,7 @@ const MyServices = () => {
           ? {
               name,
               description: String(draft.description || '').trim() || null,
+              category_id: draft.category_id || null,
               price: priceParsed.number,
               price_text: priceParsed.text,
               duration: durationParsed.number,
@@ -275,9 +309,11 @@ const MyServices = () => {
   const grouped = useMemo(() => {
     const map = new Map();
     for (const s of services || []) {
-      const key = normalizeCategoryKey(s);
+      const categoryLabel = getCategoryLabel(s, t);
+      const normalizedLabel = normalizeCategoryLabel(categoryLabel);
+      const key = `${normalizeCategoryKey(s)}::${normalizedLabel}`;
       if (!map.has(key)) {
-        map.set(key, { label: getCategoryLabel(s, t), items: [] });
+        map.set(key, { label: normalizedLabel, items: [] });
       }
       map.get(key).items.push(s);
     }
@@ -456,6 +492,23 @@ const MyServices = () => {
             onChange={(e) => setDraft((d) => ({ ...d, description: e.target.value }))}
             sx={{ mt: 2 }}
           />
+          <FormControl fullWidth sx={{ mt: 2 }}>
+            <InputLabel>{t('services.category', 'Категорія')}</InputLabel>
+            <Select
+              value={draft.category_id}
+              label={t('services.category', 'Категорія')}
+              onChange={(e) => setDraft((d) => ({ ...d, category_id: e.target.value }))}
+            >
+              <MenuItem value="">
+                <em>{t('services.noCategory', 'Без категорії')}</em>
+              </MenuItem>
+              {(categories || []).map((cat) => (
+                <MenuItem key={cat.id} value={String(cat.id)}>
+                  {cat.name}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
           <Box sx={{ display: 'flex', gap: 2, mt: 2 }}>
             <TextField
               fullWidth
@@ -498,6 +551,24 @@ const MyServices = () => {
             onChange={(e) => setDraft((d) => ({ ...d, description: e.target.value }))}
             sx={{ mt: 2 }}
           />
+          <FormControl fullWidth sx={{ mt: 2 }}>
+            <InputLabel>{t('services.category', 'Категорія')}</InputLabel>
+            <Select
+              value={draft.category_id}
+              label={t('services.category', 'Категорія')}
+              onChange={(e) => setDraft((d) => ({ ...d, category_id: e.target.value }))}
+              disabled={!draft.isOwned}
+            >
+              <MenuItem value="">
+                <em>{t('services.noCategory', 'Без категорії')}</em>
+              </MenuItem>
+              {(categories || []).map((cat) => (
+                <MenuItem key={cat.id} value={String(cat.id)}>
+                  {cat.name}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
           <Box sx={{ display: 'flex', gap: 2, mt: 2 }}>
             <TextField
               fullWidth

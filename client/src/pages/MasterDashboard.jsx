@@ -36,6 +36,7 @@ import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { useAuth } from '../context/useAuth';
 import * as appointmentsDao from '../api/dao/appointmentsDao';
 import * as scheduleDao from '../api/dao/scheduleDao';
+import { getCurrent as getCurrentMechanic } from '../api/dao/mechanicsDao';
 import { format } from 'date-fns';
 
 const MasterDashboard = () => {
@@ -50,6 +51,7 @@ const MasterDashboard = () => {
   const [appointments, setAppointments] = useState([]);
   const [todayAppointments, setTodayAppointments] = useState([]);
   const [upcomingAppointments, setUpcomingAppointments] = useState([]);
+  const [mechanicProfile, setMechanicProfile] = useState(null);
   const [busyStatus, setBusyStatus] = useState(null);
   const [busyDialogOpen, setBusyDialogOpen] = useState(false);
   const [busyUntilDraft, setBusyUntilDraft] = useState(new Date(new Date().getTime() + 60 * 60 * 1000));
@@ -65,9 +67,15 @@ const MasterDashboard = () => {
       setLoading(true);
       setError(null);
       try {
+        const currentMechanic = await getCurrentMechanic();
+        if (!currentMechanic?.id) {
+          throw new Error(t('errors.mechanicProfileNotFound', 'Профіль механіка не знайдено'));
+        }
+        setMechanicProfile(currentMechanic);
+
         const [rows, status] = await Promise.all([
-          appointmentsDao.listForMechanic(user.id),
-          scheduleDao.getMasterBusyStatus(user.id)
+          appointmentsDao.listForMechanic(currentMechanic.id),
+          scheduleDao.getMasterBusyStatus(currentMechanic.id)
         ]);
         const list = Array.isArray(rows) ? rows : [];
         setAppointments(list);
@@ -115,11 +123,11 @@ const MasterDashboard = () => {
   }, [appointments]);
 
   const handleBusyToggle = async (checked) => {
-    if (!user || !user.id) return;
+    if (!mechanicProfile?.id) return;
     if (!checked) {
       setSavingBusy(true);
       try {
-        const updated = await scheduleDao.setMasterBusyStatus(user.id, false, null, '');
+        const updated = await scheduleDao.setMasterBusyStatus(mechanicProfile.id, false, null, '');
         setBusyStatus(updated);
       } catch (error) {
         void error;
@@ -132,11 +140,16 @@ const MasterDashboard = () => {
   };
 
   const handleBusySave = async () => {
-    if (!user || !user.id) return;
+    if (!mechanicProfile?.id) return;
     setSavingBusy(true);
     try {
       const until = busyUntilDraft instanceof Date ? busyUntilDraft.toISOString() : null;
-      const updated = await scheduleDao.setMasterBusyStatus(user.id, true, until, busyReasonDraft);
+      const updated = await scheduleDao.setMasterBusyStatus(
+        mechanicProfile.id,
+        true,
+        until,
+        busyReasonDraft
+      );
       setBusyStatus(updated);
       setBusyDialogOpen(false);
     } catch (error) {
@@ -432,4 +445,3 @@ const MasterDashboard = () => {
 };
 
 export default MasterDashboard;
-
