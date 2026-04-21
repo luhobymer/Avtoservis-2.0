@@ -162,6 +162,96 @@ const MyParts = () => {
     }
   };
 
+  const renderOcrDialog = () => (
+    <Dialog open={ocrDialogOpen} onClose={() => !savingParts && setOcrDialogOpen(false)} maxWidth="md" fullWidth>
+      <DialogTitle>{t('parts.importFromImage', 'Імпорт з зображення')}</DialogTitle>
+      <DialogContent>
+        <Box sx={{ mb: 2, mt: 1 }}>
+          {!isTabMode && (
+            <FormControl fullWidth sx={{ mb: 2 }}>
+              <InputLabel id="vehicle-select-label">{t('vehicle.title', 'Автомобіль')}</InputLabel>
+              <Select
+                labelId="vehicle-select-label"
+                value={selectedVehicleVin}
+                label={t('vehicle.title', 'Автомобіль')}
+                onChange={(e) => setSelectedVehicleVin(e.target.value)}
+              >
+                {vehicles.map((v) => (
+                  <MenuItem key={v.vin} value={v.vin}>
+                    {v.make} {v.model} ({v.year}) - {v.licensePlate || v.license_plate || ''}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          )}
+
+          <Button
+            variant="outlined"
+            component="label"
+            startIcon={<CloudUploadIcon />}
+            fullWidth
+            sx={{ height: 100, borderStyle: 'dashed' }}
+            disabled={ocrLoading || savingParts}
+          >
+            {t('common.uploadImage', 'Завантажити зображення')}
+            <input type="file" hidden accept="image/*" onChange={handleImageUpload} />
+          </Button>
+        </Box>
+
+        {previewUrl && (
+          <Box sx={{ mb: 2, textAlign: 'center' }}>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+              {t('common.preview', 'Попередній перегляд')}
+            </Typography>
+            <Box
+              component="img"
+              src={previewUrl}
+              alt="Preview"
+              sx={{ maxWidth: '100%', maxHeight: 260, borderRadius: 1, objectFit: 'contain' }}
+            />
+          </Box>
+        )}
+
+        {ocrLoading && <LinearProgress sx={{ mb: 2 }} />}
+
+        {parsedParts.length > 0 && (
+          <TableContainer component={Paper} variant="outlined">
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>{t('parts.name')}</TableCell>
+                  <TableCell>{t('parts.price')}</TableCell>
+                  <TableCell>{t('parts.qty')}</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {parsedParts.map((p, index) => (
+                  <TableRow key={index}>
+                    <TableCell>{p.name}</TableCell>
+                    <TableCell>{p.price}</TableCell>
+                    <TableCell>{p.quantity}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        )}
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={() => setOcrDialogOpen(false)} disabled={savingParts}>
+          {t('common.cancel')}
+        </Button>
+        <Button
+          onClick={handleSaveParsedParts}
+          variant="contained"
+          disabled={parsedParts.length === 0 || savingParts || (!isTabMode && !selectedVehicleVin)}
+        >
+          {savingParts ? <CircularProgress size={24} /> : t('common.save')}
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+
   if (loading) {
     return (
       <Container sx={{ mt: 4, display: 'flex', justifyContent: 'center' }}>
@@ -182,13 +272,16 @@ const MyParts = () => {
     return (
       <Box sx={{ mt: 2 }}>
         <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
-            <Button 
-              variant="contained" 
-              startIcon={<AddPhotoAlternateIcon />}
-              onClick={() => setOcrDialogOpen(true)}
-            >
-              {t('parts.addFromImage', 'Додати з фото')}
-            </Button>
+          <Button
+            variant="contained"
+            startIcon={<AddPhotoAlternateIcon />}
+            onClick={() => {
+              if (targetVin) setSelectedVehicleVin(targetVin);
+              setOcrDialogOpen(true);
+            }}
+          >
+            {t('parts.addFromImage', 'Додати з фото')}
+          </Button>
         </Box>
 
         {vehicleParts.length === 0 ? (
@@ -221,94 +314,8 @@ const MyParts = () => {
             </Table>
           </TableContainer>
         )}
-        
-        {/* OCR Dialog reused */}
-        <Dialog open={ocrDialogOpen} onClose={() => setOcrDialogOpen(false)} maxWidth="md" fullWidth>
-           {/* ... (keep existing OCR dialog content but simplified for single vehicle context if needed) ... */}
-           <DialogTitle>{t('parts.importFromImage', 'Імпорт з зображення')}</DialogTitle>
-            <DialogContent>
-            <Box sx={{ mb: 2, mt: 1 }}>
-                {/* Auto-select current vehicle if in tab mode */}
-                {!isTabMode && (
-                    <FormControl fullWidth sx={{ mb: 2 }}>
-                    <InputLabel id="vehicle-select-label">{t('vehicle.title', 'Автомобіль')}</InputLabel>
-                    <Select
-                        labelId="vehicle-select-label"
-                        value={selectedVehicleVin}
-                        label={t('vehicle.title', 'Автомобіль')}
-                        onChange={(e) => setSelectedVehicleVin(e.target.value)}
-                    >
-                        {vehicles.map((v) => (
-                        <MenuItem key={v.vin} value={v.vin}>
-                            {v.make} {v.model} ({v.year}) - {v.licensePlate}
-                        </MenuItem>
-                        ))}
-                    </Select>
-                    </FormControl>
-                )}
 
-                <Button
-                variant="outlined"
-                component="label"
-                startIcon={<CloudUploadIcon />}
-                fullWidth
-                sx={{ height: 100, borderStyle: 'dashed' }}
-                >
-                {t('common.uploadImage', 'Завантажити зображення')}
-                <input type="file" hidden accept="image/*" capture="environment" onChange={handleImageUpload} />
-                </Button>
-            </Box>
-
-            {previewUrl && (
-              <Box sx={{ mb: 2, textAlign: 'center' }}>
-                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-                  {t('common.preview', 'Попередній перегляд')}
-                </Typography>
-                <Box
-                  component="img"
-                  src={previewUrl}
-                  alt="Preview"
-                  sx={{ maxWidth: '100%', maxHeight: 260, borderRadius: 1, objectFit: 'contain' }}
-                />
-              </Box>
-            )}
-
-            {ocrLoading && <LinearProgress sx={{ mb: 2 }} />}
-
-            {parsedParts.length > 0 && (
-                <TableContainer component={Paper} variant="outlined">
-                <Table size="small">
-                    <TableHead>
-                    <TableRow>
-                        <TableCell>{t('parts.name')}</TableCell>
-                        <TableCell>{t('parts.price')}</TableCell>
-                        <TableCell>{t('parts.qty')}</TableCell>
-                    </TableRow>
-                    </TableHead>
-                    <TableBody>
-                    {parsedParts.map((p, index) => (
-                        <TableRow key={index}>
-                        <TableCell>{p.name}</TableCell>
-                        <TableCell>{p.price}</TableCell>
-                        <TableCell>{p.quantity}</TableCell>
-                        </TableRow>
-                    ))}
-                    </TableBody>
-                </Table>
-                </TableContainer>
-            )}
-            </DialogContent>
-            <DialogActions>
-            <Button onClick={() => setOcrDialogOpen(false)}>{t('common.cancel')}</Button>
-            <Button 
-                onClick={handleSaveParsedParts} 
-                variant="contained" 
-                disabled={parsedParts.length === 0 || savingParts}
-            >
-                {savingParts ? <CircularProgress size={24} /> : t('common.save')}
-            </Button>
-            </DialogActions>
-        </Dialog>
+        {renderOcrDialog()}
       </Box>
     );
   }
