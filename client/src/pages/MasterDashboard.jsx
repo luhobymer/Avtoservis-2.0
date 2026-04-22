@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Link, Navigate } from 'react-router-dom';
+import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   Container,
@@ -20,6 +20,7 @@ import {
   DialogContent,
   DialogActions,
   TextField,
+  MenuItem,
   useTheme,
   useMediaQuery
 } from '@mui/material';
@@ -37,7 +38,7 @@ import { useAuth } from '../context/useAuth';
 import * as appointmentsDao from '../api/dao/appointmentsDao';
 import * as scheduleDao from '../api/dao/scheduleDao';
 import { getCurrent as getCurrentMechanic } from '../api/dao/mechanicsDao';
-import { format } from 'date-fns';
+import { addMinutes, format } from 'date-fns';
 
 const MasterDashboard = () => {
   const { t } = useTranslation();
@@ -45,6 +46,7 @@ const MasterDashboard = () => {
   const isMasterUser = typeof isMaster === 'function' ? isMaster() : false;
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const navigate = useNavigate();
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -57,6 +59,7 @@ const MasterDashboard = () => {
   const [busyUntilDraft, setBusyUntilDraft] = useState(new Date(new Date().getTime() + 60 * 60 * 1000));
   const [busyReasonDraft, setBusyReasonDraft] = useState('');
   const [savingBusy, setSavingBusy] = useState(false);
+  const [selectedAppointmentId, setSelectedAppointmentId] = useState('');
 
   useEffect(() => {
     const run = async () => {
@@ -127,6 +130,69 @@ const MasterDashboard = () => {
     run();
   }, [user, isMasterUser, t]);
 
+  const getAppointmentEnd = (appointment) => {
+    if (!appointment?.scheduledDate) return null;
+    const start = new Date(appointment.scheduledDate);
+    if (!(start instanceof Date) || Number.isNaN(start.getTime())) return null;
+    const durationMinutesRaw =
+      appointment.appointmentDuration != null
+        ? Number(appointment.appointmentDuration)
+        : appointment.serviceDuration != null
+          ? Number(appointment.serviceDuration)
+          : null;
+    const durationMinutes = Number.isFinite(durationMinutesRaw) && durationMinutesRaw > 0 ? durationMinutesRaw : 60;
+    return addMinutes(start, durationMinutes);
+  };
+
+  const derivedBusyFromAppointments = useMemo(() => {
+    const now = new Date();
+    const activeStatuses = new Set(['confirmed', 'in_progress']);
+    const candidates = (Array.isArray(appointments) ? appointments : [])
+      .filter((a) => activeStatuses.has(a.status))
+      .map((a) => {
+        const start = a?.scheduledDate ? new Date(a.scheduledDate) : null;
+        const end = getAppointmentEnd(a);
+        return { a, start, end };
+      })
+      .filter(({ start, end }) => start && end && !Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime()));
+
+    const current = candidates.find(({ start, end }) => now >= start && now <= end);
+    if (!current) return null;
+    return {
+      is_busy: true,
+      busy_until: current.end.toISOString(),
+      busy_reason: ''
+    };
+  }, [appointments]);
+
+  const effectiveBusyStatus = useMemo(() => {
+    const base = busyStatus && typeof busyStatus === 'object' ? busyStatus : null;
+    const now = new Date();
+    const serverBusyUntil = base?.busy_until ? new Date(base.busy_until) : null;
+    const hasServerBusyUntil =
+      serverBusyUntil instanceof Date && !Number.isNaN(serverBusyUntil.getTime()) && serverBusyUntil > now;
+
+    if (base?.is_busy && hasServerBusyUntil) return base;
+    return derivedBusyFromAppointments || base || { is_busy: false, busy_until: null, busy_reason: '' };
+  }, [busyStatus, derivedBusyFromAppointments]);
+
+  const busyAppointmentOptions = useMemo(() => {
+    const now = new Date();
+    return (Array.isArray(appointments) ? appointments : [])
+      .filter((a) => a?.scheduledDate)
+      .map((a) => ({ a, start: new Date(a.scheduledDate), end: getAppointmentEnd(a) }))
+      .filter(({ start, end }) => start && end && !Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime()))
+      .filter(({ end }) => end >= now)
+      .sort((x, y) => x.start - y.start)
+      .slice(0, 20)
+      .map(({ a, start, end }) => ({
+        id: String(a.id),
+        start,
+        end,
+        label: `${format(start, 'dd.MM.yyyy HH:mm')} — ${format(end, 'HH:mm')}`
+      }));
+  }, [appointments]);
+
   const stats = useMemo(() => {
     const pending = appointments.filter((a) => a.status === 'pending').length;
     const confirmed = appointments.filter((a) => a.status === 'confirmed').length;
@@ -147,6 +213,14 @@ const MasterDashboard = () => {
         setSavingBusy(false);
       }
       return;
+    }
+    setSelectedAppointmentId('');
+    setBusyReasonDraft('');
+    const auto = derivedBusyFromAppointments;
+    if (auto?.busy_until) {
+      setBusyUntilDraft(new Date(auto.busy_until));
+    } else {
+      setBusyUntilDraft(new Date(new Date().getTime() + 60 * 60 * 1000));
     }
     setBusyDialogOpen(true);
   };
@@ -234,28 +308,28 @@ const MasterDashboard = () => {
             </Typography>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
               <Typography variant="h6">
-                {busyStatus?.is_busy ? t('master.busy', 'Зайнятий') : t('master.available', 'Доступний')}
+                {effectiveBusyStatus?.is_busy ? t('master.busy', 'Зайнятий') : t('master.available', 'Доступний')}
               </Typography>
               <Stack direction="row" spacing={1} alignItems="center">
                 <Typography variant="body2" color="text.secondary">
                   {t('master.acceptingAppointments', 'Приймаю записи')}
                 </Typography>
                 <Switch
-                  checked={!busyStatus?.is_busy}
+                  checked={!effectiveBusyStatus?.is_busy}
                   onChange={(e) => handleBusyToggle(!e.target.checked)}
                   disabled={savingBusy}
                 />
               </Stack>
             </Box>
-            {busyStatus?.is_busy && busyStatus.busy_until && (
+            {effectiveBusyStatus?.is_busy && effectiveBusyStatus.busy_until && (
               <Typography variant="body2" color="text.secondary">
                 {t('master.busy_until', 'Зайнятий до')}{' '}
-                {format(new Date(busyStatus.busy_until), 'dd.MM.yyyy HH:mm')}
+                {format(new Date(effectiveBusyStatus.busy_until), 'dd.MM.yyyy HH:mm')}
               </Typography>
             )}
-            {busyStatus?.busy_reason && (
+            {effectiveBusyStatus?.busy_reason && (
               <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                {busyStatus.busy_reason}
+                {effectiveBusyStatus.busy_reason}
               </Typography>
             )}
           </Paper>
@@ -423,6 +497,50 @@ const MasterDashboard = () => {
       <Dialog open={busyDialogOpen} onClose={() => setBusyDialogOpen(false)} maxWidth="xs" fullWidth>
         <DialogTitle>{t('master.busy_status_set', 'Позначити як зайнятий')}</DialogTitle>
         <DialogContent>
+          <Box sx={{ mt: 1 }}>
+            <TextField
+              select
+              fullWidth
+              label={t('master.busy_pick_appointment', 'Виберіть запис')}
+              value={selectedAppointmentId}
+              onChange={(e) => {
+                const nextId = e.target.value;
+                setSelectedAppointmentId(nextId);
+                const option = busyAppointmentOptions.find((o) => o.id === String(nextId));
+                if (option?.end) {
+                  setBusyUntilDraft(option.end);
+                }
+              }}
+            >
+              {busyAppointmentOptions.length === 0 ? (
+                <MenuItem value="" disabled>
+                  {t('master.noAppointmentsForBusy', 'Немає записів для вибору')}
+                </MenuItem>
+              ) : (
+                busyAppointmentOptions.map((o) => (
+                  <MenuItem key={o.id} value={o.id}>
+                    {o.label}
+                  </MenuItem>
+                ))
+              )}
+            </TextField>
+          </Box>
+
+          {busyAppointmentOptions.length === 0 && (
+            <Box sx={{ mt: 2 }}>
+              <Button
+                variant="outlined"
+                fullWidth
+                onClick={() => {
+                  setBusyDialogOpen(false);
+                  navigate('/appointments/schedule');
+                }}
+              >
+                {t('appointment.create', 'Створити новий запис')}
+              </Button>
+            </Box>
+          )}
+
           <Box sx={{ mt: 1, mb: 2 }}>
             <DateTimePicker
               label={t('master.busy_until', 'Зайнятий до')}
