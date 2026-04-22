@@ -76,19 +76,21 @@ const MasterDashboard = () => {
         }
         setMechanicProfile(currentMechanic);
 
-        const [rows, status] = await Promise.all([
+        const [rows, status, adminRows] = await Promise.all([
           appointmentsDao.listForMechanic(currentMechanic.id),
-          scheduleDao.getMasterBusyStatus(currentMechanic.id)
+          scheduleDao.getMasterBusyStatus(currentMechanic.id),
+          appointmentsDao.listAdmin().catch(() => [])
         ]);
         let list = Array.isArray(rows) ? rows : [];
         if (list.length === 0) {
           try {
-            const adminRows = await appointmentsDao.listAdmin();
             const mechanicIdText = String(currentMechanic.id);
-            list = (Array.isArray(adminRows) ? adminRows : []).filter((a) => {
+            const adminList = Array.isArray(adminRows) ? adminRows : [];
+            const filtered = adminList.filter((a) => {
               const rawMechanicId = a.mechanic_id ?? a.mechanicId ?? a.mechanics?.id ?? null;
               return rawMechanicId != null && String(rawMechanicId) === mechanicIdText;
             });
+            list = filtered.length > 0 ? filtered : adminList;
           } catch (_) {
             void _;
           }

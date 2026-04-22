@@ -86,6 +86,8 @@ CREATE TABLE IF NOT EXISTS mechanics (
   specialization_id TEXT,
   service_station_id TEXT,
   experience_years INTEGER,
+  busy_until TEXT,
+  busy_reason TEXT,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
