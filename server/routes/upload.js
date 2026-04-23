@@ -36,6 +36,7 @@ const r2Client = r2Config
   ? new S3Client({
       region: 'auto',
       endpoint: r2Config.endpoint,
+      forcePathStyle: true,
       credentials: {
         accessKeyId: r2Config.accessKeyId,
         secretAccessKey: r2Config.secretAccessKey,
@@ -145,6 +146,7 @@ router.post(
           if (isProduction) {
             return res.status(502).json({
               message: 'Помилка завантаження фото в Cloudflare R2',
+              details: err?.message || null,
             });
           }
           writeLocal();
