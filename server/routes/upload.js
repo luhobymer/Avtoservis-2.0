@@ -43,6 +43,8 @@ const r2Client = r2Config
     })
   : null;
 
+const isProduction = String(process.env.NODE_ENV || '').toLowerCase() === 'production';
+
 router.get('/status', (req, res) => {
   res.json({
     r2Configured: !!(r2Client && r2Config),
@@ -89,8 +91,17 @@ router.post(
       if (!req.file) {
         return res.status(400).json({ message: 'No file uploaded' });
       }
+
+      if (isProduction && !(r2Client && r2Config)) {
+        return res.status(503).json({
+          message:
+            'Завантаження фото не налаштовано для production (потрібно підключити Cloudflare R2: R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET, R2_ENDPOINT, R2_PUBLIC_BASE_URL)',
+        });
+      }
+
       let fileUrl = null;
       let filename = null;
+      let storageType = null;
       const originalExt = path.extname(req.file.originalname);
       const safeExt = (() => {
         const ext = (originalExt || '').trim();
@@ -113,6 +124,7 @@ router.post(
         fs.writeFileSync(destPath, req.file.buffer);
         filename = key;
         fileUrl = `/api/uploads/${key}`;
+        storageType = 'local';
       };
 
       if (r2Client && r2Config) {
@@ -127,8 +139,14 @@ router.post(
           );
           filename = key;
           fileUrl = `${r2Config.publicBaseUrl.replace(/\/$/, '')}/${key}`;
+          storageType = 'r2';
         } catch (err) {
-          console.error('R2 upload error, falling back to local storage:', err);
+          console.error('R2 upload error:', err);
+          if (isProduction) {
+            return res.status(502).json({
+              message: 'Помилка завантаження фото в Cloudflare R2',
+            });
+          }
           writeLocal();
         }
       } else {
@@ -138,6 +156,7 @@ router.post(
         message: 'File uploaded successfully',
         url: fileUrl,
         filename: filename,
+        storage: storageType,
       });
     } catch (err) {
       console.error('Upload error:', err);
