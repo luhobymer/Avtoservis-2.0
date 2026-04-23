@@ -21,6 +21,8 @@ import {
   TextField,
   Typography
 } from '@mui/material';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import EditIcon from '@mui/icons-material/Edit';
 import AddIcon from '@mui/icons-material/Add';
 import useAuth from '../context/useAuth';
@@ -105,6 +107,8 @@ const MyServices = () => {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
+
+  const [expandedCategories, setExpandedCategories] = useState(() => ({}));
 
   const [canSelectMechanic, setCanSelectMechanic] = useState(false);
 
@@ -313,12 +317,24 @@ const MyServices = () => {
       const normalizedLabel = normalizeCategoryLabel(categoryLabel);
       const key = `${normalizeCategoryKey(s)}::${normalizedLabel}`;
       if (!map.has(key)) {
-        map.set(key, { label: normalizedLabel, items: [] });
+        map.set(key, { key, label: normalizedLabel, items: [] });
       }
       map.get(key).items.push(s);
     }
     return Array.from(map.values()).sort((a, b) => a.label.localeCompare(b.label));
   }, [services, t]);
+
+  useEffect(() => {
+    setExpandedCategories((prev) => {
+      const next = { ...(prev || {}) };
+      for (const g of grouped) {
+        if (next[g.key] === undefined) {
+          next[g.key] = true;
+        }
+      }
+      return next;
+    });
+  }, [grouped]);
 
   const handleToggle = async (service) => {
     const serviceId = service?.id;
@@ -331,6 +347,48 @@ const MyServices = () => {
       await setMechanicServiceEnabled(mechanicId, serviceId, nextEnabled);
       setServices((prev) =>
         (prev || []).map((s) => (s.id === serviceId ? { ...s, is_enabled: nextEnabled } : s))
+      );
+      setSnackbar({
+        open: true,
+        message: t('common.saved', 'Збережено'),
+        severity: 'success'
+      });
+    } catch (err) {
+      setSnackbar({
+        open: true,
+        message: err?.message || t('common.error', 'Помилка'),
+        severity: 'error'
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const getCategoryState = (group) => {
+    const items = Array.isArray(group?.items) ? group.items : [];
+    const enabledCount = items.filter((s) => Boolean(s.is_enabled)).length;
+    const total = items.length;
+    return {
+      checked: total > 0 && enabledCount === total,
+      indeterminate: enabledCount > 0 && enabledCount < total,
+      total,
+      enabledCount,
+    };
+  };
+
+  const handleToggleCategory = async (group, enabled) => {
+    if (!mechanicId) return;
+    const items = Array.isArray(group?.items) ? group.items : [];
+    const toChange = items.filter((s) => Boolean(s.is_enabled) !== Boolean(enabled));
+    if (toChange.length === 0) return;
+
+    setSaving(true);
+    try {
+      await Promise.all(toChange.map((s) => setMechanicServiceEnabled(mechanicId, s.id, enabled)));
+      setServices((prev) =>
+        (prev || []).map((s) =>
+          toChange.some((x) => x.id === s.id) ? { ...s, is_enabled: enabled } : s
+        )
       );
       setSnackbar({
         open: true,
@@ -416,59 +474,96 @@ const MyServices = () => {
           <Typography color="text.secondary">{t('services.empty', 'Немає послуг')}</Typography>
         ) : (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            {grouped.map((group) => (
-              <Box key={group.label}>
-                <Typography variant="subtitle1" sx={{ mb: 1, fontWeight: 600 }}>
-                  {group.label}
-                </Typography>
-                <Box sx={{ display: 'flex', flexDirection: 'column' }}>
-                  {group.items
-                    .slice()
-                    .sort((a, b) => String(a?.name || '').localeCompare(String(b?.name || '')))
-                    .map((service) => (
-                      <FormControlLabel
-                        key={service.id}
-                        control={
-                          <Checkbox
-                            checked={Boolean(service.is_enabled)}
-                            onChange={() => handleToggle(service)}
-                            disabled={saving}
-                          />
-                        }
-                        label={
-                          <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 2, width: '100%' }}>
-                            <Box sx={{ display: 'flex', flexDirection: 'column' }}>
-                              <Typography>{service.name}</Typography>
-                              <Typography variant="caption" color="text.secondary">
-                                {formatServicePrice(service)}
-                                {formatServicePrice(service) && formatServiceDuration(service) ? ' • ' : ''}
-                                {formatServiceDuration(service)}
-                              </Typography>
-                              {service.description ? (
-                                <Typography variant="caption" color="text.secondary">
-                                  {service.description}
-                                </Typography>
-                              ) : null}
-                            </Box>
-                            <Button
-                              size="small"
-                              variant="outlined"
-                              startIcon={<EditIcon />}
-                              disabled={saving}
-                              onClick={(e) => {
-                                e.preventDefault();
-                                openEdit(service);
-                              }}
-                            >
-                              {t('common.edit', 'Редагувати')}
-                            </Button>
-                          </Box>
-                        }
+            {grouped.map((group) => {
+              const categoryState = getCategoryState(group);
+              const expanded = expandedCategories[group.key] !== false;
+              return (
+                <Box key={group.key}>
+                  <Box
+                    sx={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: 1,
+                      mb: 1,
+                      cursor: 'pointer',
+                    }}
+                    onClick={() =>
+                      setExpandedCategories((prev) => ({
+                        ...(prev || {}),
+                        [group.key]: !(prev || {})[group.key],
+                      }))
+                    }
+                  >
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Checkbox
+                        checked={categoryState.checked}
+                        indeterminate={categoryState.indeterminate}
+                        disabled={saving || categoryState.total === 0}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => handleToggleCategory(group, e.target.checked)}
                       />
-                    ))}
+                      <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                        {group.label}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {categoryState.enabledCount}/{categoryState.total}
+                      </Typography>
+                    </Box>
+                    {expanded ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
+                  </Box>
+
+                  {expanded && (
+                    <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+                      {group.items
+                        .slice()
+                        .sort((a, b) => String(a?.name || '').localeCompare(String(b?.name || '')))
+                        .map((service) => (
+                          <FormControlLabel
+                            key={service.id}
+                            control={
+                              <Checkbox
+                                checked={Boolean(service.is_enabled)}
+                                onChange={() => handleToggle(service)}
+                                disabled={saving}
+                              />
+                            }
+                            label={
+                              <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 2, width: '100%' }}>
+                                <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+                                  <Typography>{service.name}</Typography>
+                                  <Typography variant="caption" color="text.secondary">
+                                    {formatServicePrice(service)}
+                                    {formatServicePrice(service) && formatServiceDuration(service) ? ' • ' : ''}
+                                    {formatServiceDuration(service)}
+                                  </Typography>
+                                  {service.description ? (
+                                    <Typography variant="caption" color="text.secondary">
+                                      {service.description}
+                                    </Typography>
+                                  ) : null}
+                                </Box>
+                                <Button
+                                  size="small"
+                                  variant="outlined"
+                                  startIcon={<EditIcon />}
+                                  disabled={saving}
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    openEdit(service);
+                                  }}
+                                >
+                                  {t('common.edit', 'Редагувати')}
+                                </Button>
+                              </Box>
+                            }
+                          />
+                        ))}
+                    </Box>
+                  )}
                 </Box>
-              </Box>
-            ))}
+              );
+            })}
           </Box>
         )}
       </Paper>
