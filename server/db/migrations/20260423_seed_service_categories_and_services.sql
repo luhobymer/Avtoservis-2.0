@@ -31,7 +31,7 @@ INSERT INTO services (id, name, description, price, price_text, duration, durati
   ('srv_diag_leak', 'Діагностика витоків', 'Пошук витоків мастила/антифризу/палива', NULL, NULL, NULL, NULL, 1, NULL, 'cat_diagnostics', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
 
   ('srv_maint_oil', 'Заміна масла двигуна', 'Заміна моторного масла та масляного фільтра', NULL, NULL, NULL, NULL, 1, NULL, 'cat_maintenance', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-  ('srv_maint_oil_filter', 'Заміна масляного фільтра', NULL, NULL, NULL, NULL, NULL, 1, NULL, 'cat_maintenance', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  ('srv_maint_oil_filter', 'Заміна масляного фільтра', NULL, NULL, NULL, NULL, 1, NULL, 'cat_maintenance', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
   ('srv_maint_air_filter', 'Заміна повітряного фільтра', NULL, NULL, NULL, NULL, 1, NULL, 'cat_maintenance', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
   ('srv_maint_cabin_filter', 'Заміна салонного фільтра', NULL, NULL, NULL, NULL, 1, NULL, 'cat_maintenance', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
   ('srv_maint_fuel_filter', 'Заміна паливного фільтра', NULL, NULL, NULL, NULL, 1, NULL, 'cat_maintenance', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
