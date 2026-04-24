@@ -19,6 +19,7 @@ INSERT INTO service_categories (id, name, description, created_at, updated_at) V
   ('cat_fuel', 'Паливна система', 'Форсунки, паливний насос, фільтри, магістралі', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
   ('cat_exhaust', 'Вихлоп', 'Каталізатор, глушник, резонатор, кріплення', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
   ('cat_body', 'Кузов/скло', 'Кузовні елементи та скло', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  ('cat_lpg', 'ГБО', 'Газобалонне обладнання (діагностика, сервіс, ремонт)', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
   ('cat_tires', 'Шини/диски', 'Шиномонтаж та балансування', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
   ('cat_alignment', 'Розвал-сходження', 'Регулювання кутів установки коліс', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
   ('cat_other', 'Інше', 'Додаткові роботи', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
@@ -90,6 +91,14 @@ INSERT INTO services (id, name, description, price, price_text, duration, durati
 
   ('srv_fuel_injectors', 'Діагностика/чистка форсунок', NULL, NULL, NULL, NULL, 1, NULL, 'cat_fuel', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
   ('srv_fuel_pump', 'Заміна паливного насоса', NULL, NULL, NULL, NULL, 1, NULL, 'cat_fuel', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+
+  ('srv_lpg_diag', 'Діагностика ГБО', 'Перевірка налаштувань, помилок, параметрів та герметичності', NULL, NULL, NULL, NULL, 1, NULL, 'cat_lpg', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  ('srv_lpg_tune', 'Налаштування/калібрування ГБО', 'Калібрування карти впорску та корекцій', NULL, NULL, NULL, NULL, 1, NULL, 'cat_lpg', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  ('srv_lpg_filter', 'Заміна фільтрів ГБО', 'Заміна фільтра рідкої та/або парової фази', NULL, NULL, NULL, NULL, 1, NULL, 'cat_lpg', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  ('srv_lpg_injectors', 'Ремонт/заміна форсунок ГБО', NULL, NULL, NULL, NULL, 1, NULL, 'cat_lpg', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  ('srv_lpg_reducer', 'Обслуговування/ремонт редуктора ГБО', NULL, NULL, NULL, NULL, 1, NULL, 'cat_lpg', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  ('srv_lpg_leak', 'Перевірка герметичності ГБО', 'Пошук витоків газу та перевірка з''єднань', NULL, NULL, NULL, NULL, 1, NULL, 'cat_lpg', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  ('srv_lpg_multivalve', 'Обслуговування мультиклапана/балона', NULL, NULL, NULL, NULL, 1, NULL, 'cat_lpg', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
 
   ('srv_exhaust_muffler', 'Ремонт/заміна глушника', NULL, NULL, NULL, NULL, 1, NULL, 'cat_exhaust', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
   ('srv_exhaust_cat', 'Діагностика каталізатора/DPF', NULL, NULL, NULL, NULL, 1, NULL, 'cat_exhaust', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
