@@ -1,5 +1,3 @@
-BEGIN TRANSACTION;
-
 DELETE FROM mechanic_services;
 DELETE FROM services;
 DELETE FROM service_categories;
@@ -114,5 +112,3 @@ INSERT INTO services (id, name, description, price, price_text, duration, durati
 
   ('srv_other_wash', 'Мийка двигуна (за погодженням)', NULL, NULL, NULL, NULL, 1, NULL, 'cat_other', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
   ('srv_other_prepurchase', 'Передпродажна діагностика', NULL, NULL, NULL, NULL, 1, NULL, 'cat_other', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
-
-COMMIT;
