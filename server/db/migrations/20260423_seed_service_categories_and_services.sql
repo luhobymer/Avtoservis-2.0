@@ -32,6 +32,15 @@ INSERT INTO services (id, name, description, price, price_text, duration, durati
   ('srv_diag_compression', 'Перевірка компресії', 'Вимір компресії в циліндрах (бензин/дизель за погодженням)', NULL, 'від 800 грн', NULL, '40-90 хв', 1, 'cat_diagnostics', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
   ('srv_diag_smoke', 'Димогенератор (підсос/вакуум)', 'Перевірка підсосу повітря, вакуумних витоків димогенератором', NULL, 'від 700 грн', NULL, '30-60 хв', 1, 'cat_diagnostics', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
 
+  ('srv_diag_abs', 'Діагностика ABS/ESP', 'Зчитування помилок, перевірка датчиків ABS, тест виконавчих механізмів', NULL, 'від 600 грн', NULL, '30-60 хв', 1, 'cat_diagnostics', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  ('srv_diag_srs', 'Діагностика SRS/Airbag', 'Зчитування помилок подушок безпеки, перевірка контактів/датчиків', NULL, 'від 600 грн', NULL, '30-60 хв', 1, 'cat_diagnostics', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  ('srv_diag_can', 'Діагностика CAN/мережі', 'Перевірка комунікації блоків, пошук проблем з шиною CAN/LIN', NULL, 'від 900 грн', NULL, '60-180 хв', 1, 'cat_diagnostics', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  ('srv_diag_charging', 'Перевірка системи зарядки', 'Перевірка генератора/АКБ під навантаженням, падіння напруги, витік струму', NULL, 'від 500 грн', NULL, '30-90 хв', 1, 'cat_diagnostics', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  ('srv_diag_fuel_pressure', 'Діагностика тиску палива', 'Вимір тиску палива, перевірка регулятора, насоса, фільтра', NULL, 'від 700 грн', NULL, '30-90 хв', 1, 'cat_diagnostics', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  ('srv_diag_endoscopy', 'Ендоскопія циліндрів', 'Огляд стану циліндрів/клапанів ендоскопом через свічний колодязь', NULL, 'від 1200 грн', NULL, '60-120 хв', 1, 'cat_diagnostics', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  ('srv_diag_oscilloscope', 'Діагностика осцилографом', 'Перевірка сигналів датчиків/запалювання/форсунок осцилографом', NULL, 'від 1200 грн', NULL, '60-180 хв', 1, 'cat_diagnostics', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  ('srv_diag_prepurchase_plus', 'Комплексна діагностика (розширена)', 'Сканер + ходова + перевірка витоків + базові заміри (за погодженням)', NULL, 'від 2000 грн', NULL, '90-150 хв', 1, 'cat_diagnostics', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+
   ('srv_maint_oil', 'Заміна масла двигуна', 'Заміна моторного масла та масляного фільтра', NULL, 'від 400 грн', NULL, '30-60 хв', 1, 'cat_maintenance', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
   ('srv_maint_oil_filter', 'Заміна масляного фільтра', 'Заміна масляного фільтра (за наявності доступу)', NULL, 'від 150 грн', NULL, '10-30 хв', 1, 'cat_maintenance', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
   ('srv_maint_air_filter', 'Заміна повітряного фільтра', 'Заміна повітряного фільтра двигуна', NULL, 'від 150 грн', NULL, '10-20 хв', 1, 'cat_maintenance', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
@@ -53,6 +62,17 @@ INSERT INTO services (id, name, description, price, price_text, duration, durati
   ('srv_engine_turbo', 'Діагностика турбіни', 'Перевірка наддуву, актуатора, патрубків, помилок', NULL, 'від 700 грн', NULL, '60-120 хв', 1, 'cat_engine', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
   ('srv_engine_pcV', 'Заміна/діагностика вентиляції картера', 'Перевірка та заміна клапана PCV/сапуна', NULL, 'від 600 грн', NULL, '40-90 хв', 1, 'cat_engine', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
   ('srv_engine_carb_clean', 'Розкоксування/чистка камер згоряння', 'Профілактична чистка нагару (метод узгоджується)', NULL, 'від 1500 грн', NULL, '120-240 хв', 1, 'cat_engine', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+
+  ('srv_engine_coils', 'Заміна котушок запалювання', 'Заміна котушки/котушок запалювання, перевірка пропусків запалювання', NULL, 'від 500 грн', NULL, '30-90 хв', 1, 'cat_engine', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  ('srv_engine_misfire_diag', 'Діагностика пропусків запалювання', 'Пошук причин троїння: свічки/котушки/форсунки/підсос/компресія', NULL, 'від 800 грн', NULL, '60-180 хв', 1, 'cat_engine', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  ('srv_engine_lambda', 'Заміна лямбда-зонда', 'Заміна датчика кисню, скидання адаптацій (за потреби)', NULL, 'від 600 грн', NULL, '40-120 хв', 1, 'cat_engine', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  ('srv_engine_maf_map', 'Заміна/чистка датчика MAF/MAP', 'Діагностика та заміна/чистка датчика витрати повітря або тиску', NULL, 'від 500 грн', NULL, '30-90 хв', 1, 'cat_engine', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  ('srv_engine_throttle_adapt', 'Адаптація/калібрування дроселя', 'Адаптація дросельної заслінки після чистки/заміни, скидання помилок', NULL, 'від 400 грн', NULL, '20-40 хв', 1, 'cat_engine', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  ('srv_engine_valve_cover_gasket', 'Заміна прокладки клапанної кришки', 'Усунення підтікання масла з-під кришки, чистка поверхонь', NULL, 'від 1200 грн', NULL, '120-240 хв', 1, 'cat_engine', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  ('srv_engine_oil_cooler_gasket', 'Заміна прокладок теплообмінника/маслокулера', 'Усунення витоків масла/антифризу в зоні теплообмінника', NULL, 'від 2000 грн', NULL, '180-420 хв', 1, 'cat_engine', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  ('srv_engine_vacuum_pump', 'Ремонт/заміна вакуумного насоса', 'Діагностика та заміна/ремонт вакуумного насоса (гальма/актуатори)', NULL, 'від 1800 грн', NULL, '120-360 хв', 1, 'cat_engine', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  ('srv_engine_injector_remove', 'Зняття/встановлення форсунок', 'Демонтаж/монтаж форсунок для ремонту/чистки (ціна залежить від мотора)', NULL, 'від 2000 грн', NULL, '180-420 хв', 1, 'cat_engine', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  ('srv_engine_chain_rattle_diag', 'Діагностика шумів ГРМ/ланцюга', 'Перевірка сторонніх шумів, натягувача, фаз (за можливості)', NULL, 'від 700 грн', NULL, '40-90 хв', 1, 'cat_engine', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
 
   ('srv_timing_belt', 'Заміна ременя ГРМ (комплект)', 'Ремінь, ролики, натягувач (за потреби помпа)', NULL, 'від 3000 грн', NULL, '240-480 хв', 1, 'cat_timing', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
   ('srv_timing_chain', 'Заміна ланцюга ГРМ', 'Заміна комплекту ланцюга ГРМ з направляючими/натягувачем', NULL, 'від 5000 грн', NULL, '360-900 хв', 1, 'cat_timing', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
@@ -90,6 +110,12 @@ INSERT INTO services (id, name, description, price, price_text, duration, durati
   ('srv_elec_lights', 'Ремонт освітлення/заміна ламп', 'Заміна ламп/ремонт контактів, перевірка проводки', NULL, 'від 200 грн', NULL, '15-60 хв', 1, 'cat_electrics', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
   ('srv_elec_wiring', 'Пошук обриву/короткого замикання', 'Діагностика електропроводки, пошук обривів/КЗ', NULL, 'від 800 грн', NULL, '60-180 хв', 1, 'cat_electrics', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
 
+  ('srv_elec_alternator_replace', 'Заміна генератора', 'Заміна генератора (ремінь/натяг перевіряються)', NULL, 'від 1800 грн', NULL, '120-240 хв', 1, 'cat_electrics', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  ('srv_elec_starter_replace', 'Заміна стартера', 'Заміна стартера, перевірка силових проводів та маси', NULL, 'від 1800 грн', NULL, '120-360 хв', 1, 'cat_electrics', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  ('srv_elec_parasitic_draw', 'Пошук витоку струму', 'Пошук споживача, що розряджає АКБ у спокої (покрокова діагностика)', NULL, 'від 900 грн', NULL, '60-180 хв', 1, 'cat_electrics', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  ('srv_elec_fuse_relay', 'Заміна запобіжника/реле', 'Діагностика та заміна запобіжників/реле, відновлення контактів', NULL, 'від 200 грн', NULL, '15-45 хв', 1, 'cat_electrics', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  ('srv_elec_sensor_diag', 'Діагностика датчиків/ланцюгів', 'Перевірка живлення/сигналу датчиків, роз''ємів, маси, проводки', NULL, 'від 800 грн', NULL, '60-180 хв', 1, 'cat_electrics', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+
   ('srv_ac_refill', 'Заправка кондиціонера', 'Вакуумування, перевірка тиску, заправка холодоагентом', NULL, 'від 1200 грн', NULL, '40-90 хв', 1, 'cat_ac', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
   ('srv_ac_leak', 'Пошук витоків фреону', 'Пошук витоків (УФ/азот/електронний), рекомендації ремонту', NULL, 'від 800 грн', NULL, '40-120 хв', 1, 'cat_ac', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
   ('srv_ac_compressor', 'Ремонт/заміна компресора кондиціонера', 'Заміна компресора/муфти, промивка системи (за потреби)', NULL, 'від 3500 грн', NULL, '180-420 хв', 1, 'cat_ac', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
@@ -113,6 +139,11 @@ INSERT INTO services (id, name, description, price, price_text, duration, durati
   ('srv_lpg_leak', 'Перевірка герметичності ГБО', 'Пошук витоків газу та перевірка з''єднань', NULL, 'від 400 грн', NULL, '20-40 хв', 1, 'cat_lpg', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
   ('srv_lpg_multivalve', 'Обслуговування мультиклапана/балона', 'Перевірка/обслуговування мультиклапана, арматури балона', NULL, 'від 600 грн', NULL, '40-90 хв', 1, 'cat_lpg', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
   ('srv_lpg_docs', 'Перевірка/підготовка ГБО до огляду', 'Базова перевірка вузлів та рекомендації перед техоглядом', NULL, 'від 500 грн', NULL, '30-60 хв', 1, 'cat_lpg', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+
+  ('srv_lpg_pressure_check', 'Перевірка тиску/налаштування редуктора', 'Перевірка тиску газу, корекція налаштувань редуктора/мапи', NULL, 'від 700 грн', NULL, '40-90 хв', 1, 'cat_lpg', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  ('srv_lpg_nozzle_clean', 'Чистка/перевірка жиклерів/форсунок ГБО', 'Діагностика продуктивності форсунок, чистка/перевірка жиклерів', NULL, 'від 1200 грн', NULL, '60-180 хв', 1, 'cat_lpg', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  ('srv_lpg_leak_test_plus', 'Детальна перевірка герметичності ГБО', 'Перевірка всіх з''єднань, магістралей, рампи, редуктора на витоки', NULL, 'від 600 грн', NULL, '40-90 хв', 1, 'cat_lpg', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  ('srv_lpg_start_switch', 'Ремонт/заміна перемикача ГБО', 'Діагностика та заміна кнопки/перемикача, перевірка проводки', NULL, 'від 500 грн', NULL, '40-90 хв', 1, 'cat_lpg', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
 
   ('srv_exhaust_muffler', 'Ремонт/заміна глушника', 'Ремонт/заміна глушника, підварювання, кріплення', NULL, 'від 900 грн', NULL, '60-180 хв', 1, 'cat_exhaust', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
   ('srv_exhaust_cat', 'Діагностика каталізатора/DPF', 'Діагностика ефективності, помилок, перепаду тиску (за можливості)', NULL, 'від 800 грн', NULL, '60-120 хв', 1, 'cat_exhaust', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
