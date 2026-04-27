@@ -6,8 +6,16 @@ const defaultMaintenanceTasks = [
   { service_item: 'Заміна паливного фільтра', interval_km: 40000, interval_months: 48 },
   { service_item: 'Заміна гальмівної рідини', interval_km: null, interval_months: 24 },
   { service_item: 'Заміна антифризу', interval_km: 60000, interval_months: 60 },
+  { service_item: 'Заміна фільтрів ГБО', interval_km: 10000, interval_months: 12 },
   { service_item: 'Заміна свічок запалювання', interval_km: 40000, interval_months: null },
   { service_item: 'Перевірка гальмівних колодок', interval_km: 10000, interval_months: null },
+  { service_item: 'Заміна гальмівних колодок (передні)', interval_km: 30000, interval_months: null },
+  { service_item: 'Заміна гальмівних колодок (задні)', interval_km: 40000, interval_months: null },
+  { service_item: 'Заміна гальмівних дисків (передні)', interval_km: 120000, interval_months: null },
+  { service_item: 'Заміна гальмівних дисків (задні)', interval_km: 120000, interval_months: null },
+  { service_item: 'Заміна масла АКПП', interval_km: 60000, interval_months: 60 },
+  { service_item: 'Заміна масла МКПП/редуктора', interval_km: 80000, interval_months: 72 },
+  { service_item: 'Заміна рідини ГПК', interval_km: 60000, interval_months: 60 },
   { service_item: 'Заміна комплекту ГРМ', interval_km: 60000, interval_months: 60 },
 ];
 

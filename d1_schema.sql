@@ -69,6 +69,18 @@ CREATE TABLE IF NOT EXISTS services (
   updated_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS service_maintenance_map (
+  id TEXT PRIMARY KEY,
+  service_id TEXT NOT NULL,
+  service_item TEXT NOT NULL,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_service_maintenance_map_service_id ON service_maintenance_map(service_id);
+CREATE INDEX IF NOT EXISTS idx_service_maintenance_map_service_item ON service_maintenance_map(service_item);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_service_maintenance_map_service_item ON service_maintenance_map(service_id, service_item);
+
 CREATE TABLE IF NOT EXISTS specializations (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,

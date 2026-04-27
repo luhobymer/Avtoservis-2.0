@@ -66,6 +66,253 @@ const buildFilename = (vin, licensePlate) => {
   return sanitized || 'service-book';
 };
 
+const normalizeServiceItem = (value) =>
+  String(value || '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+
+const getMaintenanceItemsForService = (serviceName) => {
+  const name = normalizeServiceItem(serviceName);
+  if (!name) return [];
+
+  const mapped = [];
+  const pushUnique = (item) => {
+    if (!item) return;
+    if (!mapped.includes(item)) mapped.push(item);
+  };
+
+  if (name.includes('заміна масла двигуна') || name.includes('заміна моторного масла')) {
+    pushUnique('Заміна моторної оливи');
+    pushUnique('Заміна масляного фільтра');
+  }
+  if (name.includes('заміна масляного фільтра')) {
+    pushUnique('Заміна масляного фільтра');
+  }
+  if (name.includes('заміна повітряного фільтра')) {
+    pushUnique('Заміна повітряного фільтра');
+  }
+  if (name.includes('заміна салонного фільтра') || name.includes('заміна фільтра салону')) {
+    pushUnique('Заміна фільтра салону');
+  }
+  if (name.includes('заміна паливного фільтра')) {
+    pushUnique('Заміна паливного фільтра');
+  }
+  if (name.includes('заміна гальмівної рідини')) {
+    pushUnique('Заміна гальмівної рідини');
+  }
+  if (name.includes('заміна антифризу')) {
+    pushUnique('Заміна антифризу');
+  }
+  if (name.includes('заміна свічок запалювання')) {
+    pushUnique('Заміна свічок запалювання');
+  }
+  if (
+    name.includes('гальмівних колодок') ||
+    name.includes('діагностика гальм') ||
+    name.includes('огляд гальм')
+  ) {
+    pushUnique('Перевірка гальмівних колодок');
+  }
+  if (name.includes('заміна гальмівних колодок')) {
+    if (name.includes('перед')) {
+      pushUnique('Заміна гальмівних колодок (передні)');
+    } else if (name.includes('зад')) {
+      pushUnique('Заміна гальмівних колодок (задні)');
+    } else {
+      pushUnique('Заміна гальмівних колодок (передні)');
+      pushUnique('Заміна гальмівних колодок (задні)');
+    }
+  }
+  if (name.includes('заміна гальмівних дисків')) {
+    if (name.includes('перед')) {
+      pushUnique('Заміна гальмівних дисків (передні)');
+    } else if (name.includes('зад')) {
+      pushUnique('Заміна гальмівних дисків (задні)');
+    } else {
+      pushUnique('Заміна гальмівних дисків (передні)');
+      pushUnique('Заміна гальмівних дисків (задні)');
+    }
+  }
+  if (name.includes('заміна масла акпп') || name.includes('заміна оливи акпп')) {
+    pushUnique('Заміна масла АКПП');
+  }
+  if (
+    name.includes('заміна масла мкпп') ||
+    name.includes('заміна оливи мкпп') ||
+    name.includes('заміна масла редуктора') ||
+    name.includes('заміна оливи редуктора')
+  ) {
+    pushUnique('Заміна масла МКПП/редуктора');
+  }
+  if (name.includes('заміна рідини гпк') || name.includes('рідина гпк')) {
+    pushUnique('Заміна рідини ГПК');
+  }
+  if (name.includes('заміна фільтрів гбо') || name.includes('фільтрів гбо')) {
+    pushUnique('Заміна фільтрів ГБО');
+  }
+  if (
+    name.includes('заміна ременя грм') ||
+    name.includes('заміна ланцюга грм') ||
+    name.includes('заміна комплекту грм') ||
+    name.includes('грм')
+  ) {
+    pushUnique('Заміна комплекту ГРМ');
+  }
+
+  return mapped;
+};
+
+const getServiceNamesFromAppointment = async (db, appointmentId) => {
+  if (!appointmentId) return [];
+  const appointment = await db
+    .prepare('SELECT service_id, service_ids, service_type FROM appointments WHERE id = ?')
+    .get(appointmentId);
+  if (!appointment) return [];
+
+  const serviceIds = new Set();
+  if (appointment.service_id) serviceIds.add(String(appointment.service_id));
+
+  if (appointment.service_ids) {
+    const raw = appointment.service_ids;
+    if (Array.isArray(raw)) {
+      raw.forEach((value) => value && serviceIds.add(String(value)));
+    } else if (typeof raw === 'string') {
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          parsed.forEach((value) => value && serviceIds.add(String(value)));
+        } else if (parsed) {
+          serviceIds.add(String(parsed));
+        }
+      } catch (err) {
+        raw
+          .split(',')
+          .map((value) => value.trim())
+          .filter(Boolean)
+          .forEach((value) => serviceIds.add(value));
+        void err;
+      }
+    }
+  }
+
+  const names = [];
+  if (appointment.service_type) names.push(String(appointment.service_type));
+
+  for (const serviceId of serviceIds) {
+    const service = await db.prepare('SELECT name FROM services WHERE id = ?').get(serviceId);
+    if (service?.name) names.push(String(service.name));
+  }
+
+  return names;
+};
+
+const getServiceIdsFromAppointment = async (db, appointmentId) => {
+  if (!appointmentId) return [];
+  const appointment = await db
+    .prepare('SELECT service_id, service_ids FROM appointments WHERE id = ?')
+    .get(appointmentId);
+  if (!appointment) return [];
+
+  const serviceIds = new Set();
+  if (appointment.service_id) serviceIds.add(String(appointment.service_id));
+
+  if (appointment.service_ids) {
+    const raw = appointment.service_ids;
+    if (Array.isArray(raw)) {
+      raw.forEach((value) => value && serviceIds.add(String(value)));
+    } else if (typeof raw === 'string') {
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          parsed.forEach((value) => value && serviceIds.add(String(value)));
+        } else if (parsed) {
+          serviceIds.add(String(parsed));
+        }
+      } catch (err) {
+        raw
+          .split(',')
+          .map((value) => value.trim())
+          .filter(Boolean)
+          .forEach((value) => serviceIds.add(value));
+        void err;
+      }
+    }
+  }
+
+  return Array.from(serviceIds);
+};
+
+const getMaintenanceItemsForServiceIds = async (db, serviceIds) => {
+  if (!Array.isArray(serviceIds) || serviceIds.length === 0) return [];
+
+  const items = new Set();
+  for (const serviceId of serviceIds) {
+    const rows = await db
+      .prepare('SELECT service_item FROM service_maintenance_map WHERE service_id = ?')
+      .all(serviceId);
+
+    const resultRows = rows?.results || rows;
+    if (Array.isArray(resultRows)) {
+      for (const row of resultRows) {
+        if (row?.service_item) items.add(String(row.service_item));
+      }
+    }
+  }
+  return Array.from(items);
+};
+
+const updateMaintenanceSchedulesFromRecord = async (db, vin, payload) => {
+  const normalizedVin = vin ? String(vin).trim() : '';
+  if (!normalizedVin) return;
+
+  const effectiveMileage = Number.isFinite(payload.mileage) ? Number(payload.mileage) : null;
+  const effectiveDate = payload.serviceDate ? String(payload.serviceDate) : null;
+
+  const scheduleItems = new Set();
+
+  const appointmentServiceIds = await getServiceIdsFromAppointment(db, payload.appointmentId);
+  const mappedByIds = await getMaintenanceItemsForServiceIds(db, appointmentServiceIds);
+  mappedByIds.forEach((item) => scheduleItems.add(item));
+
+  if (!scheduleItems.size) {
+    const performedNames = new Set();
+    if (payload.serviceType) performedNames.add(String(payload.serviceType));
+    const appointmentServiceNames = await getServiceNamesFromAppointment(db, payload.appointmentId);
+    appointmentServiceNames.forEach((name) => performedNames.add(name));
+
+    for (const name of performedNames) {
+      for (const item of getMaintenanceItemsForService(name)) {
+        scheduleItems.add(item);
+      }
+    }
+  }
+
+  if (!scheduleItems.size) return;
+
+  const updates = [];
+  const params = [];
+  if (effectiveDate !== null) {
+    updates.push('last_service_date = ?');
+    params.push(effectiveDate);
+  }
+  if (effectiveMileage !== null) {
+    updates.push('last_service_mileage = ?');
+    params.push(effectiveMileage);
+  }
+  updates.push('updated_at = CURRENT_TIMESTAMP');
+
+  for (const serviceItem of scheduleItems) {
+    await db
+      .prepare(
+        `UPDATE maintenance_schedules
+         SET ${updates.join(', ')}
+         WHERE vehicle_vin = ? AND service_item = ?`
+      )
+      .run(...params, normalizedVin, serviceItem);
+  }
+};
+
 // Отримати всі записи про обслуговування для автомобілів користувача
 exports.getAllServiceRecords = async (req, res) => {
   try {
@@ -239,7 +486,7 @@ exports.addServiceRecord = async (req, res) => {
     const isMaster = String(req.user?.role || '').toLowerCase() === 'master';
     const targetUserId = isMaster && requestedUserId ? String(requestedUserId) : req.user.id;
     const vehicle = await db
-      .prepare('SELECT id, mileage FROM vehicles WHERE id = ? AND user_id = ?')
+      .prepare('SELECT id, mileage, vin FROM vehicles WHERE id = ? AND user_id = ?')
       .get(vehicleId, targetUserId);
 
     if (!vehicle) {
@@ -286,6 +533,21 @@ exports.addServiceRecord = async (req, res) => {
       if (updateResult.changes === 0) {
         logger.error('Error updating vehicle mileage');
       }
+    }
+
+    try {
+      await updateMaintenanceSchedulesFromRecord(db, vehicle.vin, {
+        serviceType,
+        appointmentId: body.appointment_id || body.appointmentId || null,
+        serviceDate,
+        mileage: Number.isFinite(nextMileage)
+          ? nextMileage
+          : Number.isFinite(vehicle.mileage)
+            ? vehicle.mileage
+            : null,
+      });
+    } catch (maintenanceErr) {
+      logger.error('Update maintenance schedule from service record error:', maintenanceErr);
     }
 
     res.status(201).json(newServiceRecord);

@@ -492,6 +492,25 @@ const ensureSchemaSqliteSync = (sqliteDb) => {
   );
 
   sqliteDb.exec(`
+    CREATE TABLE IF NOT EXISTS service_maintenance_map (
+      id TEXT PRIMARY KEY,
+      service_id TEXT NOT NULL,
+      service_item TEXT NOT NULL,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  sqliteDb.exec(
+    'CREATE INDEX IF NOT EXISTS idx_service_maintenance_map_service_id ON service_maintenance_map(service_id)'
+  );
+  sqliteDb.exec(
+    'CREATE INDEX IF NOT EXISTS idx_service_maintenance_map_service_item ON service_maintenance_map(service_item)'
+  );
+  sqliteDb.exec(
+    'CREATE UNIQUE INDEX IF NOT EXISTS ux_service_maintenance_map_service_item ON service_maintenance_map(service_id, service_item)'
+  );
+
+  sqliteDb.exec(`
     CREATE TABLE IF NOT EXISTS insurances (
       id TEXT PRIMARY KEY,
       vehicle_vin TEXT NOT NULL,

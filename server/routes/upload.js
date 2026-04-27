@@ -93,10 +93,10 @@ router.post(
         return res.status(400).json({ message: 'No file uploaded' });
       }
 
-      if (isProduction && !(r2Client && r2Config)) {
+      if (!(r2Client && r2Config)) {
         return res.status(503).json({
           message:
-            'Завантаження фото не налаштовано для production (потрібно підключити Cloudflare R2: R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET, R2_ENDPOINT, R2_PUBLIC_BASE_URL)',
+            'Завантаження фото не налаштовано (потрібно підключити Cloudflare R2: R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET, R2_ENDPOINT, R2_PUBLIC_BASE_URL)',
         });
       }
 
@@ -116,43 +116,25 @@ router.post(
       })();
       const key = `${Date.now()}-${crypto.randomUUID()}${safeExt}`;
 
-      const writeLocal = () => {
-        const uploadsDir = path.join(__dirname, '..', 'public', 'uploads');
-        if (!fs.existsSync(uploadsDir)) {
-          fs.mkdirSync(uploadsDir, { recursive: true });
-        }
-        const destPath = path.join(uploadsDir, key);
-        fs.writeFileSync(destPath, req.file.buffer);
+      try {
+        await r2Client.send(
+          new PutObjectCommand({
+            Bucket: r2Config.bucket,
+            Key: key,
+            Body: req.file.buffer,
+            ContentType: req.file.mimetype,
+          })
+        );
         filename = key;
-        fileUrl = `/api/uploads/${key}`;
-        storageType = 'local';
-      };
-
-      if (r2Client && r2Config) {
-        try {
-          await r2Client.send(
-            new PutObjectCommand({
-              Bucket: r2Config.bucket,
-              Key: key,
-              Body: req.file.buffer,
-              ContentType: req.file.mimetype,
-            })
-          );
-          filename = key;
-          fileUrl = `${r2Config.publicBaseUrl.replace(/\/$/, '')}/${key}`;
-          storageType = 'r2';
-        } catch (err) {
-          console.error('R2 upload error:', err);
-          if (isProduction) {
-            return res.status(502).json({
-              message: 'Помилка завантаження фото в Cloudflare R2',
-              details: err?.message || null,
-            });
-          }
-          writeLocal();
-        }
-      } else {
-        writeLocal();
+        fileUrl = `${r2Config.publicBaseUrl.replace(/\/$/, '')}/${key}`;
+        storageType = 'r2';
+      } catch (err) {
+        console.error('R2 upload error:', err);
+        return res.status(502).json({
+          message: 'Помилка завантаження фото в Cloudflare R2',
+          details: err?.message || null,
+          ...(isProduction ? {} : { hint: 'Local upload fallback disabled. Configure R2.' }),
+        });
       }
       res.json({
         message: 'File uploaded successfully',

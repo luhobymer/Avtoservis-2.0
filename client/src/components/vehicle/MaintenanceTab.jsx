@@ -57,6 +57,7 @@ const MaintenanceTab = ({ vin }) => {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [editMode, setEditMode] = useState(false);
   
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
@@ -177,9 +178,22 @@ const MaintenanceTab = ({ vin }) => {
     <Box sx={{ mt: 2 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
         <Typography variant="h6">{t('maintenance.title', 'Регламент ТО')}</Typography>
-        <Button startIcon={<AddIcon />} variant="contained" onClick={() => handleOpenDialog()}>
-          {t('common.add', 'Додати')}
-        </Button>
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          <Button
+            startIcon={<EditIcon />}
+            variant={editMode ? 'outlined' : 'contained'}
+            onClick={() => setEditMode((prev) => !prev)}
+          >
+            {editMode
+              ? t('common.done', 'Готово')
+              : t('maintenance.editList', 'Редагувати список')}
+          </Button>
+          {editMode && (
+            <Button startIcon={<AddIcon />} variant="contained" onClick={() => handleOpenDialog()}>
+              {t('common.add', 'Додати')}
+            </Button>
+          )}
+        </Box>
       </Box>
 
       {error && <Alert severity="error">{error}</Alert>}
@@ -195,10 +209,12 @@ const MaintenanceTab = ({ vin }) => {
               bgcolor: item.status === 'overdue' ? '#fff4f4' : 'inherit'
             }}
             secondaryAction={
-              <Box>
-                <IconButton onClick={() => handleOpenDialog(item)} size="small"><EditIcon /></IconButton>
-                <IconButton onClick={() => handleDelete(item.id)} size="small" color="error"><DeleteIcon /></IconButton>
-              </Box>
+              editMode ? (
+                <Box>
+                  <IconButton onClick={() => handleOpenDialog(item)} size="small"><EditIcon /></IconButton>
+                  <IconButton onClick={() => handleDelete(item.id)} size="small" color="error"><DeleteIcon /></IconButton>
+                </Box>
+              ) : null
             }
           >
             <ListItemText
