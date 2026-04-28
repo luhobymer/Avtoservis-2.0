@@ -12,6 +12,13 @@ const upload = multer({
 
 router.post('/parse', auth, upload.single('image'), ocrController.parsePartsFromImage);
 
+router.post(
+  '/parse-debug',
+  auth,
+  upload.single('image'),
+  ocrController.parsePartsFromImageDebug
+);
+
 router.post('/plate', auth, upload.single('image'), ocrController.parseLicensePlateFromImage);
 
 // Temporary debug endpoint without auth for testing

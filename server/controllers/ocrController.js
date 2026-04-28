@@ -231,107 +231,127 @@ try {
   void _;
 }
 
+async function parsePartsFromImageInternal(req) {
+  const imagePath = req.file.path;
+
+  let ocrPath = imagePath;
+  let preprocessedPath = null;
+  let preprocessingApplied = false;
+
+  try {
+    const Jimp = await getJimp();
+    if (Jimp) {
+      const img = await Jimp.read(imagePath);
+      const w = img.bitmap?.width || 0;
+      const h = img.bitmap?.height || 0;
+      if (w > 0 && h > 0) {
+        const samplePoints = [
+          { x: Math.floor(w * 0.2), y: Math.floor(h * 0.2) },
+          { x: Math.floor(w * 0.5), y: Math.floor(h * 0.5) },
+          { x: Math.floor(w * 0.8), y: Math.floor(h * 0.8) },
+        ];
+        let brightnessSum = 0;
+        for (const p of samplePoints) {
+          const clr = img.getPixelColor(p.x, p.y);
+          const rgba = Jimp.intToRGBA(clr);
+          brightnessSum += (rgba.r + rgba.g + rgba.b) / 3;
+        }
+        const avgBrightness = brightnessSum / samplePoints.length;
+        const isDarkBackground = avgBrightness < 110;
+
+        const processed = img.clone().grayscale();
+        try {
+          processed.contrast(0.35);
+        } catch (_) {
+          void _;
+        }
+        if (isDarkBackground) {
+          try {
+            processed.invert();
+          } catch (_) {
+            void _;
+          }
+        }
+
+        const targetWidth = Math.min(2400, Math.max(1400, w < 1400 ? 1400 : w));
+        if (w < targetWidth) {
+          resizeKeepAspect(processed, targetWidth);
+        }
+
+        preprocessedPath = `${imagePath}_preprocessed.png`;
+        await processed.writeAsync(preprocessedPath);
+        ocrPath = preprocessedPath;
+        preprocessingApplied = true;
+      }
+    }
+  } catch (err) {
+    void err;
+    ocrPath = imagePath;
+    preprocessedPath = null;
+    preprocessingApplied = false;
+  }
+
+  const worker = await createWorker('ukr+eng');
+  const {
+    data: { text },
+  } = await worker.recognize(ocrPath);
+  await worker.terminate();
+
+  return {
+    imagePath,
+    preprocessedPath,
+    preprocessingApplied,
+    usedPath: ocrPath === imagePath ? 'original' : 'preprocessed',
+    rawText: text || '',
+    parts: parseOcrText(text || ''),
+  };
+}
+
+function cleanupOcrFiles({ imagePath, preprocessedPath }) {
+  if (imagePath) {
+    fs.unlink(imagePath, (err) => {
+      if (err) console.error('Failed to delete temp file:', err);
+    });
+  }
+
+  if (preprocessedPath) {
+    fs.unlink(preprocessedPath, (err) => {
+      if (err) void err;
+    });
+  }
+}
+
 exports.parsePartsFromImage = async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ message: 'Зображення не знайдено' });
     }
 
-    const debug = String(req.query?.debug || '') === '1';
+    const result = await parsePartsFromImageInternal(req);
+    cleanupOcrFiles(result);
+    return res.json(result.parts);
+  } catch (err) {
+    console.error('OCR Error:', err);
+    res.status(500).json({ message: 'Помилка розпізнавання тексту', error: err.message });
+  }
+};
 
-    const imagePath = req.file.path;
-
-    let ocrPath = imagePath;
-    let preprocessedPath = null;
-    let preprocessingApplied = false;
-
-    try {
-      const Jimp = await getJimp();
-      if (Jimp) {
-        const img = await Jimp.read(imagePath);
-        const w = img.bitmap?.width || 0;
-        const h = img.bitmap?.height || 0;
-        if (w > 0 && h > 0) {
-          const samplePoints = [
-            { x: Math.floor(w * 0.2), y: Math.floor(h * 0.2) },
-            { x: Math.floor(w * 0.5), y: Math.floor(h * 0.5) },
-            { x: Math.floor(w * 0.8), y: Math.floor(h * 0.8) },
-          ];
-          let brightnessSum = 0;
-          for (const p of samplePoints) {
-            const clr = img.getPixelColor(p.x, p.y);
-            const rgba = Jimp.intToRGBA(clr);
-            brightnessSum += (rgba.r + rgba.g + rgba.b) / 3;
-          }
-          const avgBrightness = brightnessSum / samplePoints.length;
-          const isDarkBackground = avgBrightness < 110;
-
-          const processed = img.clone().grayscale();
-          try {
-            processed.contrast(0.35);
-          } catch (_) {
-            void _;
-          }
-          if (isDarkBackground) {
-            try {
-              processed.invert();
-            } catch (_) {
-              void _;
-            }
-          }
-
-          const targetWidth = Math.min(2400, Math.max(1400, w < 1400 ? 1400 : w));
-          if (w < targetWidth) {
-            resizeKeepAspect(processed, targetWidth);
-          }
-
-          preprocessedPath = `${imagePath}_preprocessed.png`;
-          await processed.writeAsync(preprocessedPath);
-          ocrPath = preprocessedPath;
-          preprocessingApplied = true;
-        }
-      }
-    } catch (err) {
-      void err;
-      ocrPath = imagePath;
-      preprocessedPath = null;
-      preprocessingApplied = false;
+exports.parsePartsFromImageDebug = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: 'Зображення не знайдено' });
     }
 
-    // Initialize Tesseract worker
-    const worker = await createWorker('ukr+eng');
-    const {
-      data: { text },
-    } = await worker.recognize(ocrPath);
-    await worker.terminate();
-
-    // Clean up uploaded file
-    fs.unlink(imagePath, (err) => {
-      if (err) console.error('Failed to delete temp file:', err);
+    const result = await parsePartsFromImageInternal(req);
+    cleanupOcrFiles(result);
+    return res.json({
+      parts: result.parts,
+      rawText: result.rawText,
+      meta: {
+        preprocessingApplied: result.preprocessingApplied,
+        usedPath: result.usedPath,
+      },
     });
-
-    if (preprocessedPath) {
-      fs.unlink(preprocessedPath, (err) => {
-        if (err) void err;
-      });
-    }
-
-    // Parse the text
-    // The parsing logic needs to be robust to handle the format described
-    const parts = parseOcrText(text);
-
-    if (debug) {
-      return res.json({
-        parts,
-        rawText: text || '',
-        meta: {
-          preprocessingApplied,
-          usedPath: ocrPath === imagePath ? 'original' : 'preprocessed',
-        },
-      });
-    }
-
-    res.json(parts);
   } catch (err) {
     console.error('OCR Error:', err);
     res.status(500).json({ message: 'Помилка розпізнавання тексту', error: err.message });
