@@ -239,17 +239,77 @@ exports.parsePartsFromImage = async (req, res) => {
 
     const imagePath = req.file.path;
 
+    let ocrPath = imagePath;
+    let preprocessedPath = null;
+
+    try {
+      const Jimp = await getJimp();
+      if (Jimp) {
+        const img = await Jimp.read(imagePath);
+        const w = img.bitmap?.width || 0;
+        const h = img.bitmap?.height || 0;
+        if (w > 0 && h > 0) {
+          const samplePoints = [
+            { x: Math.floor(w * 0.2), y: Math.floor(h * 0.2) },
+            { x: Math.floor(w * 0.5), y: Math.floor(h * 0.5) },
+            { x: Math.floor(w * 0.8), y: Math.floor(h * 0.8) },
+          ];
+          let brightnessSum = 0;
+          for (const p of samplePoints) {
+            const clr = img.getPixelColor(p.x, p.y);
+            const rgba = Jimp.intToRGBA(clr);
+            brightnessSum += (rgba.r + rgba.g + rgba.b) / 3;
+          }
+          const avgBrightness = brightnessSum / samplePoints.length;
+          const isDarkBackground = avgBrightness < 110;
+
+          const processed = img.clone().grayscale();
+          try {
+            processed.contrast(0.35);
+          } catch (_) {
+            void _;
+          }
+          if (isDarkBackground) {
+            try {
+              processed.invert();
+            } catch (_) {
+              void _;
+            }
+          }
+
+          const targetWidth = Math.min(2400, Math.max(1400, w < 1400 ? 1400 : w));
+          if (w < targetWidth) {
+            resizeKeepAspect(processed, targetWidth);
+          }
+
+          preprocessedPath = `${imagePath}_preprocessed.png`;
+          await processed.writeAsync(preprocessedPath);
+          ocrPath = preprocessedPath;
+        }
+      }
+    } catch (err) {
+      void err;
+      ocrPath = imagePath;
+      preprocessedPath = null;
+    }
+
     // Initialize Tesseract worker
     const worker = await createWorker('ukr+eng');
     const {
       data: { text },
-    } = await worker.recognize(imagePath);
+    } = await worker.recognize(ocrPath);
     await worker.terminate();
 
     // Clean up uploaded file
     fs.unlink(imagePath, (err) => {
       if (err) console.error('Failed to delete temp file:', err);
     });
+
+    if (preprocessedPath) {
+      fs.unlink(preprocessedPath, (err) => {
+        if (err) void err;
+      });
+    }
 
     // Parse the text
     // The parsing logic needs to be robust to handle the format described
@@ -1011,6 +1071,11 @@ function parseOcrText(text) {
     return Number.isFinite(num) ? num : null;
   };
 
+  const nearlyEquals = (a, b, eps = 0.6) => {
+    if (!Number.isFinite(a) || !Number.isFinite(b)) return false;
+    return Math.abs(a - b) <= eps;
+  };
+
   const extractNumber = (value) => {
     const match = value.match(numberPattern);
     if (!match || match.length === 0) return null;
@@ -1051,10 +1116,43 @@ function parseOcrText(text) {
     if (numbers.length < 2) return null;
     let qty = 1;
     let price = null;
+    let total = null;
     if (numbers.length >= 3) {
       const last = numbers[numbers.length - 1];
       const secondLast = numbers[numbers.length - 2];
       const thirdLast = numbers[numbers.length - 3];
+      total = last;
+
+      if (
+        Number.isFinite(thirdLast) &&
+        Number.isInteger(secondLast) &&
+        secondLast > 0 &&
+        secondLast <= 1000 &&
+        nearlyEquals(thirdLast * secondLast, total)
+      ) {
+        price = thirdLast;
+        qty = secondLast;
+      } else if (
+        Number.isFinite(secondLast) &&
+        Number.isInteger(thirdLast) &&
+        thirdLast > 0 &&
+        thirdLast <= 1000 &&
+        nearlyEquals(secondLast * thirdLast, total)
+      ) {
+        price = secondLast;
+        qty = thirdLast;
+      }
+
+      if (price !== null) {
+        const name = line
+          .replace(numberPattern, ' ')
+          .replace(/[₴]/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+        if (!name || isNoiseLine(name)) return null;
+        return { name, price, quantity: qty };
+      }
+
       if (Number.isInteger(thirdLast) && thirdLast > 0 && thirdLast <= 1000) {
         qty = thirdLast;
         price = secondLast;
@@ -1082,6 +1180,50 @@ function parseOcrText(text) {
     return { name, price, quantity: qty };
   };
 
+  const parseNumericRowLine = (line) => {
+    if (!line) return null;
+    if (/[A-Za-zА-Яа-яІіЇїЄє]/.test(line)) return null;
+    const numbers = Array.from(line.matchAll(numberPattern))
+      .map((m) => parseNumber(m[0]))
+      .filter((n) => Number.isFinite(n));
+    if (numbers.length < 2) return null;
+
+    let price = null;
+    let qty = 1;
+    let total = null;
+
+    if (numbers.length >= 3) {
+      const a = numbers[0];
+      const b = numbers[1];
+      const c = numbers[2];
+      if (Number.isInteger(b) && b > 0 && b <= 1000 && nearlyEquals(a * b, c)) {
+        price = a;
+        qty = b;
+        total = c;
+      } else if (Number.isInteger(a) && a > 0 && a <= 1000 && nearlyEquals(b * a, c)) {
+        price = b;
+        qty = a;
+        total = c;
+      } else {
+        price = b;
+        qty = Number.isInteger(a) && a > 0 && a <= 1000 ? a : 1;
+        total = c;
+      }
+    } else {
+      price = numbers[0];
+      total = numbers[1];
+    }
+
+    if (!Number.isFinite(price) || price <= 0) return null;
+    if (Number.isFinite(total) && total > 0 && qty > 1) {
+      if (!nearlyEquals(price * qty, total)) {
+        qty = 1;
+      }
+    }
+
+    return { price, quantity: qty };
+  };
+
   const pushPart = (name, price, quantity, lineForPartNumber) => {
     const cleanedName = normalizeLine(name);
     if (!cleanedName || isNoiseLine(cleanedName)) return;
@@ -1106,6 +1248,19 @@ function parseOcrText(text) {
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     if (!line) continue;
+
+    const numericRow = parseNumericRowLine(line);
+    if (numericRow) {
+      const nameLines = buffer.filter(
+        (l) => !isNoiseLine(l) && !isPriceLine(l) && !qtyKeywords.test(l)
+      );
+      const name = nameLines.join(' ').trim();
+      if (name) {
+        pushPart(name, numericRow.price, numericRow.quantity, name);
+        buffer.length = 0;
+        continue;
+      }
+    }
 
     const rowCandidate = parseRowLine(line);
     if (rowCandidate) {

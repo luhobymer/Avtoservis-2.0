@@ -128,6 +128,19 @@ CREATE TABLE IF NOT EXISTS mechanic_serviced_vehicles (
   updated_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS mechanic_working_hours (
+  master_id TEXT NOT NULL,
+  day_of_week INTEGER NOT NULL,
+  start_time TEXT,
+  end_time TEXT,
+  is_working_day INTEGER DEFAULT 1,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (master_id, day_of_week)
+);
+
+CREATE INDEX IF NOT EXISTS idx_mechanic_working_hours_master_id ON mechanic_working_hours(master_id);
+
 CREATE UNIQUE INDEX IF NOT EXISTS idx_mechanic_serviced_vehicles_unique ON mechanic_serviced_vehicles(mechanic_id, vehicle_id);
 CREATE INDEX IF NOT EXISTS idx_mechanic_serviced_vehicles_mechanic_id ON mechanic_serviced_vehicles(mechanic_id);
 CREATE INDEX IF NOT EXISTS idx_mechanic_serviced_vehicles_client_id ON mechanic_serviced_vehicles(client_id);
