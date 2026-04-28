@@ -237,10 +237,13 @@ exports.parsePartsFromImage = async (req, res) => {
       return res.status(400).json({ message: 'Зображення не знайдено' });
     }
 
+    const debug = String(req.query?.debug || '') === '1';
+
     const imagePath = req.file.path;
 
     let ocrPath = imagePath;
     let preprocessedPath = null;
+    let preprocessingApplied = false;
 
     try {
       const Jimp = await getJimp();
@@ -285,12 +288,14 @@ exports.parsePartsFromImage = async (req, res) => {
           preprocessedPath = `${imagePath}_preprocessed.png`;
           await processed.writeAsync(preprocessedPath);
           ocrPath = preprocessedPath;
+          preprocessingApplied = true;
         }
       }
     } catch (err) {
       void err;
       ocrPath = imagePath;
       preprocessedPath = null;
+      preprocessingApplied = false;
     }
 
     // Initialize Tesseract worker
@@ -314,6 +319,17 @@ exports.parsePartsFromImage = async (req, res) => {
     // Parse the text
     // The parsing logic needs to be robust to handle the format described
     const parts = parseOcrText(text);
+
+    if (debug) {
+      return res.json({
+        parts,
+        rawText: text || '',
+        meta: {
+          preprocessingApplied,
+          usedPath: ocrPath === imagePath ? 'original' : 'preprocessed',
+        },
+      });
+    }
 
     res.json(parts);
   } catch (err) {
@@ -1076,6 +1092,8 @@ function parseOcrText(text) {
     return Math.abs(a - b) <= eps;
   };
 
+  const isReasonableQty = (qty) => Number.isInteger(qty) && qty > 0 && qty <= 50;
+
   const extractNumber = (value) => {
     const match = value.match(numberPattern);
     if (!match || match.length === 0) return null;
@@ -1188,40 +1206,52 @@ function parseOcrText(text) {
       .filter((n) => Number.isFinite(n));
     if (numbers.length < 2) return null;
 
-    let price = null;
-    let qty = 1;
-    let total = null;
+    const scoreCandidate = (candidate) => {
+      if (!candidate) return null;
+      const { price, qty, total } = candidate;
+      if (!Number.isFinite(price) || price <= 0) return null;
+      if (!Number.isFinite(qty) || qty <= 0) return null;
+
+      let score = 0;
+      if (isReasonableQty(qty)) score += 6;
+      if (price >= 10 && price <= 200000) score += 2;
+      if (Number.isFinite(total) && total > 0) {
+        score += 1;
+        if (nearlyEquals(price * qty, total, 1.2)) score += 6;
+        if (total >= price) score += 1;
+      }
+
+      return { price, quantity: qty, score };
+    };
+
+    const candidates = [];
 
     if (numbers.length >= 3) {
       const a = numbers[0];
       const b = numbers[1];
       const c = numbers[2];
-      if (Number.isInteger(b) && b > 0 && b <= 1000 && nearlyEquals(a * b, c)) {
-        price = a;
-        qty = b;
-        total = c;
-      } else if (Number.isInteger(a) && a > 0 && a <= 1000 && nearlyEquals(b * a, c)) {
-        price = b;
-        qty = a;
-        total = c;
-      } else {
-        price = b;
-        qty = Number.isInteger(a) && a > 0 && a <= 1000 ? a : 1;
-        total = c;
-      }
+      candidates.push(scoreCandidate({ price: a, qty: Math.round(b), total: c }));
+      candidates.push(scoreCandidate({ price: b, qty: Math.round(a), total: c }));
+      candidates.push(scoreCandidate({ price: a, qty: Math.round(c), total: b }));
+      candidates.push(scoreCandidate({ price: b, qty: Math.round(c), total: a }));
+      candidates.push(scoreCandidate({ price: c, qty: Math.round(a), total: b }));
+      candidates.push(scoreCandidate({ price: c, qty: Math.round(b), total: a }));
     } else {
-      price = numbers[0];
-      total = numbers[1];
+      const a = numbers[0];
+      const b = numbers[1];
+      candidates.push(scoreCandidate({ price: a, qty: 1, total: b }));
+      candidates.push(scoreCandidate({ price: b, qty: 1, total: a }));
+      candidates.push(scoreCandidate({ price: a, qty: Math.round(b), total: null }));
+      candidates.push(scoreCandidate({ price: b, qty: Math.round(a), total: null }));
     }
 
-    if (!Number.isFinite(price) || price <= 0) return null;
-    if (Number.isFinite(total) && total > 0 && qty > 1) {
-      if (!nearlyEquals(price * qty, total)) {
-        qty = 1;
-      }
-    }
+    const best = candidates
+      .filter(Boolean)
+      .sort((x, y) => (y.score || 0) - (x.score || 0))[0];
 
-    return { price, quantity: qty };
+    if (!best) return null;
+    if (!isReasonableQty(best.quantity) && best.quantity > 1000) return null;
+    return { price: best.price, quantity: best.quantity };
   };
 
   const pushPart = (name, price, quantity, lineForPartNumber) => {
