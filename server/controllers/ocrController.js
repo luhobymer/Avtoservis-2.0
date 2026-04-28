@@ -1092,7 +1092,7 @@ function parseOcrText(text) {
     return Math.abs(a - b) <= eps;
   };
 
-  const isReasonableQty = (qty) => Number.isInteger(qty) && qty > 0 && qty <= 50;
+  const isReasonableQty = (qty) => Number.isInteger(qty) && qty > 0 && qty <= 20;
 
   const extractNumber = (value) => {
     const match = value.match(numberPattern);
@@ -1193,6 +1193,9 @@ function parseOcrText(text) {
       }
     }
     if (!Number.isFinite(price) || price <= 0) return null;
+    if (!isReasonableQty(qty)) {
+      qty = 1;
+    }
     const name = line.replace(numberPattern, ' ').replace(/[₴]/g, ' ').replace(/\s+/g, ' ').trim();
     if (!name || isNoiseLine(name)) return null;
     return { name, price, quantity: qty };
@@ -1250,7 +1253,9 @@ function parseOcrText(text) {
       .sort((x, y) => (y.score || 0) - (x.score || 0))[0];
 
     if (!best) return null;
-    if (!isReasonableQty(best.quantity) && best.quantity > 1000) return null;
+    if (!isReasonableQty(best.quantity)) {
+      return { price: best.price, quantity: 1 };
+    }
     return { price: best.price, quantity: best.quantity };
   };
 
