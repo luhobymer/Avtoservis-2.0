@@ -57,6 +57,7 @@ const MyParts = () => {
   const [ocrDebugEnabled, setOcrDebugEnabled] = useState(false);
   const [ocrDebugRawText, setOcrDebugRawText] = useState('');
   const [ocrDebugMeta, setOcrDebugMeta] = useState(null);
+  const [ocrLastFile, setOcrLastFile] = useState(null);
 
   const fetchParts = useCallback(async () => {
     setLoading(true);
@@ -93,51 +94,69 @@ const MyParts = () => {
     }
   }, [isTabMode, vehicleIdParam, vehicles, selectedVehicleVin]);
 
+  const runOcrForFile = useCallback(
+    async (file, { updatePreview } = { updatePreview: false }) => {
+      if (!file) return;
+
+      setOcrLoading(true);
+      setParsedParts([]);
+      setOcrDebugRawText('');
+      setOcrDebugMeta(null);
+
+      if (updatePreview) {
+        if (previewUrl) {
+          URL.revokeObjectURL(previewUrl);
+        }
+        const preview = URL.createObjectURL(file);
+        setPreviewUrl(preview);
+      }
+
+      try {
+        const compressed = await compressImageFile(file);
+        const formData = new FormData();
+        formData.append('image', compressed);
+
+        const token = localStorage.getItem('auth_token');
+        const endpoint = ocrDebugEnabled ? '/api/ocr/parse-debug' : '/api/ocr/parse';
+        const response = await fetch(resolveUrl(endpoint), {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`
+          },
+          body: formData
+        });
+
+        if (!response.ok) throw new Error('Failed to parse image');
+
+        const data = await response.json();
+        if (ocrDebugEnabled) {
+          setParsedParts(Array.isArray(data?.parts) ? data.parts : []);
+          setOcrDebugRawText(String(data?.rawText || ''));
+          setOcrDebugMeta(data?.meta || null);
+        } else {
+          setParsedParts(Array.isArray(data) ? data : []);
+        }
+      } catch (err) {
+        setError(t('errors.ocrFailed', 'Не вдалося розпізнати зображення'));
+      } finally {
+        setOcrLoading(false);
+      }
+    },
+    [ocrDebugEnabled, previewUrl, t]
+  );
+
   const handleImageUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-
-    setOcrLoading(true);
-    setParsedParts([]);
-    setOcrDebugRawText('');
-    setOcrDebugMeta(null);
-    if (previewUrl) {
-      URL.revokeObjectURL(previewUrl);
-    }
-    const preview = URL.createObjectURL(file);
-    setPreviewUrl(preview);
-    
-    const compressed = await compressImageFile(file);
-    const formData = new FormData();
-    formData.append('image', compressed);
-
-    try {
-      const token = localStorage.getItem('auth_token');
-      const endpoint = ocrDebugEnabled ? '/api/ocr/parse-debug' : '/api/ocr/parse';
-      const response = await fetch(resolveUrl(endpoint), {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`
-        },
-        body: formData
-      });
-
-      if (!response.ok) throw new Error('Failed to parse image');
-      
-      const data = await response.json();
-      if (ocrDebugEnabled) {
-        setParsedParts(Array.isArray(data?.parts) ? data.parts : []);
-        setOcrDebugRawText(String(data?.rawText || ''));
-        setOcrDebugMeta(data?.meta || null);
-      } else {
-        setParsedParts(Array.isArray(data) ? data : []);
-      }
-    } catch (err) {
-      setError(t('errors.ocrFailed', 'Не вдалося розпізнати зображення'));
-    } finally {
-      setOcrLoading(false);
-    }
+    setOcrLastFile(file);
+    await runOcrForFile(file, { updatePreview: true });
   };
+
+  useEffect(() => {
+    if (!ocrLastFile) return;
+    if (ocrLoading) return;
+    runOcrForFile(ocrLastFile, { updatePreview: false });
+  }, [ocrDebugEnabled]);
 
   const handleSaveParsedParts = async () => {
     if (!selectedVehicleVin) {
