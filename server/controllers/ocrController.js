@@ -1175,6 +1175,15 @@ function parseOcrText(text) {
       .map((m) => parseNumber(m[0]))
       .filter((n) => Number.isFinite(n));
 
+    // When there are no obvious row delimiters/currency hints, treat short numeric codes as description,
+    // not as price columns (e.g., "CASTROL 75W90TRMT1L").
+    if (!hasRowDelimiters && !hasCurrencyHints && numbers.length >= 2) {
+      const maxNum = Math.max(...numbers, 0);
+      if (maxNum < 200) {
+        return null;
+      }
+    }
+
     // Viscosity/spec patterns should not be treated as a price row.
     // Examples: 75W-90, 5W30, 10W-40, 1л, 1l.
     if (/\b\d{1,2}\s*W\s*[-–]?\s*\d{2,3}\b/i.test(line) || /\b\d+\s*[lл]\b/i.test(line)) {
@@ -1410,6 +1419,28 @@ function parseOcrText(text) {
       pushPart(rowCandidate.name, rowCandidate.price, rowCandidate.quantity, line);
       buffer.length = 0;
       continue;
+    }
+
+    // Some checkouts show only a single price per item (no qty/total columns).
+    // Example OCR: "318 El В БІВ" for a single item priced 318.
+    {
+      const singleNumbers = Array.from(line.matchAll(numberPattern))
+        .map((m) => parseNumber(m[0]))
+        .filter((n) => Number.isFinite(n));
+      if (singleNumbers.length === 1) {
+        const price = singleNumbers[0];
+        if (Number.isFinite(price) && price >= 20 && price <= 200000) {
+          const nameLines = buffer.filter(
+            (l) => !isNoiseLine(l) && !isPriceLine(l) && !qtyKeywords.test(l) && !isDimensionLikeLine(l)
+          );
+          const name = nameLines.join(' ').trim();
+          if (name) {
+            pushPart(name, price, 1, name);
+            buffer.length = 0;
+            continue;
+          }
+        }
+      }
     }
 
     if (isPriceLine(line)) {
