@@ -1223,11 +1223,22 @@ function parseOcrText(text) {
 
   const parseNumericRowLine = (line) => {
     if (!line) return null;
-    if (/[A-Za-zА-Яа-яІіЇїЄє]/.test(line)) return null;
+    const letterMatches = line.match(/[A-Za-zА-Яа-яІіЇїЄє]/g);
+    const letterCount = letterMatches ? letterMatches.length : 0;
     const numbers = Array.from(line.matchAll(numberPattern))
       .map((m) => parseNumber(m[0]))
       .filter((n) => Number.isFinite(n));
     if (numbers.length < 2) return null;
+
+    // Some invoices/screenshots produce OCR like: "873 | що B | 1747".
+    // Treat as numeric-row if it is mostly numbers with a bit of letter noise.
+    if (letterCount > 0 && numbers.length === 2) {
+      // 2-number line with many letters is likely not price/qty.
+      if (letterCount > 8) return null;
+    }
+    if (letterCount > 0 && numbers.length >= 3) {
+      if (letterCount > 25) return null;
+    }
 
     const scoreCandidate = (candidate) => {
       if (!candidate) return null;
@@ -1284,9 +1295,17 @@ function parseOcrText(text) {
     if (!cleanedName || isNoiseLine(cleanedName)) return;
     if (!Number.isFinite(price) || price <= 0) return;
     const qty = Number.isFinite(quantity) && quantity > 0 ? quantity : 1;
-    const partNumberMatch = (lineForPartNumber || cleanedName).match(
-      /([A-Z0-9]{3,}-[A-Z0-9]{2,}|[A-Z0-9]{5,})/
+
+    const partNumberSource = String(lineForPartNumber || cleanedName);
+    const isDimensionLike = /\d+(?:[.,]\d+)?\s*[xх]\s*\d+(?:[.,]\d+)?\s*[xх]\s*\d+(?:[.,]\d+)?/i.test(
+      partNumberSource
     );
+
+    const partNumberMatch = isDimensionLike
+      ? null
+      : partNumberSource.match(
+          /\b([A-Z0-9]{3,}-[A-Z0-9]{2,}|[A-Z0-9]{2,}[./-][A-Z0-9]{2,}|\d{5,}|[A-Z]{2,}\d{3,})\b/
+        );
     const partNumber = partNumberMatch ? partNumberMatch[1] : '';
     const key = `${cleanedName.toLowerCase()}|${price}|${qty}`;
     if (seen.has(key)) return;
