@@ -1103,6 +1103,17 @@ function parseOcrText(text) {
   const isDimensionLikeLine = (value) =>
     /\d+(?:[.,]\d+)?\s*[xх]\s*\d+(?:[.,]\d+)?\s*[xх]\s*\d+(?:[.,]\d+)?/i.test(String(value || ''));
 
+  const stripDimensions = (value) => {
+    const raw = String(value || '');
+    return raw
+      .replace(
+        /\d+(?:[.,]\d+)?\s*[xх]\s*\d+(?:[.,]\d+)?\s*[xх]\s*\d+(?:[.,]\d+)?/gi,
+        ' '
+      )
+      .replace(/\s+/g, ' ')
+      .trim();
+  };
+
   const parseNumber = (value) => {
     if (!value) return null;
     const cleaned = value.replace(/\s/g, '').replace(',', '.');
@@ -1258,6 +1269,13 @@ function parseOcrText(text) {
       .map((m) => parseNumber(m[0]))
       .filter((n) => Number.isFinite(n));
     if (numbers.length < 2) return null;
+
+    // Avoid interpreting spec/volume lines like "90 1л (EATRMT7912X1L)" as price rows.
+    const hasBracketedCode = /\([^)]*\d[^)]*\)/.test(line);
+    const looksLikeVolume = /\b\d+\s*[lл]\b/i.test(line);
+    if (looksLikeVolume && hasBracketedCode) {
+      return null;
+    }
 
     // Some invoices/screenshots produce OCR like: "873 | що B | 1747".
     // Treat as numeric-row if it is mostly numbers with a bit of letter noise.
@@ -1415,8 +1433,10 @@ function parseOcrText(text) {
       continue;
     }
 
-    if (!isNoiseLine(line) && !isDimensionLikeLine(line)) {
-      buffer.push(line);
+    if (!isNoiseLine(line)) {
+      const safeLine = isDimensionLikeLine(line) ? stripDimensions(line) : line;
+      if (!safeLine) continue;
+      buffer.push(safeLine);
       if (buffer.length > 8) buffer.shift();
     }
   }
