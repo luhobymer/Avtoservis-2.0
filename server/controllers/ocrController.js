@@ -1148,10 +1148,14 @@ function parseOcrText(text) {
 
   const parseRowLine = (line) => {
     if (!/[A-Za-zА-Яа-яІіЇїЄє]/.test(line)) return null;
+    // Prevent false positives on spec/name lines like: "75W-90 1л" or part codes.
+    // Only treat as a row if it really looks like a row with price columns.
+    const hasRowDelimiters = /[|]/.test(line);
+    const hasCurrencyHints = currencyKeywords.test(line) || priceKeywords.test(line);
     const numbers = Array.from(line.matchAll(numberPattern))
       .map((m) => parseNumber(m[0]))
       .filter((n) => Number.isFinite(n));
-    if (numbers.length < 2) return null;
+    if (numbers.length < 3 && !hasRowDelimiters && !hasCurrencyHints) return null;
     let qty = 1;
     let price = null;
     let total = null;
@@ -1273,6 +1277,22 @@ function parseOcrText(text) {
     } else {
       const a = numbers[0];
       const b = numbers[1];
+
+      const small = Math.min(a, b);
+      const big = Math.max(a, b);
+      const ratio = small > 0 ? big / small : null;
+      const ratioRounded = ratio ? Math.round(ratio) : null;
+      const canDeriveQty =
+        ratioRounded &&
+        ratioRounded >= 1 &&
+        ratioRounded <= 20 &&
+        nearlyEquals(small * ratioRounded, big, 2.0);
+
+      // Prefer invoice-style "price ... total" rows by deriving qty ~= total/price.
+      if (canDeriveQty) {
+        candidates.push(scoreCandidate({ price: small, qty: ratioRounded, total: big }));
+      }
+
       candidates.push(scoreCandidate({ price: a, qty: 1, total: b }));
       candidates.push(scoreCandidate({ price: b, qty: 1, total: a }));
       candidates.push(scoreCandidate({ price: a, qty: Math.round(b), total: null }));
