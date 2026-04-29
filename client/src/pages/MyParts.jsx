@@ -24,10 +24,12 @@ import {
   DialogContent,
   DialogActions,
   LinearProgress,
+  FormControlLabel,
   FormControl,
   InputLabel,
   Select,
-  MenuItem
+  MenuItem,
+  Switch
 } from '@mui/material';
 import { format } from 'date-fns';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
@@ -52,6 +54,9 @@ const MyParts = () => {
   const [selectedVehicleVin, setSelectedVehicleVin] = useState('');
   const [savingParts, setSavingParts] = useState(false);
   const [previewUrl, setPreviewUrl] = useState('');
+  const [ocrDebugEnabled, setOcrDebugEnabled] = useState(false);
+  const [ocrDebugRawText, setOcrDebugRawText] = useState('');
+  const [ocrDebugMeta, setOcrDebugMeta] = useState(null);
 
   const fetchParts = useCallback(async () => {
     setLoading(true);
@@ -94,6 +99,8 @@ const MyParts = () => {
 
     setOcrLoading(true);
     setParsedParts([]);
+    setOcrDebugRawText('');
+    setOcrDebugMeta(null);
     if (previewUrl) {
       URL.revokeObjectURL(previewUrl);
     }
@@ -106,7 +113,8 @@ const MyParts = () => {
 
     try {
       const token = localStorage.getItem('auth_token');
-      const response = await fetch(resolveUrl('/api/ocr/parse'), {
+      const endpoint = ocrDebugEnabled ? '/api/ocr/parse-debug' : '/api/ocr/parse';
+      const response = await fetch(resolveUrl(endpoint), {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`
@@ -117,7 +125,13 @@ const MyParts = () => {
       if (!response.ok) throw new Error('Failed to parse image');
       
       const data = await response.json();
-      setParsedParts(data);
+      if (ocrDebugEnabled) {
+        setParsedParts(Array.isArray(data?.parts) ? data.parts : []);
+        setOcrDebugRawText(String(data?.rawText || ''));
+        setOcrDebugMeta(data?.meta || null);
+      } else {
+        setParsedParts(Array.isArray(data) ? data : []);
+      }
     } catch (err) {
       setError(t('errors.ocrFailed', 'Не вдалося розпізнати зображення'));
     } finally {
@@ -196,6 +210,18 @@ const MyParts = () => {
             {t('common.uploadImage', 'Завантажити зображення')}
             <input type="file" hidden accept="image/*" onChange={handleImageUpload} />
           </Button>
+
+          <FormControlLabel
+            sx={{ mt: 1 }}
+            control={
+              <Switch
+                checked={ocrDebugEnabled}
+                onChange={(e) => setOcrDebugEnabled(e.target.checked)}
+                disabled={ocrLoading || savingParts}
+              />
+            }
+            label={t('parts.ocrDebug', 'OCR debug (raw text)')}
+          />
         </Box>
 
         {previewUrl && (
@@ -213,6 +239,30 @@ const MyParts = () => {
         )}
 
         {ocrLoading && <LinearProgress sx={{ mb: 2 }} />}
+
+        {ocrDebugEnabled && (ocrDebugRawText || ocrDebugMeta) && (
+          <Paper variant="outlined" sx={{ mb: 2, p: 2 }}>
+            {ocrDebugMeta && (
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                {JSON.stringify(ocrDebugMeta)}
+              </Typography>
+            )}
+            {ocrDebugRawText && (
+              <Box
+                component="pre"
+                sx={{
+                  m: 0,
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                  fontSize: 12,
+                  lineHeight: 1.4
+                }}
+              >
+                {ocrDebugRawText}
+              </Box>
+            )}
+          </Paper>
+        )}
 
         {parsedParts.length > 0 && (
           <TableContainer component={Paper} variant="outlined">
