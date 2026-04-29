@@ -1100,6 +1100,9 @@ function parseOcrText(text) {
     /(сума|сумма|всього|разом|итого|підсумок|оплата|знижка|накладна|рахунок|invoice|замовлення|термін поставки|термин поставки|постачальник|покупець|iban|edrpou|єдрпоу|код|тел|телефон|адреса)/i;
   const deleteKeywords = /(удалить|видалити|delete)/i;
 
+  const isDimensionLikeLine = (value) =>
+    /\d+(?:[.,]\d+)?\s*[xх]\s*\d+(?:[.,]\d+)?\s*[xх]\s*\d+(?:[.,]\d+)?/i.test(String(value || ''));
+
   const parseNumber = (value) => {
     if (!value) return null;
     const cleaned = value.replace(/\s/g, '').replace(',', '.');
@@ -1152,6 +1155,10 @@ function parseOcrText(text) {
     // Only treat as a row if it really looks like a row with price columns.
     const hasRowDelimiters = /[|]/.test(line);
     const hasCurrencyHints = currencyKeywords.test(line) || priceKeywords.test(line);
+
+    if (isDimensionLikeLine(line) && !hasRowDelimiters && !hasCurrencyHints) {
+      return null;
+    }
 
     // Viscosity/spec patterns should not be treated as a price row.
     // Examples: 75W-90, 5W30, 10W-40, 1л, 1l.
@@ -1350,10 +1357,16 @@ function parseOcrText(text) {
     const line = lines[i];
     if (!line) continue;
 
+    // Hard separators that should not spill name buffer into the next item.
+    if (deleteKeywords.test(line) || noiseKeywords.test(line)) {
+      buffer.length = 0;
+      continue;
+    }
+
     const numericRow = parseNumericRowLine(line);
     if (numericRow) {
       const nameLines = buffer.filter(
-        (l) => !isNoiseLine(l) && !isPriceLine(l) && !qtyKeywords.test(l)
+        (l) => !isNoiseLine(l) && !isPriceLine(l) && !qtyKeywords.test(l) && !isDimensionLikeLine(l)
       );
       const name = nameLines.join(' ').trim();
       if (name) {
@@ -1383,7 +1396,7 @@ function parseOcrText(text) {
       if (!qty) qty = 1;
 
       const nameLines = buffer.filter(
-        (l) => !isNoiseLine(l) && !isPriceLine(l) && !qtyKeywords.test(l)
+        (l) => !isNoiseLine(l) && !isPriceLine(l) && !qtyKeywords.test(l) && !isDimensionLikeLine(l)
       );
       const name = nameLines.join(' ').trim();
       pushPart(name, price, qty, nameLines.join(' '));
@@ -1391,7 +1404,7 @@ function parseOcrText(text) {
       continue;
     }
 
-    if (!isNoiseLine(line)) {
+    if (!isNoiseLine(line) && !isDimensionLikeLine(line)) {
       buffer.push(line);
       if (buffer.length > 4) buffer.shift();
     }
