@@ -1160,15 +1160,26 @@ function parseOcrText(text) {
       return null;
     }
 
+    const numbers = Array.from(line.matchAll(numberPattern))
+      .map((m) => parseNumber(m[0]))
+      .filter((n) => Number.isFinite(n));
+
     // Viscosity/spec patterns should not be treated as a price row.
     // Examples: 75W-90, 5W30, 10W-40, 1л, 1l.
     if (/\b\d{1,2}\s*W\s*[-–]?\s*\d{2,3}\b/i.test(line) || /\b\d+\s*[lл]\b/i.test(line)) {
       if (!hasRowDelimiters && !hasCurrencyHints) return null;
     }
 
-    const numbers = Array.from(line.matchAll(numberPattern))
-      .map((m) => parseNumber(m[0]))
-      .filter((n) => Number.isFinite(n));
+    // OCR often splits viscosity across lines, leaving a line like "90 1л (EATRMT7912X1L)".
+    // Such lines contain multiple numbers (volume + code digits) but are still a description, not a price row.
+    if (!hasRowDelimiters && !hasCurrencyHints) {
+      const looksLikeVolume = /\b\d+\s*[lл]\b/i.test(line);
+      const hasBracketedCode = /\([^)]*\d[^)]*\)/.test(line);
+      const maxNum = Math.max(...numbers, 0);
+      if (looksLikeVolume && (hasBracketedCode || maxNum < 200)) {
+        return null;
+      }
+    }
     if (numbers.length < 3 && !hasRowDelimiters && !hasCurrencyHints) return null;
     let qty = 1;
     let price = null;
@@ -1406,7 +1417,7 @@ function parseOcrText(text) {
 
     if (!isNoiseLine(line) && !isDimensionLikeLine(line)) {
       buffer.push(line);
-      if (buffer.length > 4) buffer.shift();
+      if (buffer.length > 8) buffer.shift();
     }
   }
 
