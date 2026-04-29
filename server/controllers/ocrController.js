@@ -1092,7 +1092,7 @@ function parseOcrText(text) {
   const seen = new Set();
   const buffer = [];
 
-  const numberPattern = /(\d{1,3}(?:[ \u00A0]\d{3})*(?:[.,]\d{1,2})?|\d+(?:[.,]\d{1,2})?)/g;
+  const numberPattern = /(\d{1,3}(?:[ \u00A0]\d{3})+(?:[.,]\d{1,2})?|\d{4,}(?:[.,]\d{1,2})?|\d+(?:[.,]\d{1,2})?)/g;
   const priceKeywords = /(ціна|цiна|цена|price)/i;
   const qtyKeywords = /(кількість|количество|qty|шт\.?|pcs|x)/i;
   const currencyKeywords = /(грн|uah|₴)/i;
@@ -1152,6 +1152,13 @@ function parseOcrText(text) {
     // Only treat as a row if it really looks like a row with price columns.
     const hasRowDelimiters = /[|]/.test(line);
     const hasCurrencyHints = currencyKeywords.test(line) || priceKeywords.test(line);
+
+    // Viscosity/spec patterns should not be treated as a price row.
+    // Examples: 75W-90, 5W30, 10W-40, 1л, 1l.
+    if (/\b\d{1,2}\s*W\s*[-–]?\s*\d{2,3}\b/i.test(line) || /\b\d+\s*[lл]\b/i.test(line)) {
+      if (!hasRowDelimiters && !hasCurrencyHints) return null;
+    }
+
     const numbers = Array.from(line.matchAll(numberPattern))
       .map((m) => parseNumber(m[0]))
       .filter((n) => Number.isFinite(n));
