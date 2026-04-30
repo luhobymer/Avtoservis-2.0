@@ -80,7 +80,12 @@ async function getJimp() {
       }
     }
   })();
-  return jimpResolvePromise;
+  const result = await jimpResolvePromise;
+  if (!result) {
+    // Do NOT cache a failed promise forever; allow retry on next request.
+    jimpResolvePromise = null;
+  }
+  return result;
 }
 
 function resizeKeepAspect(img, targetW) {
@@ -280,9 +285,13 @@ async function parsePartsFromImageInternal(req) {
   let preprocessedPath = null;
   let preprocessingApplied = false;
 
+  let jimpLoadError = null;
   try {
     const Jimp = await getJimp();
-    if (Jimp) {
+    if (!Jimp) {
+      jimpLoadError = jimpResolveError || 'Jimp returned null';
+      console.warn('[OCR_JIMP_FAIL]', jimpLoadError);
+    } else {
       const img = await Jimp.read(imagePath);
       const w = img.bitmap?.width || 0;
       const h = img.bitmap?.height || 0;
