@@ -1410,6 +1410,8 @@ function parseOcrText(text) {
     });
   };
 
+  let lastSkuLine = null;
+
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     if (!line) continue;
@@ -1417,7 +1419,12 @@ function parseOcrText(text) {
     // Hard separators that should not spill name buffer into the next item.
     if (deleteKeywords.test(line) || noiseKeywords.test(line)) {
       buffer.length = 0;
+      lastSkuLine = null;
       continue;
+    }
+
+    if (!currencyKeywords.test(line) && !priceKeywords.test(line) && isLikelyPartNumberLine(line)) {
+      lastSkuLine = line;
     }
 
     const numericRow = parseNumericRowLine(line);
@@ -1427,16 +1434,18 @@ function parseOcrText(text) {
       );
       const name = nameLines.join(' ').trim();
       if (name) {
-        pushPart(name, numericRow.price, numericRow.quantity, name);
+        pushPart(name, numericRow.price, numericRow.quantity, lastSkuLine || name);
         buffer.length = 0;
+        lastSkuLine = null;
         continue;
       }
     }
 
     const rowCandidate = parseRowLine(line);
     if (rowCandidate) {
-      pushPart(rowCandidate.name, rowCandidate.price, rowCandidate.quantity, line);
+      pushPart(rowCandidate.name, rowCandidate.price, rowCandidate.quantity, lastSkuLine || line);
       buffer.length = 0;
+      lastSkuLine = null;
       continue;
     }
 
@@ -1445,23 +1454,35 @@ function parseOcrText(text) {
     {
       const hasRowDelimiters = /[|]/.test(line);
       const hasCurrencyHints = currencyKeywords.test(line) || priceKeywords.test(line);
+      const hasHyphenSku = /\b\d{2,}-\d{2,}(?:-\d{2,})?\b/.test(line);
       const inlineNumbers = Array.from(line.matchAll(numberPattern))
         .map((m) => parseNumber(m[0]))
         .filter((n) => Number.isFinite(n));
       if (!hasRowDelimiters && !hasCurrencyHints && isLikelyPartNumberLine(line) && inlineNumbers.length >= 2) {
         const sorted = inlineNumbers.slice().sort((a, b) => a - b);
-        const priceCandidate = sorted[sorted.length - 2];
-        const totalCandidate = sorted[sorted.length - 1];
-        const ratio = priceCandidate > 0 ? totalCandidate / priceCandidate : null;
-        const qtyRounded = ratio ? Math.round(ratio) : 1;
-        const qty =
-          qtyRounded &&
-          qtyRounded >= 1 &&
-          qtyRounded <= 20 &&
-          nearlyEquals(priceCandidate * qtyRounded, totalCandidate, 2.0)
-            ? qtyRounded
-            : 1;
-        const price = Number.isFinite(priceCandidate) ? priceCandidate : null;
+        const secondLargest = sorted[sorted.length - 2];
+        const largest = sorted[sorted.length - 1];
+
+        // Prefer (price,total) rows where total ~= price * qty.
+        const ratio = secondLargest > 0 ? largest / secondLargest : null;
+        const ratioRounded = ratio ? Math.round(ratio) : null;
+        const hasCoherentTotal =
+          ratioRounded && ratioRounded >= 1 && ratioRounded <= 20 && nearlyEquals(secondLargest * ratioRounded, largest, 2.0);
+
+        let price = null;
+        let qty = 1;
+
+        if (hasCoherentTotal) {
+          price = secondLargest;
+          qty = ratioRounded;
+        } else if (inlineNumbers.length === 2 && !hasHyphenSku) {
+          // Common pattern in order lists: "ELRING 318.580 ... 1538" (sku + price only)
+          price = largest;
+          qty = 1;
+        } else {
+          price = null;
+        }
+
         if (Number.isFinite(price) && price >= 10 && price <= 200000) {
           const name = line
             .replace(numberPattern, ' ')
@@ -1471,6 +1492,7 @@ function parseOcrText(text) {
           if (name && !isNoiseLine(name)) {
             pushPart(name, price, qty, line);
             buffer.length = 0;
+            lastSkuLine = null;
             continue;
           }
         }
@@ -1491,8 +1513,9 @@ function parseOcrText(text) {
           );
           const name = nameLines.join(' ').trim();
           if (name) {
-            pushPart(name, price, 1, name);
+            pushPart(name, price, 1, lastSkuLine || name);
             buffer.length = 0;
+            lastSkuLine = null;
             continue;
           }
         }
@@ -1515,8 +1538,9 @@ function parseOcrText(text) {
         (l) => !isNoiseLine(l) && !isPriceLine(l) && !qtyKeywords.test(l) && !isDimensionLikeLine(l)
       );
       const name = nameLines.join(' ').trim();
-      pushPart(name, price, qty, nameLines.join(' '));
+      pushPart(name, price, qty, lastSkuLine || nameLines.join(' '));
       buffer.length = 0;
+      lastSkuLine = null;
       continue;
     }
 
