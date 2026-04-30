@@ -1114,6 +1114,20 @@ function parseOcrText(text) {
       .trim();
   };
 
+  const isLikelyPartNumberLine = (value) => {
+    const line = String(value || '').trim();
+    if (!line) return false;
+    // Typical SKU patterns: 40-76149-00, 20 03 0009, 147.581, 318.580, MS0825-98
+    const hasSkuToken =
+      /\b\d{2,}-\d{2,}(?:-\d{2,})?\b/.test(line) ||
+      /\b\d{2,}[.]\d{2,}\b/.test(line) ||
+      /\b[A-Z]{1,3}\d{3,}(?:-\d{2,})?\b/.test(line) ||
+      /\b\d{2}\s\d{2}\s\d{4}\b/.test(line);
+    if (!hasSkuToken) return false;
+    // Needs at least one word token as well (brand/manufacturer)
+    return /[A-Za-zА-Яа-яІіЇїЄє]{2,}/.test(line);
+  };
+
   const parseNumber = (value) => {
     if (!value) return null;
     const cleaned = value.replace(/\s/g, '').replace(',', '.');
@@ -1174,6 +1188,11 @@ function parseOcrText(text) {
     const numbers = Array.from(line.matchAll(numberPattern))
       .map((m) => parseNumber(m[0]))
       .filter((n) => Number.isFinite(n));
+
+    // Manufacturer + SKU line is usually not a price row in "order list" screenshots.
+    if (!hasRowDelimiters && !hasCurrencyHints && isLikelyPartNumberLine(line)) {
+      return null;
+    }
 
     // When there are no obvious row delimiters/currency hints, treat short numeric codes as description,
     // not as price columns (e.g., "CASTROL 75W90TRMT1L").
@@ -1421,6 +1440,43 @@ function parseOcrText(text) {
       continue;
     }
 
+    // Inline item row in some screens: "ELRING 147.581 ... 392 ... 784" (sku + price + total).
+    // Try to parse it directly to avoid losing the item when there is no separate numeric-only row.
+    {
+      const hasRowDelimiters = /[|]/.test(line);
+      const hasCurrencyHints = currencyKeywords.test(line) || priceKeywords.test(line);
+      const inlineNumbers = Array.from(line.matchAll(numberPattern))
+        .map((m) => parseNumber(m[0]))
+        .filter((n) => Number.isFinite(n));
+      if (!hasRowDelimiters && !hasCurrencyHints && isLikelyPartNumberLine(line) && inlineNumbers.length >= 2) {
+        const sorted = inlineNumbers.slice().sort((a, b) => a - b);
+        const priceCandidate = sorted[sorted.length - 2];
+        const totalCandidate = sorted[sorted.length - 1];
+        const ratio = priceCandidate > 0 ? totalCandidate / priceCandidate : null;
+        const qtyRounded = ratio ? Math.round(ratio) : 1;
+        const qty =
+          qtyRounded &&
+          qtyRounded >= 1 &&
+          qtyRounded <= 20 &&
+          nearlyEquals(priceCandidate * qtyRounded, totalCandidate, 2.0)
+            ? qtyRounded
+            : 1;
+        const price = Number.isFinite(priceCandidate) ? priceCandidate : null;
+        if (Number.isFinite(price) && price >= 10 && price <= 200000) {
+          const name = line
+            .replace(numberPattern, ' ')
+            .replace(/[₴]/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+          if (name && !isNoiseLine(name)) {
+            pushPart(name, price, qty, line);
+            buffer.length = 0;
+            continue;
+          }
+        }
+      }
+    }
+
     // Some checkouts show only a single price per item (no qty/total columns).
     // Example OCR: "318 El В БІВ" for a single item priced 318.
     {
@@ -1429,7 +1485,7 @@ function parseOcrText(text) {
         .filter((n) => Number.isFinite(n));
       if (singleNumbers.length === 1) {
         const price = singleNumbers[0];
-        if (Number.isFinite(price) && price >= 20 && price <= 200000) {
+        if (Number.isFinite(price) && price >= 20 && price <= 200000 && !isLikelyPartNumberLine(line)) {
           const nameLines = buffer.filter(
             (l) => !isNoiseLine(l) && !isPriceLine(l) && !qtyKeywords.test(l) && !isDimensionLikeLine(l)
           );
