@@ -338,21 +338,6 @@ async function parsePartsFromImageInternal(req) {
     preprocessingApplied = false;
   }
 
-  const scoreOcrText = (value) => {
-    const text = String(value || '');
-    if (!text) return 0;
-    const lines = text
-      .replace(/\r/g, '\n')
-      .split('\n')
-      .map((l) => l.trim())
-      .filter(Boolean);
-    const skuHits = lines.filter((l) => isLikelyPartNumberLine(l) || isSkuOnlyLine(l)).length;
-    const moneyHits = lines.filter((l) => /\b\d{2,6}(?:[.,]\d{1,2})?\b/.test(l)).length;
-    const noiseHits = lines.filter((l) => noiseKeywords.test(l) || deleteKeywords.test(l)).length;
-    const len = text.length;
-    return skuHits * 10 + moneyHits * 2 - noiseHits * 3 + Math.min(3000, len) / 100;
-  };
-
   const worker = await createWorker('ukr+rus+eng');
   try {
     await worker.setParameters({
@@ -1235,6 +1220,21 @@ function parseOcrText(text) {
     // Hyphenated/segmented SKUs without a brand word.
     if (/\b\d{2,}-\d{2,}(?:-\d{2,})?\b/.test(line)) return true;
     return false;
+  };
+
+  const scoreOcrText = (value) => {
+    const text = String(value || '');
+    if (!text) return 0;
+    const lines = text
+      .replace(/\r/g, '\n')
+      .split('\n')
+      .map((l) => l.trim())
+      .filter(Boolean);
+    const skuHits = lines.filter((l) => isLikelyPartNumberLine(l) || isSkuOnlyLine(l)).length;
+    const moneyHits = lines.filter((l) => /\b\d{2,6}(?:[.,]\d{1,2})?\b/.test(l)).length;
+    const noiseHits = lines.filter((l) => noiseKeywords.test(l) || deleteKeywords.test(l)).length;
+    const len = text.length;
+    return skuHits * 10 + moneyHits * 2 - noiseHits * 3 + Math.min(3000, len) / 100;
   };
 
   const parseNumber = (value) => {
