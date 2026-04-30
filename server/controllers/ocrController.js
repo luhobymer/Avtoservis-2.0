@@ -50,35 +50,41 @@ const scoreOcrText = (value) => {
 async function getJimp() {
   if (jimpResolvePromise) return jimpResolvePromise;
   jimpResolvePromise = (async () => {
+    const errors = [];
+    // Try 1: dynamic import (works for ESM jimp v1 in CJS Node)
     try {
       const mod = await import('jimp');
-      const resolved = mod?.default || mod?.Jimp || mod;
-      if (resolved && typeof resolved.read === 'function') {
-        jimpResolved = resolved;
-        jimpResolveError = null;
-        return jimpResolved;
-      }
-      jimpResolved = null;
-      jimpResolveError = 'Jimp module loaded but has no read()';
-      return null;
-    } catch (err) {
-      try {
-        const mod = require('jimp');
-        const resolved = mod?.default || mod?.Jimp || mod;
+      // jimp v1 exports { Jimp } as named export
+      const candidates = [mod?.Jimp, mod?.default, mod];
+      for (const resolved of candidates) {
         if (resolved && typeof resolved.read === 'function') {
           jimpResolved = resolved;
           jimpResolveError = null;
           return jimpResolved;
         }
-        jimpResolved = null;
-        jimpResolveError = 'Jimp require() succeeded but has no read()';
-        return null;
-      } catch (requireErr) {
-        jimpResolved = null;
-        jimpResolveError = String(requireErr?.message || err?.message || requireErr || err);
-        return null;
       }
+      errors.push('import("jimp") loaded but no .read(): keys=' + Object.keys(mod || {}).join(','));
+    } catch (err) {
+      errors.push('import("jimp") error: ' + String(err?.message || err));
     }
+    // Try 2: require (works for jimp v0.x CJS)
+    try {
+      const mod = require('jimp');
+      const candidates = [mod?.Jimp, mod?.default, mod];
+      for (const resolved of candidates) {
+        if (resolved && typeof resolved.read === 'function') {
+          jimpResolved = resolved;
+          jimpResolveError = null;
+          return jimpResolved;
+        }
+      }
+      errors.push('require("jimp") loaded but no .read(): keys=' + Object.keys(mod || {}).join(','));
+    } catch (err) {
+      errors.push('require("jimp") error: ' + String(err?.message || err));
+    }
+    jimpResolved = null;
+    jimpResolveError = errors.join(' | ');
+    return null;
   })();
   const result = await jimpResolvePromise;
   if (!result) {
@@ -370,12 +376,28 @@ async function parsePartsFromImageInternal(req) {
         }
 
         preprocessedPath = `${imagePath}_preprocessed.png`;
+        let writeOk = false;
         try {
-          await processed.writeAsync(preprocessedPath);
+          if (typeof processed.writeAsync === 'function') {
+            await processed.writeAsync(preprocessedPath);
+            writeOk = true;
+          } else if (typeof processed.write === 'function') {
+            await new Promise((res, rej) => {
+              processed.write(preprocessedPath, (e) => (e ? rej(e) : res()));
+            });
+            writeOk = true;
+          } else if (typeof processed.getBuffer === 'function') {
+            const buf = await processed.getBuffer(Jimp.MIME_PNG || 'image/png');
+            fs.writeFileSync(preprocessedPath, buf);
+            writeOk = true;
+          }
+        } catch (err) {
+          console.warn('[OCR_PREPROC_WRITE_FAIL]', err?.message || err);
+        }
+        if (writeOk) {
           ocrPath = preprocessedPath;
           preprocessingApplied = true;
-        } catch (err) {
-          void err;
+        } else {
           preprocessedPath = null;
           ocrPath = imagePath;
           preprocessingApplied = false;
@@ -389,6 +411,9 @@ async function parsePartsFromImageInternal(req) {
     preprocessingApplied = false;
   }
 
+  // If preprocessing failed, run an additional eng-only pass to better capture Latin SKUs.
+  let bestText = '';
+  let bestPsm = '6';
   const worker = await createWorker('ukr+rus+eng');
   try {
     await worker.setParameters({
@@ -399,32 +424,45 @@ async function parsePartsFromImageInternal(req) {
     void _;
   }
 
-  let bestText = '';
-  let bestPsm = '6';
   try {
     await worker.setParameters({ tessedit_pageseg_mode: '6' });
-  } catch (_) {
-    void _;
-  }
-  const {
-    data: { text: textPsm6 },
-  } = await worker.recognize(ocrPath);
+  } catch (_) { void _; }
+  const { data: { text: textPsm6 } } = await worker.recognize(ocrPath);
   bestText = textPsm6 || '';
 
   try {
     await worker.setParameters({ tessedit_pageseg_mode: '4' });
-  } catch (_) {
-    void _;
-  }
-  const {
-    data: { text: textPsm4 },
-  } = await worker.recognize(ocrPath);
+  } catch (_) { void _; }
+  const { data: { text: textPsm4 } } = await worker.recognize(ocrPath);
 
   const score6 = scoreOcrText(textPsm6);
   const score4 = scoreOcrText(textPsm4);
   if (score4 > score6) {
     bestText = textPsm4 || '';
     bestPsm = '4';
+  }
+
+  // If preprocessing failed, try eng-only OCR pass to better read Latin SKUs / brands.
+  if (!preprocessingApplied && bestText) {
+    try {
+      const engWorker = await createWorker('eng');
+      try {
+        await engWorker.setParameters({
+          preserve_interword_spaces: '1',
+          user_defined_dpi: '300',
+          tessedit_pageseg_mode: '6',
+        });
+      } catch (_) { void _; }
+      const { data: { text: textEng } } = await engWorker.recognize(ocrPath);
+      await engWorker.terminate();
+      const scoreEng = scoreOcrText(textEng);
+      if (scoreEng > Math.max(score6, score4)) {
+        bestText = textEng || '';
+        bestPsm = '6-eng';
+      }
+    } catch (engErr) {
+      void engErr;
+    }
   }
 
   await worker.terminate();
@@ -437,6 +475,7 @@ async function parsePartsFromImageInternal(req) {
     usedPsm: bestPsm,
     rawText: bestText || '',
     parts: parseOcrText(bestText || ''),
+    jimpError: jimpLoadError,
   };
 }
 
@@ -484,6 +523,7 @@ exports.parsePartsFromImageDebug = async (req, res) => {
         preprocessingApplied: result.preprocessingApplied,
         usedPath: result.usedPath,
         usedPsm: result.usedPsm,
+        jimpError: result.jimpError,
       },
     });
   } catch (err) {
