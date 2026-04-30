@@ -1097,7 +1097,7 @@ function parseOcrText(text) {
   const qtyKeywords = /(кількість|количество|qty|шт\.?|pcs|x)/i;
   const currencyKeywords = /(грн|uah|₴)/i;
   const noiseKeywords =
-    /(сума|сумма|всього|разом|итого|підсумок|оплата|знижка|накладна|рахунок|invoice|замовлення|термін поставки|термин поставки|постачальник|покупець|iban|edrpou|єдрпоу|код|тел|телефон|адреса)/i;
+    /(сума|сумма|всього|разом|итого|підсумок|оплата|знижка|накладна|рахунок|invoice|замовлення|терм\w*\s*постав\w*|постачальник|покупець|iban|edrpou|єдрпоу|код|тел|телефон|адреса)/i;
   const deleteKeywords = /(удалить|видалити|delete)/i;
 
   const isDimensionLikeLine = (value) =>
@@ -1126,6 +1126,17 @@ function parseOcrText(text) {
     if (!hasSkuToken) return false;
     // Needs at least one word token as well (brand/manufacturer)
     return /[A-Za-zА-Яа-яІіЇїЄє]{2,}/.test(line);
+  };
+
+  const isSkuOnlyLine = (value) => {
+    const line = String(value || '').trim();
+    if (!line) return false;
+    if (currencyKeywords.test(line) || priceKeywords.test(line)) return false;
+    // Examples: K2W105, EATRMT7912X1L, JP1411000300-like.
+    if (/\b[A-Z]{1,4}\d{3,}\b/i.test(line)) return true;
+    // Hyphenated/segmented SKUs without a brand word.
+    if (/\b\d{2,}-\d{2,}(?:-\d{2,})?\b/.test(line)) return true;
+    return false;
   };
 
   const parseNumber = (value) => {
@@ -1159,6 +1170,7 @@ function parseOcrText(text) {
 
   const isNoiseLine = (line) => {
     if (!line) return true;
+    if (String(line).trim().length <= 2 && !numberPattern.test(line)) return true;
     if (noiseKeywords.test(line)) return true;
     if (deleteKeywords.test(line)) return true;
     const noLetters = !/[A-Za-zА-Яа-яІіЇїЄє]/.test(line);
@@ -1423,7 +1435,7 @@ function parseOcrText(text) {
       continue;
     }
 
-    if (!currencyKeywords.test(line) && !priceKeywords.test(line) && isLikelyPartNumberLine(line)) {
+    if (!currencyKeywords.test(line) && !priceKeywords.test(line) && (isLikelyPartNumberLine(line) || isSkuOnlyLine(line))) {
       lastSkuLine = line;
     }
 
@@ -1507,7 +1519,13 @@ function parseOcrText(text) {
         .filter((n) => Number.isFinite(n));
       if (singleNumbers.length === 1) {
         const price = singleNumbers[0];
-        if (Number.isFinite(price) && price >= 20 && price <= 200000 && !isLikelyPartNumberLine(line)) {
+        if (
+          Number.isFinite(price) &&
+          price >= 20 &&
+          price <= 200000 &&
+          !isLikelyPartNumberLine(line) &&
+          !isSkuOnlyLine(line)
+        ) {
           const nameLines = buffer.filter(
             (l) => !isNoiseLine(l) && !isPriceLine(l) && !qtyKeywords.test(l) && !isDimensionLikeLine(l)
           );
