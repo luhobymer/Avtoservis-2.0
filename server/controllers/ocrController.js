@@ -1405,12 +1405,52 @@ function parseOcrText(text) {
       partNumberSource
     );
 
-    const partNumberMatch = isDimensionLike
-      ? null
-      : partNumberSource.match(
-          /\b([A-Z0-9]{3,}-[A-Z0-9]{2,}|[A-Z0-9]{2,}[./-][A-Z0-9]{2,}|\d{5,}|[A-Z]{2,}\d{3,})\b/
-        );
-    const partNumber = partNumberMatch ? partNumberMatch[1] : '';
+    const extractPartNumber = (value) => {
+      if (!value) return '';
+      const src = String(value);
+      if (isDimensionLikeLine(src)) return '';
+
+      const candidates = [];
+      const patterns = [
+        /\b\d{2}\s\d{2}\s\d{4}\b/g, // 20 03 0009
+        /\b[A-Z0-9]{2,}(?:[./-][A-Z0-9]{2,})+\b/gi, // 14-32101-01, MS0828-98, 505.090
+        /\b[A-Z]{1,6}\d{3,}[A-Z0-9]*\b/gi, // K2W105, EATRMT7912X1L
+        /\b\d{5,}\b/g, // long digits
+      ];
+
+      for (const re of patterns) {
+        const matches = src.match(re);
+        if (matches) candidates.push(...matches);
+      }
+
+      const uniq = Array.from(new Set(candidates.map((x) => String(x).trim()).filter(Boolean)));
+      const filtered = uniq.filter((cand) => {
+        // Avoid year ranges like 95-99, 2000-2005, etc.
+        if (/^\d{2}-\d{2}$/.test(cand)) return false;
+        if (/^\d{4}-\d{4}$/.test(cand)) return false;
+        // Avoid standalone small digit groups.
+        const onlyDigits = /^\d+$/.test(cand.replace(/\s+/g, ''));
+        if (onlyDigits && cand.replace(/\s+/g, '').length < 5) return false;
+        return true;
+      });
+
+      const score = (cand) => {
+        let s = 0;
+        const compact = cand.replace(/\s+/g, '');
+        if (/[A-Z]/i.test(cand)) s += 6;
+        if (/[./-]/.test(cand)) s += 5;
+        if (/\s/.test(cand)) s += 4;
+        if (compact.length >= 10) s += 3;
+        if (compact.length >= 6) s += 2;
+        if (/^\d+$/.test(compact)) s += 1;
+        return s;
+      };
+
+      const best = filtered.sort((a, b) => score(b) - score(a))[0];
+      return best ? best.trim() : '';
+    };
+
+    const partNumber = isDimensionLike ? '' : extractPartNumber(partNumberSource);
     const key = `${cleanedName.toLowerCase()}|${price}|${qty}`;
     if (seen.has(key)) return;
     seen.add(key);
