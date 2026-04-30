@@ -319,9 +319,16 @@ async function parsePartsFromImageInternal(req) {
         }
 
         preprocessedPath = `${imagePath}_preprocessed.png`;
-        await processed.writeAsync(preprocessedPath);
-        ocrPath = preprocessedPath;
-        preprocessingApplied = true;
+        try {
+          await processed.writeAsync(preprocessedPath);
+          ocrPath = preprocessedPath;
+          preprocessingApplied = true;
+        } catch (err) {
+          void err;
+          preprocessedPath = null;
+          ocrPath = imagePath;
+          preprocessingApplied = false;
+        }
       }
     }
   } catch (err) {
@@ -331,19 +338,59 @@ async function parsePartsFromImageInternal(req) {
     preprocessingApplied = false;
   }
 
+  const scoreOcrText = (value) => {
+    const text = String(value || '');
+    if (!text) return 0;
+    const lines = text
+      .replace(/\r/g, '\n')
+      .split('\n')
+      .map((l) => l.trim())
+      .filter(Boolean);
+    const skuHits = lines.filter((l) => isLikelyPartNumberLine(l) || isSkuOnlyLine(l)).length;
+    const moneyHits = lines.filter((l) => /\b\d{2,6}(?:[.,]\d{1,2})?\b/.test(l)).length;
+    const noiseHits = lines.filter((l) => noiseKeywords.test(l) || deleteKeywords.test(l)).length;
+    const len = text.length;
+    return skuHits * 10 + moneyHits * 2 - noiseHits * 3 + Math.min(3000, len) / 100;
+  };
+
   const worker = await createWorker('ukr+rus+eng');
   try {
     await worker.setParameters({
-      tessedit_pageseg_mode: '6',
       preserve_interword_spaces: '1',
       user_defined_dpi: '300',
     });
   } catch (_) {
     void _;
   }
+
+  let bestText = '';
+  let bestPsm = '6';
+  try {
+    await worker.setParameters({ tessedit_pageseg_mode: '6' });
+  } catch (_) {
+    void _;
+  }
   const {
-    data: { text },
+    data: { text: textPsm6 },
   } = await worker.recognize(ocrPath);
+  bestText = textPsm6 || '';
+
+  try {
+    await worker.setParameters({ tessedit_pageseg_mode: '4' });
+  } catch (_) {
+    void _;
+  }
+  const {
+    data: { text: textPsm4 },
+  } = await worker.recognize(ocrPath);
+
+  const score6 = scoreOcrText(textPsm6);
+  const score4 = scoreOcrText(textPsm4);
+  if (score4 > score6) {
+    bestText = textPsm4 || '';
+    bestPsm = '4';
+  }
+
   await worker.terminate();
 
   return {
@@ -351,8 +398,9 @@ async function parsePartsFromImageInternal(req) {
     preprocessedPath,
     preprocessingApplied,
     usedPath: ocrPath === imagePath ? 'original' : 'preprocessed',
-    rawText: text || '',
-    parts: parseOcrText(text || ''),
+    usedPsm: bestPsm,
+    rawText: bestText || '',
+    parts: parseOcrText(bestText || ''),
   };
 }
 
@@ -399,6 +447,7 @@ exports.parsePartsFromImageDebug = async (req, res) => {
       meta: {
         preprocessingApplied: result.preprocessingApplied,
         usedPath: result.usedPath,
+        usedPsm: result.usedPsm,
       },
     });
   } catch (err) {
