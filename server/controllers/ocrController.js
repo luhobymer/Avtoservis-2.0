@@ -5,6 +5,48 @@ let jimpResolved = null;
 let jimpResolvePromise = null;
 let jimpResolveError = null;
 
+const noiseKeywords =
+  /(сума|сумма|всього|разом|итого|підсумок|оплата|знижка|накладна|рахунок|invoice|замовлення|(?:терм|term)\S{0,12}\s*(?:пост|постав|postav|supply)\S{0,12}|постачальник|покупець|iban|edrpou|єдрпоу|код|тел|телефон|адреса)/i;
+const deleteKeywords = /(удалить|видалити|delete)/i;
+
+const isLikelyPartNumberLine = (value) => {
+  const line = String(value || '').trim();
+  if (!line) return false;
+  const hasSkuToken =
+    /\b\d{2,}-\d{2,}(?:-\d{2,})?\b/.test(line) ||
+    /\b\d{2,}[.]\d{2,}\b/.test(line) ||
+    /\b[A-Z]{1,3}\d{3,}(?:-\d{2,})?\b/.test(line) ||
+    /\b\d{2}\s\d{2}\s\d{4}\b/.test(line);
+  if (!hasSkuToken) return false;
+  return /[A-Za-zА-Яа-яІіЇїЄє]{2,}/.test(line);
+};
+
+const isSkuOnlyLine = (value) => {
+  const line = String(value || '').trim();
+  if (!line) return false;
+  const currencyKeywords = /(грн|uah|₴)/i;
+  const priceKeywords = /(ціна|цiна|цена|price)/i;
+  if (currencyKeywords.test(line) || priceKeywords.test(line)) return false;
+  if (/\b[A-Z]{1,4}\d{3,}\b/i.test(line)) return true;
+  if (/\b\d{2,}-\d{2,}(?:-\d{2,})?\b/.test(line)) return true;
+  return false;
+};
+
+const scoreOcrText = (value) => {
+  const text = String(value || '');
+  if (!text) return 0;
+  const lines = text
+    .replace(/\r/g, '\n')
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean);
+  const skuHits = lines.filter((l) => isLikelyPartNumberLine(l) || isSkuOnlyLine(l)).length;
+  const moneyHits = lines.filter((l) => /\b\d{2,6}(?:[.,]\d{1,2})?\b/.test(l)).length;
+  const noiseHits = lines.filter((l) => noiseKeywords.test(l) || deleteKeywords.test(l)).length;
+  const len = text.length;
+  return skuHits * 10 + moneyHits * 2 - noiseHits * 3 + Math.min(3000, len) / 100;
+};
+
 async function getJimp() {
   if (jimpResolvePromise) return jimpResolvePromise;
   jimpResolvePromise = (async () => {
@@ -1179,9 +1221,6 @@ function parseOcrText(text) {
   const priceKeywords = /(ціна|цiна|цена|price)/i;
   const qtyKeywords = /(кількість|количество|qty|шт\.?|pcs|x)/i;
   const currencyKeywords = /(грн|uah|₴)/i;
-  const noiseKeywords =
-    /(сума|сумма|всього|разом|итого|підсумок|оплата|знижка|накладна|рахунок|invoice|замовлення|(?:терм|term)\S{0,12}\s*(?:пост|постав|postav|supply)\S{0,12}|постачальник|покупець|iban|edrpou|єдрпоу|код|тел|телефон|адреса)/i;
-  const deleteKeywords = /(удалить|видалити|delete)/i;
 
   const isDimensionLikeLine = (value) =>
     /\d+(?:[.,]\d+)?\s*[xх]\s*\d+(?:[.,]\d+)?\s*[xх]\s*\d+(?:[.,]\d+)?/i.test(String(value || ''));
@@ -1197,45 +1236,6 @@ function parseOcrText(text) {
       .trim();
   };
 
-  const isLikelyPartNumberLine = (value) => {
-    const line = String(value || '').trim();
-    if (!line) return false;
-    // Typical SKU patterns: 40-76149-00, 20 03 0009, 147.581, 318.580, MS0825-98
-    const hasSkuToken =
-      /\b\d{2,}-\d{2,}(?:-\d{2,})?\b/.test(line) ||
-      /\b\d{2,}[.]\d{2,}\b/.test(line) ||
-      /\b[A-Z]{1,3}\d{3,}(?:-\d{2,})?\b/.test(line) ||
-      /\b\d{2}\s\d{2}\s\d{4}\b/.test(line);
-    if (!hasSkuToken) return false;
-    // Needs at least one word token as well (brand/manufacturer)
-    return /[A-Za-zА-Яа-яІіЇїЄє]{2,}/.test(line);
-  };
-
-  const isSkuOnlyLine = (value) => {
-    const line = String(value || '').trim();
-    if (!line) return false;
-    if (currencyKeywords.test(line) || priceKeywords.test(line)) return false;
-    // Examples: K2W105, EATRMT7912X1L, JP1411000300-like.
-    if (/\b[A-Z]{1,4}\d{3,}\b/i.test(line)) return true;
-    // Hyphenated/segmented SKUs without a brand word.
-    if (/\b\d{2,}-\d{2,}(?:-\d{2,})?\b/.test(line)) return true;
-    return false;
-  };
-
-  const scoreOcrText = (value) => {
-    const text = String(value || '');
-    if (!text) return 0;
-    const lines = text
-      .replace(/\r/g, '\n')
-      .split('\n')
-      .map((l) => l.trim())
-      .filter(Boolean);
-    const skuHits = lines.filter((l) => isLikelyPartNumberLine(l) || isSkuOnlyLine(l)).length;
-    const moneyHits = lines.filter((l) => /\b\d{2,6}(?:[.,]\d{1,2})?\b/.test(l)).length;
-    const noiseHits = lines.filter((l) => noiseKeywords.test(l) || deleteKeywords.test(l)).length;
-    const len = text.length;
-    return skuHits * 10 + moneyHits * 2 - noiseHits * 3 + Math.min(3000, len) / 100;
-  };
 
   const parseNumber = (value) => {
     if (!value) return null;
