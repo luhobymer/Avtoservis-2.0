@@ -289,6 +289,7 @@ const MyParts = () => {
               <TableHead>
                 <TableRow>
                   <TableCell>{t('parts.name')}</TableCell>
+                  <TableCell>{t('parts.partNumber', 'Артикул')}</TableCell>
                   <TableCell>{t('parts.price')}</TableCell>
                   <TableCell>{t('parts.qty')}</TableCell>
                 </TableRow>
@@ -297,6 +298,7 @@ const MyParts = () => {
                 {parsedParts.map((p, index) => (
                   <TableRow key={index}>
                     <TableCell>{p.name}</TableCell>
+                    <TableCell>{p.part_number || '-'}</TableCell>
                     <TableCell>{p.price}</TableCell>
                     <TableCell>{p.quantity}</TableCell>
                   </TableRow>
@@ -497,6 +499,7 @@ const MyParts = () => {
                 <TableHead>
                   <TableRow>
                     <TableCell>{t('parts.name')}</TableCell>
+                    <TableCell>{t('parts.partNumber', 'Артикул')}</TableCell>
                     <TableCell>{t('parts.price')}</TableCell>
                     <TableCell>{t('parts.qty')}</TableCell>
                   </TableRow>
@@ -505,6 +508,7 @@ const MyParts = () => {
                   {parsedParts.map((p, index) => (
                     <TableRow key={index}>
                       <TableCell>{p.name}</TableCell>
+                      <TableCell>{p.part_number || '-'}</TableCell>
                       <TableCell>{p.price}</TableCell>
                       <TableCell>{p.quantity}</TableCell>
                     </TableRow>

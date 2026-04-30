@@ -1303,6 +1303,7 @@ function parseOcrText(text) {
 
   const parseNumericRowLine = (line) => {
     if (!line) return null;
+    if (isSkuOnlyLine(line)) return null;
     const letterMatches = line.match(/[A-Za-zА-Яа-яІіЇїЄє]/g);
     const letterCount = letterMatches ? letterMatches.length : 0;
     const numbers = Array.from(line.matchAll(numberPattern))
