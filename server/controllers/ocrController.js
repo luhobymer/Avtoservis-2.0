@@ -273,9 +273,49 @@ async function parsePartsFromImageInternal(req) {
           }
         }
 
+        try {
+          processed.normalize();
+        } catch (_) {
+          void _;
+        }
+
+        try {
+          processed.contrast(0.55);
+        } catch (_) {
+          void _;
+        }
+
+        try {
+          // Light sharpening to help small text.
+          processed.convolute([
+            [0, -1, 0],
+            [-1, 5, -1],
+            [0, -1, 0],
+          ]);
+        } catch (_) {
+          void _;
+        }
+
         const targetWidth = Math.min(2400, Math.max(1400, w < 1400 ? 1400 : w));
         if (w < targetWidth) {
           resizeKeepAspect(processed, targetWidth);
+        }
+
+        try {
+          // Simple binarization to reduce background noise.
+          const bwThreshold = isDarkBackground ? 170 : 155;
+          processed.scan(0, 0, processed.bitmap.width, processed.bitmap.height, function (x, y, idx) {
+            const r = this.bitmap.data[idx + 0];
+            const g = this.bitmap.data[idx + 1];
+            const b = this.bitmap.data[idx + 2];
+            const lum = (r + g + b) / 3;
+            const v = lum >= bwThreshold ? 255 : 0;
+            this.bitmap.data[idx + 0] = v;
+            this.bitmap.data[idx + 1] = v;
+            this.bitmap.data[idx + 2] = v;
+          });
+        } catch (_) {
+          void _;
         }
 
         preprocessedPath = `${imagePath}_preprocessed.png`;
@@ -291,7 +331,16 @@ async function parsePartsFromImageInternal(req) {
     preprocessingApplied = false;
   }
 
-  const worker = await createWorker('ukr+eng');
+  const worker = await createWorker('ukr+rus+eng');
+  try {
+    await worker.setParameters({
+      tessedit_pageseg_mode: '6',
+      preserve_interword_spaces: '1',
+      user_defined_dpi: '300',
+    });
+  } catch (_) {
+    void _;
+  }
   const {
     data: { text },
   } = await worker.recognize(ocrPath);
