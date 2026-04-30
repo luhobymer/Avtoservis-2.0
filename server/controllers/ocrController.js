@@ -1097,7 +1097,7 @@ function parseOcrText(text) {
   const qtyKeywords = /(кількість|количество|qty|шт\.?|pcs|x)/i;
   const currencyKeywords = /(грн|uah|₴)/i;
   const noiseKeywords =
-    /(сума|сумма|всього|разом|итого|підсумок|оплата|знижка|накладна|рахунок|invoice|замовлення|терм\w*\s*постав\w*|постачальник|покупець|iban|edrpou|єдрпоу|код|тел|телефон|адреса)/i;
+    /(сума|сумма|всього|разом|итого|підсумок|оплата|знижка|накладна|рахунок|invoice|замовлення|(?:терм|term)\S{0,12}\s*(?:пост|постав|postav|supply)\S{0,12}|постачальник|покупець|iban|edrpou|єдрпоу|код|тел|телефон|адреса)/i;
   const deleteKeywords = /(удалить|видалити|delete)/i;
 
   const isDimensionLikeLine = (value) =>
@@ -1184,6 +1184,15 @@ function parseOcrText(text) {
     if (!(priceKeywords.test(line) || currencyKeywords.test(line))) return false;
     const num = extractNumber(line);
     return Number.isFinite(num);
+  };
+
+  const isLikelyVolumeLine = (value) => {
+    const line = String(value || '');
+    if (!line) return false;
+    // Examples from OCR: "W105 600mn", "600ml", "600мл", also liters.
+    if (/\b\d{2,4}\s*(?:ml|мл|mn|mл|mп)\b/i.test(line)) return true;
+    if (/\b\d+\s*[lл]\b/i.test(line)) return true;
+    return false;
   };
 
   const parseRowLine = (line) => {
@@ -1304,6 +1313,7 @@ function parseOcrText(text) {
   const parseNumericRowLine = (line) => {
     if (!line) return null;
     if (isSkuOnlyLine(line)) return null;
+    if (!currencyKeywords.test(line) && !priceKeywords.test(line) && isLikelyVolumeLine(line)) return null;
     const letterMatches = line.match(/[A-Za-zА-Яа-яІіЇїЄє]/g);
     const letterCount = letterMatches ? letterMatches.length : 0;
     const numbers = Array.from(line.matchAll(numberPattern))
@@ -1512,6 +1522,11 @@ function parseOcrText(text) {
         .map((m) => parseNumber(m[0]))
         .filter((n) => Number.isFinite(n));
       if (!hasRowDelimiters && !hasCurrencyHints && isLikelyPartNumberLine(line) && inlineNumbers.length >= 2) {
+        // Prevent parsing "W105 600mn" style lines as price/total rows.
+        // These are usually volume/spec lines without currency hints.
+        if (isLikelyVolumeLine(line)) {
+          continue;
+        }
         const sorted = inlineNumbers.slice().sort((a, b) => a - b);
         const secondLargest = sorted[sorted.length - 2];
         const largest = sorted[sorted.length - 1];
@@ -1565,7 +1580,8 @@ function parseOcrText(text) {
           price >= 20 &&
           price <= 200000 &&
           !isLikelyPartNumberLine(line) &&
-          !isSkuOnlyLine(line)
+          !isSkuOnlyLine(line) &&
+          !( !currencyKeywords.test(line) && !priceKeywords.test(line) && isLikelyVolumeLine(line) )
         ) {
           const nameLines = buffer.filter(
             (l) => !isNoiseLine(l) && !isPriceLine(l) && !qtyKeywords.test(l) && !isDimensionLikeLine(l)
