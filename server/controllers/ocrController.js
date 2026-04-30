@@ -1170,11 +1170,11 @@ function parseOcrText(text) {
 
   const isNoiseLine = (line) => {
     if (!line) return true;
-    if (String(line).trim().length <= 2 && !numberPattern.test(line)) return true;
+    const hasNumber = Boolean(String(line).match(numberPattern));
+    if (String(line).trim().length <= 2 && !hasNumber) return true;
     if (noiseKeywords.test(line)) return true;
     if (deleteKeywords.test(line)) return true;
     const noLetters = !/[A-Za-zА-Яа-яІіЇїЄє]/.test(line);
-    const hasNumber = numberPattern.test(line);
     if (noLetters && !hasNumber) return true;
     return false;
   };
