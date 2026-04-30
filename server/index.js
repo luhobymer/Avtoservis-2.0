@@ -46,6 +46,9 @@ const { getDb } = require('./db/d1');
 
 const app = express();
 
+// Running behind reverse proxies (Render/Cloudflare). Required for correct client IP and rate limit handling.
+app.set('trust proxy', 1);
+
 // Імпорт планувальника нагадувань
 const { startReminderScheduler } = require('./services/reminderScheduler');
 
@@ -67,6 +70,9 @@ const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 хвилин
   max: 2000, // Максимум 2000 запитів від одного IP
   message: { message: 'Забагато запитів. Спробуйте пізніше.' },
+  validate: {
+    xForwardedForHeader: false,
+  },
 });
 app.use('/api/', limiter);
 
