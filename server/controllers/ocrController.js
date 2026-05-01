@@ -305,6 +305,12 @@ async function parsePartsFromImageInternal(req) {
       const h = img.bitmap?.height || 0;
       console.log('[OCR_PREPROC] Image size:', w, 'x', h);
       if (w > 0 && h > 0) {
+        const intToRGBA = (num) => ({
+          r: (num >> 24) & 0xFF,
+          g: (num >> 16) & 0xFF,
+          b: (num >> 8) & 0xFF,
+          a: num & 0xFF,
+        });
         const samplePoints = [
           { x: Math.floor(w * 0.2), y: Math.floor(h * 0.2) },
           { x: Math.floor(w * 0.5), y: Math.floor(h * 0.5) },
@@ -313,14 +319,16 @@ async function parsePartsFromImageInternal(req) {
         let brightnessSum = 0;
         for (const p of samplePoints) {
           const clr = img.getPixelColor(p.x, p.y);
-          const rgba = Jimp.intToRGBA(clr);
+          const rgba = intToRGBA(clr);
           brightnessSum += (rgba.r + rgba.g + rgba.b) / 3;
         }
         const avgBrightness = brightnessSum / samplePoints.length;
         const isDarkBackground = avgBrightness < 110;
         console.log('[OCR_PREPROC] Dark background:', isDarkBackground, 'avgBright:', avgBrightness);
 
-        const processed = img.clone().grayscale();
+        // jimp v1 has no .clone(); process the original image directly (we won't need it again).
+        const processed = img;
+        try { processed.grayscale(); } catch (_) { void _; }
         console.log('[OCR_PREPROC] Grayscale ok');
         try { processed.contrast(0.35); } catch (_) { void _; }
         if (isDarkBackground) { try { processed.invert(); } catch (_) { void _; } }
@@ -349,31 +357,13 @@ async function parsePartsFromImageInternal(req) {
         } catch (_) { void _; }
 
         preprocessedPath = `${imagePath}_preprocessed.png`;
-        console.log('[OCR_PREPROC] Methods: writeAsync=', typeof processed.writeAsync, 'write=', typeof processed.write, 'getBuffer=', typeof processed.getBuffer);
         let writeOk = false;
         try {
-          if (typeof processed.writeAsync === 'function') {
-            console.log('[OCR_PREPROC] Trying writeAsync...');
-            await processed.writeAsync(preprocessedPath);
-            console.log('[OCR_PREPROC] writeAsync success');
-            writeOk = true;
-          } else if (typeof processed.write === 'function') {
-            console.log('[OCR_PREPROC] Trying write callback...');
-            await new Promise((res, rej) => {
-              processed.write(preprocessedPath, (e) => (e ? rej(e) : res()));
-            });
-            console.log('[OCR_PREPROC] write callback success');
-            writeOk = true;
-          } else if (typeof processed.getBuffer === 'function') {
-            console.log('[OCR_PREPROC] Trying getBuffer...');
-            const mime = (Jimp.MIME_PNG || 'image/png');
-            const buf = await processed.getBuffer(mime);
-            fs.writeFileSync(preprocessedPath, buf);
-            console.log('[OCR_PREPROC] getBuffer success, bytes=', buf?.length);
-            writeOk = true;
-          } else {
-            console.warn('[OCR_PREPROC] No write method found on processed image');
-          }
+          // jimp v1 .write() returns a Promise; no .writeAsync() exists.
+          console.log('[OCR_PREPROC] Trying write...');
+          await processed.write(preprocessedPath);
+          console.log('[OCR_PREPROC] write success');
+          writeOk = true;
         } catch (err) {
           jimpPreprocError = String(err?.message || err);
           console.warn('[OCR_PREPROC_WRITE_FAIL]', jimpPreprocError);
