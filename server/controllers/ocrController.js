@@ -292,15 +292,18 @@ async function parsePartsFromImageInternal(req) {
   let preprocessingApplied = false;
 
   let jimpLoadError = null;
+  let jimpPreprocError = null;
   try {
     const Jimp = await getJimp();
     if (!Jimp) {
       jimpLoadError = jimpResolveError || 'Jimp returned null';
       console.warn('[OCR_JIMP_FAIL]', jimpLoadError);
     } else {
+      console.log('[OCR_PREPROC] Jimp loaded, reading image...');
       const img = await Jimp.read(imagePath);
       const w = img.bitmap?.width || 0;
       const h = img.bitmap?.height || 0;
+      console.log('[OCR_PREPROC] Image size:', w, 'x', h);
       if (w > 0 && h > 0) {
         const samplePoints = [
           { x: Math.floor(w * 0.2), y: Math.floor(h * 0.2) },
@@ -315,51 +318,22 @@ async function parsePartsFromImageInternal(req) {
         }
         const avgBrightness = brightnessSum / samplePoints.length;
         const isDarkBackground = avgBrightness < 110;
+        console.log('[OCR_PREPROC] Dark background:', isDarkBackground, 'avgBright:', avgBrightness);
 
         const processed = img.clone().grayscale();
+        console.log('[OCR_PREPROC] Grayscale ok');
+        try { processed.contrast(0.35); } catch (_) { void _; }
+        if (isDarkBackground) { try { processed.invert(); } catch (_) { void _; } }
+        try { processed.normalize(); } catch (_) { void _; }
+        try { processed.contrast(0.55); } catch (_) { void _; }
         try {
-          processed.contrast(0.35);
-        } catch (_) {
-          void _;
-        }
-        if (isDarkBackground) {
-          try {
-            processed.invert();
-          } catch (_) {
-            void _;
-          }
-        }
-
-        try {
-          processed.normalize();
-        } catch (_) {
-          void _;
-        }
-
-        try {
-          processed.contrast(0.55);
-        } catch (_) {
-          void _;
-        }
-
-        try {
-          // Light sharpening to help small text.
-          processed.convolute([
-            [0, -1, 0],
-            [-1, 5, -1],
-            [0, -1, 0],
-          ]);
-        } catch (_) {
-          void _;
-        }
+          processed.convolute([[0, -1, 0], [-1, 5, -1], [0, -1, 0]]);
+        } catch (_) { void _; }
 
         const targetWidth = Math.min(2400, Math.max(1400, w < 1400 ? 1400 : w));
-        if (w < targetWidth) {
-          resizeKeepAspect(processed, targetWidth);
-        }
+        if (w < targetWidth) { resizeKeepAspect(processed, targetWidth); }
 
         try {
-          // Simple binarization to reduce background noise.
           const bwThreshold = isDarkBackground ? 170 : 155;
           processed.scan(0, 0, processed.bitmap.width, processed.bitmap.height, function (x, y, idx) {
             const r = this.bitmap.data[idx + 0];
@@ -371,41 +345,56 @@ async function parsePartsFromImageInternal(req) {
             this.bitmap.data[idx + 1] = v;
             this.bitmap.data[idx + 2] = v;
           });
-        } catch (_) {
-          void _;
-        }
+          console.log('[OCR_PREPROC] Binarization ok');
+        } catch (_) { void _; }
 
         preprocessedPath = `${imagePath}_preprocessed.png`;
+        console.log('[OCR_PREPROC] Methods: writeAsync=', typeof processed.writeAsync, 'write=', typeof processed.write, 'getBuffer=', typeof processed.getBuffer);
         let writeOk = false;
         try {
           if (typeof processed.writeAsync === 'function') {
+            console.log('[OCR_PREPROC] Trying writeAsync...');
             await processed.writeAsync(preprocessedPath);
+            console.log('[OCR_PREPROC] writeAsync success');
             writeOk = true;
           } else if (typeof processed.write === 'function') {
+            console.log('[OCR_PREPROC] Trying write callback...');
             await new Promise((res, rej) => {
               processed.write(preprocessedPath, (e) => (e ? rej(e) : res()));
             });
+            console.log('[OCR_PREPROC] write callback success');
             writeOk = true;
           } else if (typeof processed.getBuffer === 'function') {
-            const buf = await processed.getBuffer(Jimp.MIME_PNG || 'image/png');
+            console.log('[OCR_PREPROC] Trying getBuffer...');
+            const mime = (Jimp.MIME_PNG || 'image/png');
+            const buf = await processed.getBuffer(mime);
             fs.writeFileSync(preprocessedPath, buf);
+            console.log('[OCR_PREPROC] getBuffer success, bytes=', buf?.length);
             writeOk = true;
+          } else {
+            console.warn('[OCR_PREPROC] No write method found on processed image');
           }
         } catch (err) {
-          console.warn('[OCR_PREPROC_WRITE_FAIL]', err?.message || err);
+          jimpPreprocError = String(err?.message || err);
+          console.warn('[OCR_PREPROC_WRITE_FAIL]', jimpPreprocError);
         }
         if (writeOk) {
           ocrPath = preprocessedPath;
           preprocessingApplied = true;
+          console.log('[OCR_PREPROC] SUCCESS, path=', preprocessedPath);
         } else {
           preprocessedPath = null;
           ocrPath = imagePath;
           preprocessingApplied = false;
+          console.warn('[OCR_PREPROC] FAILED, falling back to original');
         }
+      } else {
+        console.warn('[OCR_PREPROC] Invalid image dimensions');
       }
     }
   } catch (err) {
-    void err;
+    jimpPreprocError = String(err?.message || err);
+    console.warn('[OCR_PREPROC_CATCH]', jimpPreprocError);
     ocrPath = imagePath;
     preprocessedPath = null;
     preprocessingApplied = false;
@@ -476,6 +465,7 @@ async function parsePartsFromImageInternal(req) {
     rawText: bestText || '',
     parts: parseOcrText(bestText || ''),
     jimpError: jimpLoadError,
+    jimpPreprocError,
   };
 }
 
@@ -524,6 +514,7 @@ exports.parsePartsFromImageDebug = async (req, res) => {
         usedPath: result.usedPath,
         usedPsm: result.usedPsm,
         jimpError: result.jimpError,
+        jimpPreprocError: result.jimpPreprocError,
       },
     });
   } catch (err) {
