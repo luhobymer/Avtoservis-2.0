@@ -6,7 +6,7 @@ let jimpResolvePromise = null;
 let jimpResolveError = null;
 
 const noiseKeywords =
-  /(сума|сумма|всього|разом|итого|підсумок|оплата|знижка|накладна|рахунок|invoice|замовлення|(?:терм|term)\S{0,12}\s*(?:пост|постав|postav|supply)\S{0,12}|постачальник|покупець|iban|edrpou|єдрпоу|код|тел|телефон|адреса)/i;
+  /(сума|сумма|всього|разом|итого|підсумок|оплата|знижка|накладна|рахунок|invoice|замовлення|(?:терм|term)\S{0,12}\s*(?:пост|постав|postav|supply)\S{0,12}|постачальник|покупець|iban|edrpou|єдрпоу|код|тел|телефон|адреса|РАЗОМ)/i;
 const deleteKeywords = /(удалить|видалити|delete)/i;
 
 const isLikelyPartNumberLine = (value) => {
@@ -1267,9 +1267,18 @@ function parseOcrText(text) {
   };
 
 
-  const parseNumber = (value) => {
+  const isLikelySkuNumber = (numStr, fullLine) => {
+    // Part-number-like numbers: 3 digits dot 3 digits (e.g. 147.581, 318.580)
+    if (/^\d{3}[.]\d{3}$/.test(numStr)) return true;
+    // 3 digits dot 2+ digits in context of known manufacturer
+    if (/\b(?:ELRING|FEBI\s+BILSTEIN|VICTOR\s+REINZ|SWAG|JP\s+GROUP|SKF|BOSCH|CONTINENTAL|INA|SACHS|LEMFORDER)\b/i.test(fullLine || '') && /^\d{3}[.,]\d{2,}$/.test(numStr)) return true;
+    return false;
+  };
+
+  const parseNumber = (value, fullLine) => {
     if (!value) return null;
     const cleaned = value.replace(/\s/g, '').replace(',', '.');
+    if (isLikelySkuNumber(cleaned, fullLine)) return null;
     const num = Number(cleaned);
     return Number.isFinite(num) ? num : null;
   };
@@ -1335,7 +1344,7 @@ function parseOcrText(text) {
     }
 
     const numbers = Array.from(line.matchAll(numberPattern))
-      .map((m) => parseNumber(m[0]))
+      .map((m) => parseNumber(m[0], line))
       .filter((n) => Number.isFinite(n));
 
     // Manufacturer + SKU line is usually not a price row in "order list" screenshots.
@@ -1445,7 +1454,7 @@ function parseOcrText(text) {
     const letterMatches = line.match(/[A-Za-zА-Яа-яІіЇїЄє]/g);
     const letterCount = letterMatches ? letterMatches.length : 0;
     const numbers = Array.from(line.matchAll(numberPattern))
-      .map((m) => parseNumber(m[0]))
+      .map((m) => parseNumber(m[0], line))
       .filter((n) => Number.isFinite(n));
     if (numbers.length < 2) return null;
 
@@ -1647,7 +1656,7 @@ function parseOcrText(text) {
       const hasCurrencyHints = currencyKeywords.test(line) || priceKeywords.test(line);
       const hasHyphenSku = /\b\d{2,}-\d{2,}(?:-\d{2,})?\b/.test(line);
       const inlineNumbers = Array.from(line.matchAll(numberPattern))
-        .map((m) => parseNumber(m[0]))
+        .map((m) => parseNumber(m[0], line))
         .filter((n) => Number.isFinite(n));
       if (!hasRowDelimiters && !hasCurrencyHints && isLikelyPartNumberLine(line) && inlineNumbers.length >= 2) {
         // Prevent parsing "W105 600mn" style lines as price/total rows.
@@ -1699,7 +1708,7 @@ function parseOcrText(text) {
     // Example OCR: "318 El В БІВ" for a single item priced 318.
     {
       const singleNumbers = Array.from(line.matchAll(numberPattern))
-        .map((m) => parseNumber(m[0]))
+        .map((m) => parseNumber(m[0], line))
         .filter((n) => Number.isFinite(n));
       if (singleNumbers.length === 1) {
         const price = singleNumbers[0];
