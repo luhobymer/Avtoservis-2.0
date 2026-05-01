@@ -1247,7 +1247,10 @@ function parseOcrText(text) {
   const seen = new Set();
   const buffer = [];
 
-  const numberPattern = /(\d{1,3}(?:[ \u00A0]\d{3})+(?:[.,]\d{1,2})?|\d{4,}(?:[.,]\d{1,2})?|\d+(?:[.,]\d{1,2})?)/g;
+  // Capture groups of digits with optional thousand-space, optional decimal,
+  // and also common SKU shapes like 147.581, 318.580, 20.03.0009 so they are
+  // seen as one token and can be filtered by isLikelySkuNumber.
+  const numberPattern = /(\d{1,3}(?:[ \u00A0]\d{3})+(?:[.,]\d{1,2})?|\d{3}[.]\d{3}|\d{2}[.]\d{2}[.]\d{4}|\d{3}[ ]\d{3}|\d{4,}(?:[.,]\d{1,2})?|\d+(?:[.,]\d{1,2})?)/g;
   const priceKeywords = /(ціна|цiна|цена|price)/i;
   const qtyKeywords = /(кількість|количество|qty|шт\.?|pcs|x)/i;
   const currencyKeywords = /(грн|uah|₴)/i;
@@ -1268,8 +1271,8 @@ function parseOcrText(text) {
 
 
   const isLikelySkuNumber = (numStr, fullLine) => {
-    // Part-number-like numbers: 3 digits dot 3 digits (e.g. 147.581, 318.580)
-    if (/^\d{3}[.]\d{3}$/.test(numStr)) return true;
+    // Part-number-like numbers: 3 digits dot/space 3 digits (e.g. 147.581, 318.580, 147 581)
+    if (/^\d{3}[. ]\d{3}$/.test(numStr)) return true;
     // 3 digits dot 2+ digits in context of known manufacturer
     if (/\b(?:ELRING|FEBI\s+BILSTEIN|VICTOR\s+REINZ|SWAG|JP\s+GROUP|SKF|BOSCH|CONTINENTAL|INA|SACHS|LEMFORDER)\b/i.test(fullLine || '') && /^\d{3}[.,]\d{2,}$/.test(numStr)) return true;
     return false;
