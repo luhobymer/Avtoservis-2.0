@@ -1269,11 +1269,36 @@ function parseOcrText(text) {
       const bStart = matches[i + 1].index ?? 0;
       const gap = String(line || '').slice(aEnd, bStart);
 
-      if (/^[.\s]$/.test(gap)) {
+      // Allow OCR gaps like ". ", " .", "  " between split SKU groups.
+      if (/^[.\s]{1,3}$/.test(gap)) {
         const combined = `${String(a).replace(/\s/g, '')}.${String(b).replace(/\s/g, '')}`;
         if (/^\d{3}[.]\d{3}$/.test(combined)) {
           skipIndices.add(i);
           skipIndices.add(i + 1);
+        }
+      }
+    }
+
+    // Skip 2+2+4 SKU patterns split into 3 adjacent numeric tokens: "20 03 0009".
+    for (let i = 0; i < matches.length - 2; i++) {
+      if (skipIndices.has(i) || skipIndices.has(i + 1) || skipIndices.has(i + 2)) continue;
+      const a = String(matches[i][0]);
+      const b = String(matches[i + 1][0]);
+      const c = String(matches[i + 2][0]);
+      const aDigits = a.replace(/\D/g, '');
+      const bDigits = b.replace(/\D/g, '');
+      const cDigits = c.replace(/\D/g, '');
+      if (/^\d{2}$/.test(aDigits) && /^\d{2}$/.test(bDigits) && /^\d{4}$/.test(cDigits)) {
+        const aEnd = (matches[i].index ?? 0) + a.length;
+        const bStart = matches[i + 1].index ?? 0;
+        const bEnd = (matches[i + 1].index ?? 0) + b.length;
+        const cStart = matches[i + 2].index ?? 0;
+        const gap1 = String(line || '').slice(aEnd, bStart);
+        const gap2 = String(line || '').slice(bEnd, cStart);
+        if (/^\s{1,3}$/.test(gap1) && /^\s{1,3}$/.test(gap2)) {
+          skipIndices.add(i);
+          skipIndices.add(i + 1);
+          skipIndices.add(i + 2);
         }
       }
     }
