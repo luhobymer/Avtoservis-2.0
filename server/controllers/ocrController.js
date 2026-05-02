@@ -1255,6 +1255,35 @@ function parseOcrText(text) {
   const qtyKeywords = /(кількість|количество|qty|шт\.?|pcs|x)/i;
   const currencyKeywords = /(грн|uah|₴)/i;
 
+  const extractNumbersFromLine = (line) => {
+    const matches = Array.from(String(line || '').matchAll(numberPattern));
+    const skipIndices = new Set();
+
+    // OCR sometimes splits 147.581 into two adjacent numbers ("147" and "581").
+    // If we later interpret these as price/qty, it breaks totals.
+    for (let i = 0; i < matches.length - 1; i++) {
+      if (skipIndices.has(i)) continue;
+      const a = matches[i][0];
+      const b = matches[i + 1][0];
+      const aEnd = (matches[i].index ?? 0) + String(a).length;
+      const bStart = matches[i + 1].index ?? 0;
+      const gap = String(line || '').slice(aEnd, bStart);
+
+      if (/^[.\s]$/.test(gap)) {
+        const combined = `${String(a).replace(/\s/g, '')}.${String(b).replace(/\s/g, '')}`;
+        if (/^\d{3}[.]\d{3}$/.test(combined)) {
+          skipIndices.add(i);
+          skipIndices.add(i + 1);
+        }
+      }
+    }
+
+    return matches
+      .filter((_, i) => !skipIndices.has(i))
+      .map((m) => parseNumber(m[0], line))
+      .filter((n) => Number.isFinite(n));
+  };
+
   const isDimensionLikeLine = (value) =>
     /\d+(?:[.,]\d+)?\s*[xх]\s*\d+(?:[.,]\d+)?\s*[xх]\s*\d+(?:[.,]\d+)?/i.test(String(value || ''));
 
@@ -1346,9 +1375,7 @@ function parseOcrText(text) {
       return null;
     }
 
-    const numbers = Array.from(line.matchAll(numberPattern))
-      .map((m) => parseNumber(m[0], line))
-      .filter((n) => Number.isFinite(n));
+    const numbers = extractNumbersFromLine(line);
 
     // Manufacturer + SKU line is usually not a price row in "order list" screenshots.
     if (!hasRowDelimiters && !hasCurrencyHints && isLikelyPartNumberLine(line)) {
@@ -1456,9 +1483,7 @@ function parseOcrText(text) {
     if (!currencyKeywords.test(line) && !priceKeywords.test(line) && isLikelyVolumeLine(line)) return null;
     const letterMatches = line.match(/[A-Za-zА-Яа-яІіЇїЄє]/g);
     const letterCount = letterMatches ? letterMatches.length : 0;
-    const numbers = Array.from(line.matchAll(numberPattern))
-      .map((m) => parseNumber(m[0], line))
-      .filter((n) => Number.isFinite(n));
+    const numbers = extractNumbersFromLine(line);
     if (numbers.length < 2) return null;
 
     // Avoid interpreting spec/volume lines like "90 1л (EATRMT7912X1L)" as price rows.
@@ -1658,9 +1683,7 @@ function parseOcrText(text) {
       const hasRowDelimiters = /[|]/.test(line);
       const hasCurrencyHints = currencyKeywords.test(line) || priceKeywords.test(line);
       const hasHyphenSku = /\b\d{2,}-\d{2,}(?:-\d{2,})?\b/.test(line);
-      const inlineNumbers = Array.from(line.matchAll(numberPattern))
-        .map((m) => parseNumber(m[0], line))
-        .filter((n) => Number.isFinite(n));
+      const inlineNumbers = extractNumbersFromLine(line);
       if (!hasRowDelimiters && !hasCurrencyHints && isLikelyPartNumberLine(line) && inlineNumbers.length >= 2) {
         // Prevent parsing "W105 600mn" style lines as price/total rows.
         // These are usually volume/spec lines without currency hints.
@@ -1710,9 +1733,7 @@ function parseOcrText(text) {
     // Some checkouts show only a single price per item (no qty/total columns).
     // Example OCR: "318 El В БІВ" for a single item priced 318.
     {
-      const singleNumbers = Array.from(line.matchAll(numberPattern))
-        .map((m) => parseNumber(m[0], line))
-        .filter((n) => Number.isFinite(n));
+      const singleNumbers = extractNumbersFromLine(line);
       if (singleNumbers.length === 1) {
         const price = singleNumbers[0];
         if (
