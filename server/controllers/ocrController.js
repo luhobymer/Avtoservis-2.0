@@ -1,5 +1,23 @@
 const { createWorker } = require('tesseract.js');
 const fs = require('fs');
+const { execSync } = require('child_process');
+
+const serverCommit = (() => {
+  const envCommit =
+    process.env.RENDER_GIT_COMMIT ||
+    process.env.GIT_COMMIT ||
+    process.env.VERCEL_GIT_COMMIT_SHA ||
+    process.env.COMMIT_SHA ||
+    '';
+  if (envCommit) return String(envCommit).slice(0, 12);
+  try {
+    return String(execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }) || '')
+      .trim();
+  } catch (_) {
+    void _;
+    return null;
+  }
+})();
 
 let jimpResolved = null;
 let jimpResolvePromise = null;
@@ -500,6 +518,7 @@ exports.parsePartsFromImageDebug = async (req, res) => {
       parts: result.parts,
       rawText: result.rawText,
       meta: {
+        serverCommit,
         preprocessingApplied: result.preprocessingApplied,
         usedPath: result.usedPath,
         usedPsm: result.usedPsm,
