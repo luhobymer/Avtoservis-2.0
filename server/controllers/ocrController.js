@@ -1593,7 +1593,9 @@ function parseOcrText(text) {
 
       // Prefer invoice-style "price ... total" rows by deriving qty ~= total/price.
       if (canDeriveQty) {
-        candidates.push(scoreCandidate({ price: small, qty: ratioRounded, total: big }));
+        // Deterministic fast-path: if total/price is a clean integer qty, return it.
+        // This avoids edge cases where later scoring ends up picking the wrong candidate.
+        return { price: small, quantity: ratioRounded };
       }
 
       candidates.push(scoreCandidate({ price: a, qty: 1, total: b }));
@@ -1766,6 +1768,25 @@ function parseOcrText(text) {
             .trim();
           if (name && !isNoiseLine(name)) {
             pushPart(name, price, qty, line);
+            buffer.length = 0;
+            lastSkuLine = null;
+            continue;
+          }
+        }
+      }
+
+      // After SKU-token filtering, some rows become a single-number row (price only).
+      // Example: "SWAG 20 03 0009 ... 608" => only [608] remains.
+      if (!hasRowDelimiters && !hasCurrencyHints && isLikelyPartNumberLine(line) && inlineNumbers.length === 1) {
+        const price = inlineNumbers[0];
+        if (Number.isFinite(price) && price >= 10 && price <= 200000 && !hasHyphenSku) {
+          const name = line
+            .replace(numberPattern, ' ')
+            .replace(/[₴]/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+          if (name && !isNoiseLine(name)) {
+            pushPart(name, price, 1, line);
             buffer.length = 0;
             lastSkuLine = null;
             continue;
