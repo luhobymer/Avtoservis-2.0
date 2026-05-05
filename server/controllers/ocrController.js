@@ -2375,9 +2375,25 @@ function parseOcrText(text, ocrData = null) {
     return score;
   };
 
+  const getPartsStats = (items) => {
+    const arr = Array.isArray(items) ? items : [];
+    if (!arr.length) return { count: 0, qtyGtOne: 0, withPartNumber: 0 };
+    let qtyGtOne = 0;
+    let withPartNumber = 0;
+    for (const p of arr) {
+      const qty = Number(p?.quantity || 0);
+      if (qty > 1) qtyGtOne += 1;
+      if (String(p?.part_number || '').trim()) withPartNumber += 1;
+    }
+    return { count: arr.length, qtyGtOne, withPartNumber };
+  };
+
   const legacyScore = scorePartsQuality(parts);
   const anchoredScore = scorePartsQuality(anchored);
   const structuredScore = scorePartsQuality(structured.parts);
+  const legacyStats = getPartsStats(parts);
+  const anchoredStats = getPartsStats(anchored);
+  const structuredStats = getPartsStats(structured.parts);
 
   let bestItems = parts;
   let bestScore = legacyScore;
@@ -2386,10 +2402,23 @@ function parseOcrText(text, ocrData = null) {
     bestScore = anchoredScore;
   }
   const bestNonStructuredCount = Math.max(parts.length, anchored.length);
+  const bestNonStructuredQtyGtOne = Math.max(legacyStats.qtyGtOne, anchoredStats.qtyGtOne);
+  const structuredPnRatio =
+    structuredStats.count > 0 ? structuredStats.withPartNumber / structuredStats.count : 0;
   const structuredCoverageOk =
-    structured.parts.length >= Math.max(5, Math.ceil(bestNonStructuredCount * 0.85));
+    structured.parts.length >= Math.max(1, Math.ceil(bestNonStructuredCount * 0.85));
+  const structuredHasReliableSignals =
+    structuredStats.count >= 1 &&
+    structuredStats.qtyGtOne >= Math.max(1, bestNonStructuredQtyGtOne) &&
+    structuredPnRatio >= 0.8;
+  const structuredSelectionDelta = structuredStats.count <= 3 ? 2 : 10;
 
-  if (structured.parts.length && structuredCoverageOk && structuredScore > bestScore + 6) {
+  if (
+    structured.parts.length &&
+    structuredCoverageOk &&
+    structuredHasReliableSignals &&
+    structuredScore > bestScore + structuredSelectionDelta
+  ) {
     bestItems = structured.parts;
     bestScore = structuredScore;
   }
