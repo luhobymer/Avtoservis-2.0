@@ -1424,6 +1424,19 @@ function parseOcrText(text) {
     return false;
   };
 
+  const isLikelyBrandSkuOnlyLine = (value) => {
+    const line = String(value || '').trim();
+    if (!line) return false;
+    const tokens = line.split(/\s+/).filter(Boolean);
+    if (tokens.length < 2 || tokens.length > 5) return false;
+    const hasCyr = /[А-Яа-яІіЇїЄєҐґ]/.test(line);
+    if (hasCyr) return false;
+    const hasLongNumber = /\b\d{4,}\b/.test(line);
+    const hasSkuLike = /\b[A-Z]{2,}\b/.test(line) && /[0-9]/.test(line);
+    const hasLower = /[a-z]/.test(line);
+    return hasLongNumber && hasSkuLike && !hasLower;
+  };
+
   const parseRowLine = (line) => {
     if (!/[A-Za-zА-Яа-яІіЇїЄє]/.test(line)) return null;
     // Prevent false positives on spec/name lines like: "75W-90 1л" or part codes.
@@ -1468,6 +1481,12 @@ function parseOcrText(text) {
       }
     }
     if (numbers.length < 3 && !hasRowDelimiters && !hasCurrencyHints) return null;
+    if (!hasRowDelimiters && !hasCurrencyHints && numbers.length >= 3) {
+      const minNum = Math.min(...numbers);
+      const maxNum = Math.max(...numbers);
+      // OCR-noise rows like "ласт 5 38 1" are not stable price rows.
+      if (minNum <= 5 && maxNum < 100) return null;
+    }
     let qty = 1;
     let price = null;
     let total = null;
@@ -1650,9 +1669,10 @@ function parseOcrText(text) {
     if (!best) return null;
     if (numbers.length >= 3) {
       const hasCoherent = validCandidates.some((c) => c.coherentTotal);
+      if (!hasCoherent && isLikelyPartNumberLine(line)) return null;
       // Prevent quantity inflation on noisy OCR triples like "5 38 1".
       if (!hasCoherent && best.quantity > 1) {
-        return { price: best.price, quantity: 1 };
+        return { price: Math.max(...numbers), quantity: 1 };
       }
     }
     if (!isReasonableQty(best.quantity)) {
@@ -1662,9 +1682,13 @@ function parseOcrText(text) {
   };
 
   const pushPart = (name, price, quantity, lineForPartNumber) => {
-    const cleanedName = normalizeLine(name);
+    const cleanedName = normalizeLine(
+      String(name || '')
+        .replace(/(?:терм\S*\s*постав\S*|поставк\S*|доставк\S*|на\s*склад\S*|склад\S*|наявност\S*|дн\.?)/gi, ' ')
+        .replace(/[|©»«]/g, ' ')
+    );
     if (!cleanedName || isNoiseLine(cleanedName)) return;
-    if (!Number.isFinite(price) || price <= 0) return;
+    if (!Number.isFinite(price) || price < 10) return;
     const qty = Number.isFinite(quantity) && quantity > 0 ? quantity : 1;
 
     const partNumberSource = String(lineForPartNumber || cleanedName);
@@ -1834,7 +1858,13 @@ function parseOcrText(text) {
       // Example: "SWAG 20 03 0009 ... 608" => only [608] remains.
       if (!hasRowDelimiters && !hasCurrencyHints && isLikelyPartNumberLine(line) && inlineNumbers.length === 1) {
         const price = inlineNumbers[0];
-        if (Number.isFinite(price) && price >= 10 && price <= 200000 && !hasHyphenSku) {
+        if (
+          Number.isFinite(price) &&
+          price >= 10 &&
+          price <= 200000 &&
+          !hasHyphenSku &&
+          !isLikelyBrandSkuOnlyLine(line)
+        ) {
           const name = line
             .replace(numberPattern, ' ')
             .replace(/[₴]/g, ' ')
