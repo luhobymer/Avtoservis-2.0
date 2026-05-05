@@ -1433,10 +1433,15 @@ function parseOcrText(text, ocrData = null) {
           .replace(/[|©»«]/g, ' ')
           .replace(/(?:терм\S*\s*постав\S*|поставк\S*|доставк\S*|на\s*склад\S*|склад\S*|наявност\S*|дн\.?)/gi, ' ')
       );
-    const parseNums = (line) => {
-      const matches = String(line || '').match(numberPattern) || [];
+    const parseNums = (line, pn = '') => {
+      // Remove explicit part-number token from line before numeric extraction
+      // to avoid taking SKU fragments as price candidates.
+      const sanitized = pn
+        ? String(line || '').replace(new RegExp(String(pn).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), ' ')
+        : String(line || '');
+      const matches = sanitized.match(numberPattern) || [];
       return matches
-        .map((v) => parseNumber(v, line))
+        .map((v) => parseNumber(v, sanitized))
         .filter((n) => Number.isFinite(n));
     };
 
@@ -1475,7 +1480,13 @@ function parseOcrText(text, ocrData = null) {
         block
           .slice(1)
           .map((x) => cleanDesc(x))
-          .find((x) => x && /[А-Яа-яІіЇїЄєҐґ]{4,}/.test(x) && !isLikelyPartNumberLine(x)) || '';
+          .find(
+            (x) =>
+              x &&
+              /[А-Яа-яІіЇїЄєҐґ]{4,}/.test(x) &&
+              !isLikelyPartNumberLine(x) &&
+              !/\b\d{1,3}\s+\d{1,3}\s+\d{1,3}\b/.test(x)
+          ) || '';
       const brand = (String(line).match(brandRegex) || [partNumber])[0];
       const name = cleanDesc(descLine || `${brand} ${partNumber}`);
       if (!name || isNoiseLine(name)) {
@@ -1484,7 +1495,7 @@ function parseOcrText(text, ocrData = null) {
       }
 
       const numericLines = block
-        .map((x) => ({ src: x, nums: parseNums(x) }))
+        .map((x) => ({ src: x, nums: parseNums(x, partNumber) }))
         .filter((x) => x.nums.length > 0);
       const flatNums = numericLines.flatMap((x) => x.nums).filter((n) => n >= 1 && n <= 200000);
 
@@ -1503,7 +1514,8 @@ function parseOcrText(text, ocrData = null) {
         } else {
           const plausible = flatNums.filter((n) => n >= 10 && n <= 5000);
           if (plausible.length) {
-            price = plausible[0];
+            // Prefer smallest plausible value (usually unit price) over totals.
+            price = plausible.slice().sort((a, b) => a - b)[0];
           } else {
             price = second >= 10 && second <= 200000 ? second : null;
           }
@@ -2078,9 +2090,6 @@ function parseOcrText(text, ocrData = null) {
   }
 
   const anchored = deferredAnchoredParser();
-  if (anchored.length >= 6) {
-    return anchored;
-  }
 
   let lastSkuLine = null;
 
@@ -2289,6 +2298,35 @@ function parseOcrText(text, ocrData = null) {
     }
   }
 
+  const scorePartsQuality = (items) => {
+    if (!Array.isArray(items) || !items.length) return -Infinity;
+    let score = 0;
+    for (const p of items) {
+      const name = String(p?.name || '');
+      const pn = String(p?.part_number || '');
+      const price = Number(p?.price || 0);
+      const qty = Number(p?.quantity || 0);
+      if (name.length >= 8) score += 2;
+      if (/[А-Яа-яІіЇїЄєҐґ]{4,}|[A-Za-z]{4,}/.test(name)) score += 1;
+      if (brandRegex.test(name)) score += 2;
+      if (pn) score += 3;
+      if (price >= 10 && price <= 5000) score += 2;
+      else if (price > 5000) score -= 2;
+      if (qty >= 1 && qty <= 20) score += 1;
+      const noisy =
+        /\b(терм|постав|склад|наявност|разом|итого|всього)\b/i.test(name) ||
+        name.split(' ').filter((t) => t.length === 1).length >= 3;
+      if (noisy) score -= 3;
+    }
+    score += Math.min(20, items.length);
+    return score;
+  };
+
+  const legacyScore = scorePartsQuality(parts);
+  const anchoredScore = scorePartsQuality(anchored);
+  if (anchored.length && anchoredScore > legacyScore + 2) {
+    return anchored;
+  }
   return parts;
 }
 
