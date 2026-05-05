@@ -1422,10 +1422,7 @@ function parseOcrText(text, ocrData = null) {
     return { headerDetected: true, parts: extracted };
   };
 
-  const structured = parseStructuredTable(ocrData);
-  if (structured.headerDetected && structured.parts.length >= 5) {
-    return structured.parts;
-  }
+  const deferredStructuredParser = parseStructuredTable;
 
   const parseAnchoredSkuBlocks = () => {
     const skuPattern =
@@ -1540,10 +1537,7 @@ function parseOcrText(text, ocrData = null) {
     return anchored;
   };
 
-  const anchored = parseAnchoredSkuBlocks();
-  if (anchored.length >= 6) {
-    return anchored;
-  }
+  const deferredAnchoredParser = parseAnchoredSkuBlocks;
 
   const parts = [];
   const seen = new Set();
@@ -2076,6 +2070,17 @@ function parseOcrText(text, ocrData = null) {
       purchased_by: 'owner',
     });
   };
+
+  // Run high-precision parsers only after helper functions are initialized.
+  const structured = deferredStructuredParser(ocrData);
+  if (structured.headerDetected && structured.parts.length >= 5) {
+    return structured.parts;
+  }
+
+  const anchored = deferredAnchoredParser();
+  if (anchored.length >= 6) {
+    return anchored;
+  }
 
   let lastSkuLine = null;
 
