@@ -33,7 +33,7 @@ const isLikelyPartNumberLine = (value) => {
   const hasSkuToken =
     /\b\d{2,}-\d{2,}(?:-\d{2,})?\b/.test(line) ||
     /\b\d{2,}[.]\d{2,}\b/.test(line) ||
-    /\b[A-Z]{1,3}\d{3,}(?:-\d{2,})?\b/.test(line) ||
+    /\b[A-Z]{1,3}\d{3,}(?:-\d{2,})?\b/i.test(line) ||
     /\b\d{2}\s\d{2}\s\d{4}\b/.test(line);
   if (!hasSkuToken) return false;
   return /[A-Za-zА-Яа-яІіЇїЄє]{2,}/.test(line);
@@ -1275,7 +1275,23 @@ function parseOcrText(text) {
   const currencyKeywords = /(грн|uah|₴)/i;
 
   const extractNumbersFromLine = (line) => {
-    const matches = Array.from(String(line || '').matchAll(numberPattern));
+    const rawLine = String(line || '');
+    const rawMatches = Array.from(rawLine.matchAll(numberPattern));
+    const hasSemanticHints =
+      currencyKeywords.test(rawLine) || priceKeywords.test(rawLine) || qtyKeywords.test(rawLine);
+
+    // Ignore numbers embedded in alpha-numeric tokens (e.g. W105, M271, M50B25)
+    // when the line has no explicit price/qty/currency hints.
+    const matches = rawMatches.filter((m) => {
+      const start = Number(m?.index ?? -1);
+      if (start < 0 || hasSemanticHints) return true;
+      const value = String(m?.[0] || '');
+      const end = start + value.length;
+      const prev = start > 0 ? rawLine[start - 1] : '';
+      const next = end < rawLine.length ? rawLine[end] : '';
+      const hasLetterAround = /[A-Za-zА-Яа-яІіЇїЄєҐґ]/.test(prev) || /[A-Za-zА-Яа-яІіЇїЄєҐґ]/.test(next);
+      return !hasLetterAround;
+    });
     const skipIndices = new Set();
 
     // OCR sometimes splits 147.581 into two adjacent numbers ("147" and "581").
@@ -1554,15 +1570,17 @@ function parseOcrText(text) {
       if (!Number.isFinite(qty) || qty <= 0) return null;
 
       let score = 0;
+      const coherentTotal = Number.isFinite(total) && total > 0 && nearlyEquals(price * qty, total, 1.2);
       if (isReasonableQty(qty)) score += 6;
       if (price >= 10 && price <= 200000) score += 2;
       if (Number.isFinite(total) && total > 0) {
         score += 1;
-        if (nearlyEquals(price * qty, total, 1.2)) score += 6;
+        if (coherentTotal) score += 6;
+        else score -= 4;
         if (total >= price) score += 1;
       }
 
-      return { price, quantity: qty, score };
+      return { price, quantity: qty, score, coherentTotal };
     };
 
     const candidates = [];
@@ -1604,11 +1622,17 @@ function parseOcrText(text) {
       candidates.push(scoreCandidate({ price: b, qty: Math.round(a), total: null }));
     }
 
-    const best = candidates
-      .filter(Boolean)
-      .sort((x, y) => (y.score || 0) - (x.score || 0))[0];
+    const validCandidates = candidates.filter(Boolean);
+    const best = validCandidates.sort((x, y) => (y.score || 0) - (x.score || 0))[0];
 
     if (!best) return null;
+    if (numbers.length >= 3) {
+      const hasCoherent = validCandidates.some((c) => c.coherentTotal);
+      // Prevent quantity inflation on noisy OCR triples like "5 38 1".
+      if (!hasCoherent && best.quantity > 1) {
+        return { price: best.price, quantity: 1 };
+      }
+    }
     if (!isReasonableQty(best.quantity)) {
       return { price: best.price, quantity: 1 };
     }
