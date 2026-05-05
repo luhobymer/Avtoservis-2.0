@@ -1427,6 +1427,124 @@ function parseOcrText(text, ocrData = null) {
     return structured.parts;
   }
 
+  const parseAnchoredSkuBlocks = () => {
+    const skuPattern =
+      /\b(?:\d{2,}-\d{2,}(?:-\d{2,})?|\d{2}\s\d{2}\s\d{4}|\d{3}[.]\d{3}|[A-Z]{1,6}\d{3,}[A-Z0-9]*|\d{7,})\b/i;
+    const cleanDesc = (value) =>
+      normalizeLine(
+        String(value || '')
+          .replace(/[|©»«]/g, ' ')
+          .replace(/(?:терм\S*\s*постав\S*|поставк\S*|доставк\S*|на\s*склад\S*|склад\S*|наявност\S*|дн\.?)/gi, ' ')
+      );
+    const parseNums = (line) => {
+      const matches = String(line || '').match(numberPattern) || [];
+      return matches
+        .map((v) => parseNumber(v, line))
+        .filter((n) => Number.isFinite(n));
+    };
+
+    const anchored = [];
+    const seenAnchored = new Set();
+    let i = 0;
+    while (i < lines.length) {
+      const line = lines[i];
+      const skuMatch = String(line || '').match(skuPattern);
+      const hasBrand = brandRegex.test(line);
+      if (!skuMatch || !hasBrand) {
+        i += 1;
+        continue;
+      }
+
+      const partNumber = String(skuMatch[0]).trim();
+      const block = [line];
+      let j = i + 1;
+      while (j < lines.length) {
+        const l = lines[j];
+        if (!l) {
+          j += 1;
+          continue;
+        }
+        if (noiseKeywords.test(l)) {
+          j += 1;
+          continue;
+        }
+        if (brandRegex.test(l) && skuPattern.test(l)) break;
+        block.push(l);
+        if (block.length >= 5) break;
+        j += 1;
+      }
+
+      const descLine =
+        block
+          .slice(1)
+          .map((x) => cleanDesc(x))
+          .find((x) => x && /[А-Яа-яІіЇїЄєҐґ]{4,}/.test(x) && !isLikelyPartNumberLine(x)) || '';
+      const brand = (String(line).match(brandRegex) || [partNumber])[0];
+      const name = cleanDesc(descLine || `${brand} ${partNumber}`);
+      if (!name || isNoiseLine(name)) {
+        i = j;
+        continue;
+      }
+
+      const numericLines = block
+        .map((x) => ({ src: x, nums: parseNums(x) }))
+        .filter((x) => x.nums.length > 0);
+      const flatNums = numericLines.flatMap((x) => x.nums).filter((n) => n >= 1 && n <= 200000);
+
+      let price = null;
+      let qty = 1;
+      if (flatNums.length >= 2) {
+        const sorted = flatNums.slice().sort((a, b) => a - b);
+        const big = sorted[sorted.length - 1];
+        const second = sorted[sorted.length - 2];
+        const ratio = second > 0 ? big / second : null;
+        const ratioInt = ratio ? Math.round(ratio) : null;
+        const coherent = ratioInt && ratioInt >= 1 && ratioInt <= 20 && nearlyEquals(second * ratioInt, big, 2.0);
+        if (coherent && second >= 10 && second <= 200000) {
+          price = second;
+          qty = ratioInt;
+        } else {
+          const plausible = flatNums.filter((n) => n >= 10 && n <= 5000);
+          if (plausible.length) {
+            price = plausible[0];
+          } else {
+            price = second >= 10 && second <= 200000 ? second : null;
+          }
+        }
+      } else if (flatNums.length === 1) {
+        const only = flatNums[0];
+        if (only >= 10 && only <= 5000) price = only;
+      }
+
+      if (!Number.isFinite(price) || price < 10 || price > 200000) {
+        i = j;
+        continue;
+      }
+      if (!Number.isFinite(qty) || qty <= 0 || qty > 20) qty = 1;
+
+      const key = `${name.toLowerCase()}|${partNumber}|${price}|${qty}`;
+      if (!seenAnchored.has(key)) {
+        seenAnchored.add(key);
+        anchored.push({
+          name,
+          price,
+          quantity: qty,
+          part_number: partNumber,
+          purchased_by: 'owner',
+        });
+      }
+
+      i = j;
+    }
+
+    return anchored;
+  };
+
+  const anchored = parseAnchoredSkuBlocks();
+  if (anchored.length >= 6) {
+    return anchored;
+  }
+
   const parts = [];
   const seen = new Set();
   const buffer = [];
