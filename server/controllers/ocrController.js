@@ -2349,6 +2349,7 @@ function parseOcrText(text, ocrData = null) {
   const scorePartsQuality = (items) => {
     if (!Array.isArray(items) || !items.length) return -Infinity;
     let score = 0;
+    let qtyGtOneCount = 0;
     for (const p of items) {
       const name = String(p?.name || '');
       const pn = String(p?.part_number || '');
@@ -2361,12 +2362,16 @@ function parseOcrText(text, ocrData = null) {
       if (price >= 10 && price <= 5000) score += 2;
       else if (price > 5000) score -= 2;
       if (qty >= 1 && qty <= 20) score += 1;
+      if (qty > 1) qtyGtOneCount += 1;
       const noisy =
         /\b(терм|постав|склад|наявност|разом|итого|всього)\b/i.test(name) ||
         name.split(' ').filter((t) => t.length === 1).length >= 3;
       if (noisy) score -= 3;
     }
-    score += Math.min(20, items.length);
+    // Prefer parsers that keep more valid item rows.
+    score += Math.min(60, items.length * 4);
+    // Large result sets with only qty=1 are often a sign of misaligned qty/sum columns.
+    if (items.length >= 6 && qtyGtOneCount === 0) score -= 12;
     return score;
   };
 
@@ -2380,7 +2385,11 @@ function parseOcrText(text, ocrData = null) {
     bestItems = anchored;
     bestScore = anchoredScore;
   }
-  if (structured.parts.length && structuredScore > bestScore + 2) {
+  const bestNonStructuredCount = Math.max(parts.length, anchored.length);
+  const structuredCoverageOk =
+    structured.parts.length >= Math.max(5, Math.ceil(bestNonStructuredCount * 0.85));
+
+  if (structured.parts.length && structuredCoverageOk && structuredScore > bestScore + 6) {
     bestItems = structured.parts;
     bestScore = structuredScore;
   }
