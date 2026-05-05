@@ -1501,31 +1501,56 @@ function parseOcrText(text, ocrData = null) {
 
       let price = null;
       let qty = 1;
-      if (flatNums.length >= 2) {
-        const sorted = flatNums.slice().sort((a, b) => a - b);
-        const big = sorted[sorted.length - 1];
-        const second = sorted[sorted.length - 2];
-        const ratio = second > 0 ? big / second : null;
-        const ratioInt = ratio ? Math.round(ratio) : null;
-        const coherent = ratioInt && ratioInt >= 1 && ratioInt <= 20 && nearlyEquals(second * ratioInt, big, 2.0);
-        if (coherent && second >= 10 && second <= 200000) {
-          price = second;
-          qty = ratioInt;
-        } else {
-          const plausible = flatNums.filter((n) => n >= 10 && n <= 5000);
-          if (plausible.length) {
-            // Prefer smallest plausible value (usually unit price) over totals.
-            price = plausible.slice().sort((a, b) => a - b)[0];
-          } else {
-            price = second >= 10 && second <= 200000 ? second : null;
+      const plausible = flatNums.filter((n) => n >= 20 && n <= 5000);
+      if (plausible.length) {
+        const counts = new Map();
+        for (const n of flatNums) {
+          counts.set(n, (counts.get(n) || 0) + 1);
+        }
+        const hasLarge = plausible.some((n) => n >= 500);
+        const scoreCandidate = (cand) => {
+          let s = 0;
+          const freq = counts.get(cand) || 0;
+          s += freq * 4;
+          if (cand >= 50) s += 2;
+          if (cand < 100 && hasLarge) s -= 3;
+
+          for (const total of flatNums) {
+            if (!Number.isFinite(total) || total <= cand) continue;
+            const ratio = total / cand;
+            const ratioInt = Math.round(ratio);
+            if (ratioInt >= 1 && ratioInt <= 20 && nearlyEquals(cand * ratioInt, total, 2.0)) {
+              s += 6;
+            }
+          }
+          return s;
+        };
+
+        const bestPrice = plausible
+          .slice()
+          .sort((a, b) => scoreCandidate(b) - scoreCandidate(a) || a - b)[0];
+        price = bestPrice;
+
+        // Derive qty from best-supported total candidate.
+        let bestQtyScore = -Infinity;
+        for (const total of flatNums) {
+          if (!Number.isFinite(total) || total < price) continue;
+          const ratio = total / price;
+          const ratioInt = Math.round(ratio);
+          if (ratioInt < 1 || ratioInt > 20) continue;
+          if (!nearlyEquals(price * ratioInt, total, 2.0)) continue;
+          const score = (counts.get(total) || 1) * 2 + (ratioInt === 1 ? 1 : 2);
+          if (score > bestQtyScore) {
+            bestQtyScore = score;
+            qty = ratioInt;
           }
         }
       } else if (flatNums.length === 1) {
         const only = flatNums[0];
-        if (only >= 10 && only <= 5000) price = only;
+        if (only >= 20 && only <= 5000) price = only;
       }
 
-      if (!Number.isFinite(price) || price < 10 || price > 200000) {
+      if (!Number.isFinite(price) || price < 20 || price > 200000) {
         i = j;
         continue;
       }
