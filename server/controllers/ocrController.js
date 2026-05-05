@@ -1387,9 +1387,35 @@ function parseOcrText(text, ocrData = null) {
         const sorted = rowNums.slice().sort((a, b) => a - b);
         price = sorted[sorted.length - 2];
       }
-      if (Number.isFinite(price) && Number.isFinite(sum) && (!qty || qty <= 0)) {
-        const derived = Math.round(sum / price);
-        if (derived >= 1 && derived <= 20 && Math.abs(price * derived - sum) <= 2.0) qty = derived;
+      // OCR column drift may place "sum" into the price column and leave qty as default 1.
+      // Reconcile (price, qty, sum) and prefer coherent pair (price,total) -> qty.
+      if (Number.isFinite(sum) && rowNums.length >= 2) {
+        const sorted = rowNums.slice().sort((a, b) => a - b);
+        const secondLargest = sorted[sorted.length - 2];
+        const largest = sorted[sorted.length - 1];
+        const ratio = secondLargest > 0 ? largest / secondLargest : null;
+        const ratioRounded = ratio ? Math.round(ratio) : null;
+        const pairCoherent =
+          ratioRounded &&
+          ratioRounded >= 1 &&
+          ratioRounded <= 20 &&
+          nearlyEquals(secondLargest * ratioRounded, largest, 2.0);
+
+        if (Number.isFinite(price) && price > 0) {
+          const currentRatio = sum / price;
+          const currentQty = Math.round(currentRatio);
+          const currentCoherent =
+            currentQty >= 1 && currentQty <= 20 && nearlyEquals(price * currentQty, sum, 2.0);
+          if (currentCoherent) {
+            qty = currentQty;
+          } else if (pairCoherent) {
+            price = secondLargest;
+            qty = ratioRounded;
+          }
+        } else if (pairCoherent) {
+          price = secondLargest;
+          qty = ratioRounded;
+        }
       }
       if (!Number.isFinite(price) || price < 10 || price > 200000) continue;
       if (!Number.isFinite(qty) || qty <= 0 || qty > 20) qty = 1;
@@ -2110,9 +2136,6 @@ function parseOcrText(text, ocrData = null) {
 
   // Run high-precision parsers only after helper functions are initialized.
   const structured = deferredStructuredParser(ocrData);
-  if (structured.headerDetected && structured.parts.length >= 5) {
-    return structured.parts;
-  }
 
   const anchored = deferredAnchoredParser();
 
@@ -2349,10 +2372,19 @@ function parseOcrText(text, ocrData = null) {
 
   const legacyScore = scorePartsQuality(parts);
   const anchoredScore = scorePartsQuality(anchored);
-  if (anchored.length && anchoredScore > legacyScore + 2) {
-    return anchored;
+  const structuredScore = scorePartsQuality(structured.parts);
+
+  let bestItems = parts;
+  let bestScore = legacyScore;
+  if (anchored.length && anchoredScore > bestScore + 2) {
+    bestItems = anchored;
+    bestScore = anchoredScore;
   }
-  return parts;
+  if (structured.parts.length && structuredScore > bestScore + 2) {
+    bestItems = structured.parts;
+    bestScore = structuredScore;
+  }
+  return bestItems;
 }
 
 function extractLicensePlateFromText(text) {
