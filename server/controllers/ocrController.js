@@ -1261,6 +1261,8 @@ exports.parseLicensePlateFromImage = async (req, res) => {
 function parseOcrText(text) {
   const normalizeLine = (line) => line.replace(/\s+/g, ' ').trim();
   const lines = text.replace(/\r/g, '\n').split('\n').map(normalizeLine).filter(Boolean);
+  const brandRegex =
+    /\b(VICTOR\s+REINZ|ELRING|FEBI(?:\s+BILSTEIN)?|SWAG|BMW|JP\s+GROUP|SKF|BOSCH|INA|SACHS|LEMFORDER)\b/i;
 
   const parts = [];
   const seen = new Set();
@@ -1564,6 +1566,7 @@ function parseOcrText(text) {
     const letterMatches = line.match(/[A-Za-zА-Яа-яІіЇїЄє]/g);
     const letterCount = letterMatches ? letterMatches.length : 0;
     const numbers = extractNumbersFromLine(line);
+    const hasCurrencyHints = currencyKeywords.test(line) || priceKeywords.test(line);
     if (numbers.length < 2) return null;
 
     // Avoid interpreting spec/volume lines like "90 1л (EATRMT7912X1L)" as price rows.
@@ -1571,6 +1574,14 @@ function parseOcrText(text) {
     const looksLikeVolume = /\b\d+\s*[lл]\b/i.test(line);
     if (looksLikeVolume && hasBracketedCode) {
       return null;
+    }
+
+    // Rows like "Tenring 95-99 ... SKF VKM 38003" usually contain year ranges and SKU,
+    // where the largest number is a part number, not a price.
+    if (!hasCurrencyHints && /\b\d{2}-\d{2}\b/.test(line) && isLikelyPartNumberLine(line)) {
+      const maxNum = Math.max(...numbers);
+      const minNum = Math.min(...numbers);
+      if (maxNum >= 5000 && minNum < 200) return null;
     }
 
     // Some invoices/screenshots produce OCR like: "873 | що B | 1747".
@@ -1742,11 +1753,35 @@ function parseOcrText(text) {
     };
 
     const partNumber = isDimensionLike ? '' : extractPartNumber(partNumberSource);
-    const key = `${cleanedName.toLowerCase()}|${price}|${qty}`;
+    const buildCanonicalName = (source, pn) => {
+      const src = String(source || '').replace(/[|©»«]/g, ' ').replace(/\s+/g, ' ').trim();
+      if (!src || !pn) return '';
+      const brandMatch = src.match(brandRegex);
+      if (brandMatch && brandMatch[0]) {
+        return `${brandMatch[0].replace(/\s+/g, ' ').trim()} ${pn}`.trim();
+      }
+      return `${pn}`.trim();
+    };
+
+    const hasManySingleCharTokens = cleanedName.split(' ').filter((t) => t.length === 1).length >= 3;
+    const repeatedBrandLike = (cleanedName.match(brandRegex) || []).length > 1;
+    const lowQualityName =
+      cleanedName.length > 95 ||
+      hasManySingleCharTokens ||
+      repeatedBrandLike ||
+      !/[А-Яа-яІіЇїЄєҐґ]{3,}|[A-Za-z]{3,}/.test(cleanedName);
+
+    const canonicalName = buildCanonicalName(partNumberSource, partNumber);
+    const finalName = lowQualityName && canonicalName ? canonicalName : cleanedName;
+
+    // Keep only confident rows: either part number exists or name includes known brand.
+    if (!partNumber && !brandRegex.test(finalName)) return;
+
+    const key = `${finalName.toLowerCase()}|${price}|${qty}`;
     if (seen.has(key)) return;
     seen.add(key);
     parts.push({
-      name: cleanedName,
+      name: finalName,
       price,
       quantity: qty,
       part_number: partNumber,
@@ -1862,7 +1897,6 @@ function parseOcrText(text) {
           Number.isFinite(price) &&
           price >= 10 &&
           price <= 200000 &&
-          !hasHyphenSku &&
           !isLikelyBrandSkuOnlyLine(line)
         ) {
           const name = line
