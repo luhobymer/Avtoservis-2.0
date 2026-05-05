@@ -1263,6 +1263,8 @@ function parseOcrText(text) {
   const lines = text.replace(/\r/g, '\n').split('\n').map(normalizeLine).filter(Boolean);
   const brandRegex =
     /\b(VICTOR\s+REINZ|ELRING|FEBI(?:\s+BILSTEIN)?|SWAG|BMW|JP\s+GROUP|SKF|BOSCH|INA|SACHS|LEMFORDER)\b/i;
+  const brandRegexGlobal =
+    /\b(VICTOR\s+REINZ|ELRING|FEBI(?:\s+BILSTEIN)?|SWAG|BMW|JP\s+GROUP|SKF|BOSCH|INA|SACHS|LEMFORDER)\b/gi;
 
   const parts = [];
   const seen = new Set();
@@ -1681,6 +1683,9 @@ function parseOcrText(text) {
     if (numbers.length >= 3) {
       const hasCoherent = validCandidates.some((c) => c.coherentTotal);
       if (!hasCoherent && isLikelyPartNumberLine(line)) return null;
+      // With no coherent total and no currency hints, lines with large max values
+      // are typically SKU/noise, not price rows.
+      if (!hasCoherent && !hasCurrencyHints && Math.max(...numbers) >= 5000) return null;
       // Prevent quantity inflation on noisy OCR triples like "5 38 1".
       if (!hasCoherent && best.quantity > 1) {
         return { price: Math.max(...numbers), quantity: 1 };
@@ -1764,11 +1769,15 @@ function parseOcrText(text) {
     };
 
     const hasManySingleCharTokens = cleanedName.split(' ').filter((t) => t.length === 1).length >= 3;
-    const repeatedBrandLike = (cleanedName.match(brandRegex) || []).length > 1;
+    const repeatedBrandLike = Array.from(cleanedName.matchAll(brandRegexGlobal)).length > 1;
+    const multiPartNumberLike = Array.from(
+      cleanedName.matchAll(/\b(?:\d{2,}-\d{2,}(?:-\d{2,})?|\d{2}\s\d{2}\s\d{4}|\d{3}[.]\d{3}|[A-Z]{1,6}\d{3,}[A-Z0-9]*)\b/gi)
+    ).length > 1;
     const lowQualityName =
       cleanedName.length > 95 ||
       hasManySingleCharTokens ||
       repeatedBrandLike ||
+      multiPartNumberLike ||
       !/[А-Яа-яІіЇїЄєҐґ]{3,}|[A-Za-z]{3,}/.test(cleanedName);
 
     const canonicalName = buildCanonicalName(partNumberSource, partNumber);
@@ -1897,6 +1906,7 @@ function parseOcrText(text) {
           Number.isFinite(price) &&
           price >= 10 &&
           price <= 200000 &&
+          !(price >= 5000 && /\b\d{2}-\d{2}\b/.test(line)) &&
           !isLikelyBrandSkuOnlyLine(line)
         ) {
           const name = line
@@ -1924,6 +1934,7 @@ function parseOcrText(text) {
           Number.isFinite(price) &&
           price >= 20 &&
           price <= 200000 &&
+          !(price >= 5000 && /\b\d{2}-\d{2}\b/.test(line)) &&
           !isLikelyPartNumberLine(line) &&
           !isSkuOnlyLine(line) &&
           !( !currencyKeywords.test(line) && !priceKeywords.test(line) && isLikelyVolumeLine(line) )
@@ -1965,6 +1976,28 @@ function parseOcrText(text) {
     }
 
     if (!isNoiseLine(line)) {
+      // If we already have a SKU line in context, and current line looks like
+      // a noisy qty/price/total line (e.g. "5 38 1"), attach it to that SKU.
+      if (lastSkuLine) {
+        const rowNumbers = extractNumbersFromLine(line);
+        const hasCurrencyHints = currencyKeywords.test(line) || priceKeywords.test(line);
+        if (!hasCurrencyHints && rowNumbers.length >= 2) {
+          const sorted = rowNumbers.slice().sort((a, b) => a - b);
+          const maxNum = sorted[sorted.length - 1];
+          const secondMax = sorted[sorted.length - 2];
+          const qtyGuess = secondMax > 0 ? Math.round(maxNum / secondMax) : null;
+          const coherent =
+            qtyGuess && qtyGuess >= 1 && qtyGuess <= 20 && nearlyEquals(secondMax * qtyGuess, maxNum, 2.0);
+          const chosenPrice = coherent ? secondMax : maxNum;
+          if (Number.isFinite(chosenPrice) && chosenPrice >= 10 && chosenPrice <= 4000 && !isLikelyPartNumberLine(line)) {
+            pushPart(lastSkuLine, chosenPrice, coherent ? qtyGuess : 1, lastSkuLine);
+            buffer.length = 0;
+            lastSkuLine = null;
+            continue;
+          }
+        }
+      }
+
       const safeLine = isDimensionLikeLine(line) ? stripDimensions(line) : line;
       if (!safeLine) continue;
       buffer.push(safeLine);
