@@ -410,6 +410,7 @@ async function parsePartsFromImageInternal(req) {
 
   // If preprocessing failed, run an additional eng-only pass to better capture Latin SKUs.
   let bestText = '';
+  let bestData = null;
   let bestPsm = '6';
   const worker = await createWorker('ukr+rus+eng');
   try {
@@ -424,18 +425,24 @@ async function parsePartsFromImageInternal(req) {
   try {
     await worker.setParameters({ tessedit_pageseg_mode: '6' });
   } catch (_) { void _; }
-  const { data: { text: textPsm6 } } = await worker.recognize(ocrPath);
+  const {
+    data: { text: textPsm6, ...dataPsm6Rest },
+  } = await worker.recognize(ocrPath);
   bestText = textPsm6 || '';
+  bestData = { text: textPsm6 || '', ...dataPsm6Rest };
 
   try {
     await worker.setParameters({ tessedit_pageseg_mode: '4' });
   } catch (_) { void _; }
-  const { data: { text: textPsm4 } } = await worker.recognize(ocrPath);
+  const {
+    data: { text: textPsm4, ...dataPsm4Rest },
+  } = await worker.recognize(ocrPath);
 
   const score6 = scoreOcrText(textPsm6);
   const score4 = scoreOcrText(textPsm4);
   if (score4 > score6) {
     bestText = textPsm4 || '';
+    bestData = { text: textPsm4 || '', ...dataPsm4Rest };
     bestPsm = '4';
   }
 
@@ -450,11 +457,14 @@ async function parsePartsFromImageInternal(req) {
           tessedit_pageseg_mode: '6',
         });
       } catch (_) { void _; }
-      const { data: { text: textEng } } = await engWorker.recognize(ocrPath);
+      const {
+        data: { text: textEng, ...dataEngRest },
+      } = await engWorker.recognize(ocrPath);
       await engWorker.terminate();
       const scoreEng = scoreOcrText(textEng);
       if (scoreEng > Math.max(score6, score4)) {
         bestText = textEng || '';
+        bestData = { text: textEng || '', ...dataEngRest };
         bestPsm = '6-eng';
       }
     } catch (engErr) {
@@ -471,7 +481,7 @@ async function parsePartsFromImageInternal(req) {
     usedPath: ocrPath === imagePath ? 'original' : 'preprocessed',
     usedPsm: bestPsm,
     rawText: bestText || '',
-    parts: parseOcrText(bestText || ''),
+    parts: parseOcrText(bestText || '', bestData || null),
     jimpError: jimpLoadError,
     jimpPreprocError,
   };
@@ -1258,13 +1268,164 @@ exports.parseLicensePlateFromImage = async (req, res) => {
   }
 };
 
-function parseOcrText(text) {
+function parseOcrText(text, ocrData = null) {
   const normalizeLine = (line) => line.replace(/\s+/g, ' ').trim();
   const lines = text.replace(/\r/g, '\n').split('\n').map(normalizeLine).filter(Boolean);
   const brandRegex =
     /\b(VICTOR\s+REINZ|ELRING|FEBI(?:\s+BILSTEIN)?|SWAG|BMW|JP\s+GROUP|SKF|BOSCH|INA|SACHS|LEMFORDER)\b/i;
   const brandRegexGlobal =
     /\b(VICTOR\s+REINZ|ELRING|FEBI(?:\s+BILSTEIN)?|SWAG|BMW|JP\s+GROUP|SKF|BOSCH|INA|SACHS|LEMFORDER)\b/gi;
+
+  const parseStructuredTable = (data) => {
+    const wordsRaw = Array.isArray(data?.words) ? data.words : [];
+    if (!wordsRaw.length) return { headerDetected: false, parts: [] };
+
+    const words = wordsRaw
+      .map((w) => {
+        const txt = normalizeLine(String(w?.text || ''));
+        const x0 = Number(w?.bbox?.x0);
+        const y0 = Number(w?.bbox?.y0);
+        const x1 = Number(w?.bbox?.x1);
+        const y1 = Number(w?.bbox?.y1);
+        if (!txt || !Number.isFinite(x0) || !Number.isFinite(y0) || !Number.isFinite(x1) || !Number.isFinite(y1)) return null;
+        return {
+          text: txt,
+          x0,
+          y0,
+          x1,
+          y1,
+          cx: (x0 + x1) / 2,
+          cy: (y0 + y1) / 2,
+          h: Math.max(1, y1 - y0),
+        };
+      })
+      .filter(Boolean);
+
+    if (!words.length) return { headerDetected: false, parts: [] };
+
+    const avgH = words.reduce((s, w) => s + w.h, 0) / words.length;
+    const rowTol = Math.max(7, Math.round(avgH * 0.75));
+    const byY = words.slice().sort((a, b) => a.cy - b.cy);
+    const rows = [];
+    for (const w of byY) {
+      const prev = rows[rows.length - 1];
+      if (!prev || Math.abs(prev.cy - w.cy) > rowTol) {
+        rows.push({ cy: w.cy, words: [w] });
+      } else {
+        prev.words.push(w);
+        prev.cy = (prev.cy * (prev.words.length - 1) + w.cy) / prev.words.length;
+      }
+    }
+
+    const rowsNorm = rows
+      .map((r) => {
+        const ws = r.words.slice().sort((a, b) => a.x0 - b.x0);
+        const textLine = normalizeLine(ws.map((w) => w.text).join(' '));
+        return { cy: r.cy, words: ws, text: textLine };
+      })
+      .filter((r) => r.text);
+
+    const headerRow = rowsNorm.find((r) => {
+      const t = r.text.toLowerCase();
+      return (
+        (t.includes('наймен') || t.includes('наимен')) &&
+        (t.includes('цiна') || t.includes('ціна') || t.includes('цена') || t.includes('price')) &&
+        (t.includes('кільк') || t.includes('колич') || t.includes('qty'))
+      );
+    });
+
+    if (!headerRow) return { headerDetected: false, parts: [] };
+
+    const headerWords = headerRow.words;
+    const pickX = (re, fallback = null) => {
+      const hit = headerWords.find((w) => re.test(w.text.toLowerCase()));
+      return hit ? hit.x0 : fallback;
+    };
+
+    const priceX = pickX(/цiна|ціна|цена|price/);
+    const qtyX = pickX(/кільк|колич|qty/, priceX ? priceX + 120 : null);
+    const sumX = pickX(/сум|итог|total/, qtyX ? qtyX + 130 : null);
+    if (!Number.isFinite(priceX) || !Number.isFinite(qtyX)) return { headerDetected: true, parts: [] };
+
+    const parseNumericToken = (value) => {
+      const v = String(value || '').replace(/[^\d.,]/g, '').replace(',', '.');
+      if (!v) return null;
+      const n = Number(v);
+      return Number.isFinite(n) ? n : null;
+    };
+
+    const getNums = (arr) =>
+      arr
+        .map((w) => parseNumericToken(w.text))
+        .filter((n) => Number.isFinite(n));
+
+    const extracted = [];
+    const seenKeys = new Set();
+    for (const r of rowsNorm) {
+      if (r.cy <= headerRow.cy + rowTol) continue;
+      const low = r.text.toLowerCase();
+      if (noiseKeywords.test(low) || /разом|итого|всього/.test(low)) continue;
+
+      const leftWords = r.words.filter((w) => w.x1 < priceX - 12);
+      const priceWords = r.words.filter((w) => w.x0 >= priceX - 55 && w.x1 < qtyX - 12);
+      const qtyWords = r.words.filter((w) => w.x0 >= qtyX - 40 && (!Number.isFinite(sumX) || w.x1 < sumX - 12));
+      const sumWords = Number.isFinite(sumX)
+        ? r.words.filter((w) => w.x0 >= sumX - 45)
+        : [];
+
+      let name = normalizeLine(leftWords.map((w) => w.text).join(' '));
+      const rowNums = getNums(r.words);
+      const priceNums = getNums(priceWords);
+      const qtyNums = getNums(qtyWords).filter((n) => Number.isInteger(n) && n > 0 && n <= 20);
+      const sumNums = getNums(sumWords);
+
+      let price = priceNums.length ? Math.max(...priceNums) : null;
+      let qty = qtyNums.length ? qtyNums[0] : 1;
+      const sum = sumNums.length ? Math.max(...sumNums) : null;
+
+      if (!Number.isFinite(price) && rowNums.length >= 2) {
+        const sorted = rowNums.slice().sort((a, b) => a - b);
+        price = sorted[sorted.length - 2];
+      }
+      if (Number.isFinite(price) && Number.isFinite(sum) && (!qty || qty <= 0)) {
+        const derived = Math.round(sum / price);
+        if (derived >= 1 && derived <= 20 && Math.abs(price * derived - sum) <= 2.0) qty = derived;
+      }
+      if (!Number.isFinite(price) || price < 10 || price > 200000) continue;
+      if (!Number.isFinite(qty) || qty <= 0 || qty > 20) qty = 1;
+
+      if (!name || name.length < 3) {
+        name = normalizeLine(
+          r.text
+            .replace(/[\d.,]+/g, ' ')
+            .replace(/\s+/g, ' ')
+        );
+      }
+      if (!name || isNoiseLine(name)) continue;
+
+      const pnMatch = r.text.match(/\b(?:\d{2,}-\d{2,}(?:-\d{2,})?|\d{2}\s\d{2}\s\d{4}|\d{3}[.]\d{3}|[A-Z]{1,6}\d{3,}[A-Z0-9]*|\d{7,})\b/i);
+      const partNumber = pnMatch ? String(pnMatch[0]).trim() : '';
+      if (!partNumber && !brandRegex.test(name)) continue;
+
+      const key = `${name.toLowerCase()}|${price}|${qty}`;
+      if (seenKeys.has(key)) continue;
+      seenKeys.add(key);
+      extracted.push({
+        name,
+        price,
+        quantity: qty,
+        part_number: partNumber,
+        purchased_by: 'owner',
+      });
+    }
+
+    return { headerDetected: true, parts: extracted };
+  };
+
+  const structured = parseStructuredTable(ocrData);
+  if (structured.headerDetected && structured.parts.length >= 5) {
+    return structured.parts;
+  }
 
   const parts = [];
   const seen = new Set();
