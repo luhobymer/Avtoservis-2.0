@@ -24,7 +24,7 @@ let jimpResolvePromise = null;
 let jimpResolveError = null;
 
 const noiseKeywords =
-  /(сума|сумма|всього|разом|итого|підсумок|оплата|знижка|накладна|рахунок|invoice|замовлення|(?:терм|term)\S{0,12}\s*(?:пост|постав|postav|supply)\S{0,12}|постачальник|покупець|iban|edrpou|єдрпоу|код|тел|телефон|адреса|РАЗОМ)/i;
+  /(сума|сумма|всього|разом|итого|підсумок|оплата|знижка|накладна|рахунок|invoice|замовлення|(?:терм|term)\S{0,12}\s*(?:пост|постав|postav|supply)\S{0,12}|поставк|доставк|постачальник|покупець|iban|edrpou|єдрпоу|код|тел|телефон|адреса|склад|наявност|РАЗОМ)/i;
 const deleteKeywords = /(удалить|видалити|delete)/i;
 
 const isLikelyPartNumberLine = (value) => {
@@ -1540,6 +1540,7 @@ function parseOcrText(text) {
   const parseNumericRowLine = (line) => {
     if (!line) return null;
     if (isSkuOnlyLine(line)) return null;
+    if (noiseKeywords.test(line) && !isLikelyPartNumberLine(line)) return null;
     if (!currencyKeywords.test(line) && !priceKeywords.test(line) && isLikelyVolumeLine(line)) return null;
     const letterMatches = line.match(/[A-Za-zА-Яа-яІіЇїЄє]/g);
     const letterCount = letterMatches ? letterMatches.length : 0;
@@ -1595,6 +1596,27 @@ function parseOcrText(text) {
       candidates.push(scoreCandidate({ price: b, qty: Math.round(c), total: a }));
       candidates.push(scoreCandidate({ price: c, qty: Math.round(a), total: b }));
       candidates.push(scoreCandidate({ price: c, qty: Math.round(b), total: a }));
+
+      // OCR often adds extra numeric noise tokens in the same row.
+      // Probe all number pairs and derive qty from total/price ratio.
+      for (let i = 0; i < numbers.length; i += 1) {
+        for (let j = i + 1; j < numbers.length; j += 1) {
+          const x = numbers[i];
+          const y = numbers[j];
+          const small = Math.min(x, y);
+          const big = Math.max(x, y);
+          const ratio = small > 0 ? big / small : null;
+          const ratioRounded = ratio ? Math.round(ratio) : null;
+          const canDeriveQty =
+            ratioRounded &&
+            ratioRounded >= 1 &&
+            ratioRounded <= 20 &&
+            nearlyEquals(small * ratioRounded, big, 2.0);
+          if (canDeriveQty) {
+            candidates.push(scoreCandidate({ price: small, qty: ratioRounded, total: big }));
+          }
+        }
+      }
     } else {
       const a = numbers[0];
       const b = numbers[1];
@@ -1660,7 +1682,7 @@ function parseOcrText(text) {
         /\b\d{2}\s\d{2}\s\d{4}\b/g, // 20 03 0009
         /\b[A-Z0-9]{2,}(?:[./-][A-Z0-9]{2,})+\b/gi, // 14-32101-01, MS0828-98, 505.090
         /\b[A-Z]{1,6}\d{3,}[A-Z0-9]*\b/gi, // K2W105, EATRMT7912X1L
-        /\b\d{5,}\b/g, // long digits
+        /\b\d{7,}\b/g, // long digits-only part numbers
       ];
 
       for (const re of patterns) {
@@ -1721,8 +1743,17 @@ function parseOcrText(text) {
       continue;
     }
 
-    if (!currencyKeywords.test(line) && !priceKeywords.test(line) && (isLikelyPartNumberLine(line) || isSkuOnlyLine(line))) {
+    const isSkuLine =
+      !currencyKeywords.test(line) &&
+      !priceKeywords.test(line) &&
+      (isLikelyPartNumberLine(line) || isSkuOnlyLine(line));
+
+    if (isSkuLine) {
+      // Start a fresh item context on SKU line to avoid leaking previous
+      // header/logistics text into the next part name.
+      buffer.length = 0;
       lastSkuLine = line;
+      buffer.push(line);
     }
 
     const numericRow = parseNumericRowLine(line);
