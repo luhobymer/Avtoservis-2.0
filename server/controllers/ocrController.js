@@ -2412,13 +2412,43 @@ function parseOcrText(text, ocrData = null) {
   const anchoredStats = getPartsStats(anchored);
   const structuredStats = getPartsStats(structured.parts);
 
+  const mergeParts = (a, b) => {
+    const out = [];
+    const seenByPn = new Set();
+    const seenByNamePrice = new Set();
+    const pushUnique = (item) => {
+      if (!item) return;
+      const pn = String(item?.part_number || '').trim().toLowerCase();
+      const name = String(item?.name || '').trim().toLowerCase();
+      const price = Number(item?.price || 0);
+      const qty = Number(item?.quantity || 1);
+      const keyByNamePrice = `${name}|${price}|${qty}`;
+      if (pn && seenByPn.has(pn)) return;
+      if (seenByNamePrice.has(keyByNamePrice)) return;
+      if (pn) seenByPn.add(pn);
+      seenByNamePrice.add(keyByNamePrice);
+      out.push(item);
+    };
+    (Array.isArray(a) ? a : []).forEach(pushUnique);
+    (Array.isArray(b) ? b : []).forEach(pushUnique);
+    return out;
+  };
+
+  const merged = mergeParts(parts, anchored);
+  const mergedScore = scorePartsQuality(merged);
+
   let bestItems = parts;
   let bestScore = legacyScore;
   if (anchored.length && anchoredScore > bestScore + 2) {
     bestItems = anchored;
     bestScore = anchoredScore;
   }
-  const bestNonStructuredCount = Math.max(parts.length, anchored.length);
+  if (merged.length && mergedScore > bestScore + 2) {
+    bestItems = merged;
+    bestScore = mergedScore;
+  }
+
+  const bestNonStructuredCount = Math.max(parts.length, anchored.length, merged.length);
   const bestNonStructuredQtyGtOne = Math.max(legacyStats.qtyGtOne, anchoredStats.qtyGtOne);
   const structuredPnRatio =
     structuredStats.count > 0 ? structuredStats.withPartNumber / structuredStats.count : 0;
@@ -2434,6 +2464,7 @@ function parseOcrText(text, ocrData = null) {
     structured.parts.length &&
     structuredCoverageOk &&
     structuredHasReliableSignals &&
+    merged.length === 0 &&
     structuredScore > bestScore + structuredSelectionDelta
   ) {
     bestItems = structured.parts;
