@@ -1348,9 +1348,15 @@ function parseOcrText(text, ocrData = null) {
     if (!Number.isFinite(priceX) || !Number.isFinite(qtyX)) return { headerDetected: true, parts: [] };
 
     const parseNumericToken = (value) => {
-      const v = String(value || '').replace(/[^\d.,]/g, '').replace(',', '.');
-      if (!v) return null;
-      const n = Number(v);
+      const raw = String(value || '').trim();
+      if (!raw) return null;
+      // Reject alpha-numeric tokens like "W105" and known SKU-number shapes.
+      if (/[A-Za-zА-Яа-яІіЇїЄєҐґ]/.test(raw)) return null;
+      const compact = raw.replace(/\s+/g, '').replace(',', '.');
+      if (!/^\d[\d.]*$/.test(compact)) return null;
+      if (/^\d{3}[.]\d{3}$/.test(compact)) return null; // 147.581
+      if (/^\d{2}[.]\d{2}[.]\d{4}$/.test(compact)) return null; // 20.03.0009
+      const n = Number(compact);
       return Number.isFinite(n) ? n : null;
     };
 
@@ -1465,9 +1471,20 @@ function parseOcrText(text, ocrData = null) {
       const sanitized = pn
         ? String(line || '').replace(new RegExp(String(pn).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), ' ')
         : String(line || '');
-      const matches = sanitized.match(numberPattern) || [];
+      const matches = Array.from(sanitized.matchAll(numberPattern));
       return matches
-        .map((v) => parseNumber(v, sanitized))
+        .filter((m) => {
+          const token = String(m?.[0] || '');
+          const start = Number(m?.index ?? -1);
+          if (start < 0 || !token) return false;
+          const end = start + token.length;
+          const prev = start > 0 ? sanitized[start - 1] : '';
+          const next = end < sanitized.length ? sanitized[end] : '';
+          const hasLetterAround =
+            /[A-Za-zА-Яа-яІіЇїЄєҐґ]/.test(prev) || /[A-Za-zА-Яа-яІіЇїЄєҐґ]/.test(next);
+          return !hasLetterAround;
+        })
+        .map((m) => parseNumber(String(m[0]), sanitized))
         .filter((n) => Number.isFinite(n));
     };
 
