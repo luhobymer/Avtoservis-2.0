@@ -2413,28 +2413,50 @@ function parseOcrText(text, ocrData = null) {
   const structuredStats = getPartsStats(structured.parts);
 
   const mergeParts = (a, b) => {
-    const out = [];
-    const seenByPn = new Set();
-    const seenByNamePrice = new Set();
-    const pushUnique = (item) => {
+    const byPn = new Map();
+    const byNamePrice = new Map();
+    const itemQuality = (item) => {
+      const price = Number(item?.price || 0);
+      const qty = Number(item?.quantity || 1);
+      let score = 0;
+      if (price >= 10 && price <= 5000) score += 3;
+      else if (price > 5000) score -= 3;
+      if (qty >= 1 && qty <= 20) score += 1;
+      if (qty > 1) score += 2;
+      if (String(item?.part_number || '').trim()) score += 2;
+      return score;
+    };
+    const pushOrReplace = (item) => {
       if (!item) return;
       const pn = String(item?.part_number || '').trim().toLowerCase();
       const name = String(item?.name || '').trim().toLowerCase();
       const price = Number(item?.price || 0);
       const qty = Number(item?.quantity || 1);
       const keyByNamePrice = `${name}|${price}|${qty}`;
-      if (pn && seenByPn.has(pn)) return;
-      if (seenByNamePrice.has(keyByNamePrice)) return;
-      if (pn) seenByPn.add(pn);
-      seenByNamePrice.add(keyByNamePrice);
-      out.push(item);
+      const score = itemQuality(item);
+
+      if (pn) {
+        const prev = byPn.get(pn);
+        if (!prev || score > prev.score) {
+          byPn.set(pn, { item, score });
+        }
+        return;
+      }
+
+      const prev = byNamePrice.get(keyByNamePrice);
+      if (!prev || score > prev.score) {
+        byNamePrice.set(keyByNamePrice, { item, score });
+      }
     };
-    (Array.isArray(a) ? a : []).forEach(pushUnique);
-    (Array.isArray(b) ? b : []).forEach(pushUnique);
-    return out;
+    (Array.isArray(a) ? a : []).forEach(pushOrReplace);
+    (Array.isArray(b) ? b : []).forEach(pushOrReplace);
+    return [
+      ...Array.from(byPn.values()).map((x) => x.item),
+      ...Array.from(byNamePrice.values()).map((x) => x.item),
+    ];
   };
 
-  const merged = mergeParts(parts, anchored);
+  const merged = mergeParts(anchored, parts);
   const mergedScore = scorePartsQuality(merged);
 
   let bestItems = parts;
