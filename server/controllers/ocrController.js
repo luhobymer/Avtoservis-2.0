@@ -26,13 +26,22 @@ let jimpResolveError = null;
 const noiseKeywords =
   /(сума|сумма|всього|разом|итого|підсумок|оплата|знижка|накладна|рахунок|invoice|замовлення|(?:терм|term)\S{0,12}\s*(?:пост|постав|postav|supply)\S{0,12}|поставк|доставк|постачальник|покупець|iban|edrpou|єдрпоу|код|тел|телефон|адреса|склад|наявност|РАЗОМ)/i;
 const deleteKeywords = /(удалить|видалити|delete)/i;
+const brandSpaceSkuKeywords = /\b(?:SKF|INA|SNR|DAYCO|GATES|CONTINENTAL|BMW)\b/i;
+const hasBrandSpaceSku = (value) => {
+  const line = String(value || '').trim();
+  if (!line) return false;
+  if (!brandSpaceSkuKeywords.test(line)) return false;
+  return /\b[A-Z]{2,6}\s+\d{3,}\b/i.test(line) || /\b\d{7,}\b/.test(line);
+};
 
 const isLikelyPartNumberLine = (value) => {
   const line = String(value || '').trim();
   if (!line) return false;
+  if (hasBrandSpaceSku(line)) return true;
   const hasSkuToken =
     /\b\d{2,}-\d{2,}(?:-\d{2,})?\b/.test(line) ||
     /\b\d{2,}[.]\d{2,}\b/.test(line) ||
+      /\b0\d{4,}\b/.test(line) ||
     /\b[A-Z]{1,3}\d{3,}(?:-\d{2,})?\b/i.test(line) ||
     /\b\d{2}\s\d{2}\s\d{4}\b/.test(line);
   if (!hasSkuToken) return false;
@@ -45,6 +54,7 @@ const isSkuOnlyLine = (value) => {
   const currencyKeywords = /(грн|uah|₴)/i;
   const priceKeywords = /(ціна|цiна|цена|price)/i;
   if (currencyKeywords.test(line) || priceKeywords.test(line)) return false;
+  if (hasBrandSpaceSku(line)) return true;
   if (/\b[A-Z]{1,4}\d{3,}\b/i.test(line)) return true;
   if (/\b\d{2,}-\d{2,}(?:-\d{2,})?\b/.test(line)) return true;
   return false;
@@ -1272,9 +1282,9 @@ function parseOcrText(text, ocrData = null) {
   const normalizeLine = (line) => line.replace(/\s+/g, ' ').trim();
   const lines = text.replace(/\r/g, '\n').split('\n').map(normalizeLine).filter(Boolean);
   const brandRegex =
-    /\b(VICTOR\s+REINZ|ELRING|FEBI(?:\s+BILSTEIN)?|SWAG|BMW|JP\s+GROUP|SKF|BOSCH|INA|SACHS|LEMFORDER)\b/i;
+    /\b(VICTOR\s+REINZ|ELRING|FEBI(?:\s+BILSTEIN)?|BILSTEIN|SWAG|BMW|JP\s+GROUP|SKF|BOSCH|INA|SACHS|LEMFORDER|K2|К2)\b/i;
   const brandRegexGlobal =
-    /\b(VICTOR\s+REINZ|ELRING|FEBI(?:\s+BILSTEIN)?|SWAG|BMW|JP\s+GROUP|SKF|BOSCH|INA|SACHS|LEMFORDER)\b/gi;
+    /\b(VICTOR\s+REINZ|ELRING|FEBI(?:\s+BILSTEIN)?|BILSTEIN|SWAG|BMW|JP\s+GROUP|SKF|BOSCH|INA|SACHS|LEMFORDER|K2|К2)\b/gi;
 
   const parseStructuredTable = (data) => {
     const wordsRaw = Array.isArray(data?.words) ? data.words : [];
@@ -1342,6 +1352,7 @@ function parseOcrText(text, ocrData = null) {
       return hit ? hit.x0 : fallback;
     };
 
+    const commentX = pickX(/комент|comment/);
     const priceX = pickX(/цiна|ціна|цена|price/);
     const qtyX = pickX(/кільк|колич|qty/, priceX ? priceX + 120 : null);
     const sumX = pickX(/сум|итог|total/, qtyX ? qtyX + 130 : null);
@@ -1372,7 +1383,8 @@ function parseOcrText(text, ocrData = null) {
       const low = r.text.toLowerCase();
       if (noiseKeywords.test(low) || /разом|итого|всього/.test(low)) continue;
 
-      const leftWords = r.words.filter((w) => w.x1 < priceX - 12);
+      const rightBoundForName = Number.isFinite(commentX) ? commentX - 12 : priceX - 12;
+      const leftWords = r.words.filter((w) => w.x1 < rightBoundForName);
       const priceWords = r.words.filter((w) => w.x0 >= priceX - 55 && w.x1 < qtyX - 12);
       const qtyWords = r.words.filter((w) => w.x0 >= qtyX - 40 && (!Number.isFinite(sumX) || w.x1 < sumX - 12));
       const sumWords = Number.isFinite(sumX)
@@ -1380,6 +1392,9 @@ function parseOcrText(text, ocrData = null) {
         : [];
 
       let name = normalizeLine(leftWords.map((w) => w.text).join(' '));
+      name = name.replace(/\bKAZNAHIB\b/gi, 'клапанів')
+                 .replace(/\bіврмосіа\b/gi, 'термостат')
+                 .replace(/\bПрокладха\b/gi, 'Прокладка');
       const rowNums = getNums(r.words);
       const priceNums = getNums(priceWords);
       const qtyNums = getNums(qtyWords).filter((n) => Number.isInteger(n) && n > 0 && n <= 20);
@@ -1458,12 +1473,15 @@ function parseOcrText(text, ocrData = null) {
 
   const parseAnchoredSkuBlocks = () => {
     const skuPattern =
-      /\b(?:\d{2,}-\d{2,}(?:-\d{2,})?|\d{2}\s\d{2}\s\d{4}|\d{3}[.]\d{3}|[A-Z]{1,6}\d{3,}[A-Z0-9]*|\d{7,})\b/i;
+      /\b(?:\d{2,}-\d{2,}(?:-\d{2,})?|\d{2}\s\d{2}\s\d{4}|\d{3}[.]\d{3}|0\d{4,}|[A-Z]{1,6}\d{3,}[A-Z0-9]*|\d{7,})\b/i;
     const cleanDesc = (value) =>
       normalizeLine(
         String(value || '')
           .replace(/[|©»«]/g, ' ')
           .replace(/(?:терм\S*\s*постав\S*|поставк\S*|доставк\S*|на\s*склад\S*|склад\S*|наявност\S*|дн\.?)/gi, ' ')
+          .replace(/\bKAZNAHIB\b/gi, 'клапанів')
+          .replace(/\bіврмосіа\b/gi, 'термостат')
+          .replace(/\bПрокладха\b/gi, 'Прокладка')
       );
     const parseNums = (line, pn = '') => {
       // Remove explicit part-number token from line before numeric extraction
@@ -1472,20 +1490,42 @@ function parseOcrText(text, ocrData = null) {
         ? String(line || '').replace(new RegExp(String(pn).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), ' ')
         : String(line || '');
       const matches = Array.from(sanitized.matchAll(numberPattern));
-      return matches
-        .filter((m) => {
-          const token = String(m?.[0] || '');
-          const start = Number(m?.index ?? -1);
-          if (start < 0 || !token) return false;
-          const end = start + token.length;
-          const prev = start > 0 ? sanitized[start - 1] : '';
-          const next = end < sanitized.length ? sanitized[end] : '';
-          const hasLetterAround =
-            /[A-Za-zА-Яа-яІіЇїЄєҐґ]/.test(prev) || /[A-Za-zА-Яа-яІіЇїЄєҐґ]/.test(next);
-          return !hasLetterAround;
-        })
-        .map((m) => parseNumber(String(m[0]), sanitized))
-        .filter((n) => Number.isFinite(n));
+      const numbers = [];
+      for (const m of matches) {
+        const token = String(m?.[0] || '');
+        const start = Number(m?.index ?? -1);
+        if (start < 0 || !token) continue;
+        const end = start + token.length;
+        const prev = start > 0 ? sanitized[start - 1] : '';
+        const next = end < sanitized.length ? sanitized[end] : '';
+        const hasLetterAround =
+          /[A-Za-zА-Яа-яІіЇїЄєҐґ]/.test(prev) || /[A-Za-zА-Яа-яІіЇїЄєҐґ]/.test(next);
+        const qtyPriceSplit = token.match(/^(\d{1,2})\s+(\d{2,4})$/);
+
+        // OCR often glues "qty price" into a single token like "1 608".
+        // When this shape is plausible, keep the price separately and optionally the qty.
+        if (qtyPriceSplit) {
+          const qtyCandidate = Number(qtyPriceSplit[1]);
+          const priceCandidate = Number(qtyPriceSplit[2]);
+          if (
+            Number.isFinite(qtyCandidate) &&
+            qtyCandidate >= 1 &&
+            qtyCandidate <= 20 &&
+            Number.isFinite(priceCandidate) &&
+            priceCandidate >= 20 &&
+            priceCandidate <= 5000
+          ) {
+            if (!hasLetterAround) numbers.push(qtyCandidate);
+            numbers.push(priceCandidate);
+            continue;
+          }
+        }
+
+        if (hasLetterAround) continue;
+        const parsed = parseNumber(token, sanitized);
+        if (Number.isFinite(parsed)) numbers.push(parsed);
+      }
+      return numbers;
     };
 
     const anchored = [];
@@ -1513,7 +1553,9 @@ function parseOcrText(text, ocrData = null) {
           j += 1;
           continue;
         }
-        if (brandRegex.test(l) && skuPattern.test(l)) break;
+        const nextSkuMatch = String(l || '').match(skuPattern);
+        const nextPartNumber = nextSkuMatch ? String(nextSkuMatch[0]).trim() : '';
+        if (nextPartNumber && nextPartNumber !== partNumber && (brandRegex.test(l) || isLikelyPartNumberLine(l))) break;
         block.push(l);
         if (block.length >= 5) break;
         j += 1;
@@ -1541,51 +1583,106 @@ function parseOcrText(text, ocrData = null) {
         .map((x) => ({ src: x, nums: parseNums(x, partNumber) }))
         .filter((x) => x.nums.length > 0);
       const flatNums = numericLines.flatMap((x) => x.nums).filter((n) => n >= 1 && n <= 200000);
+      const sameLineNums = parseNums(line, partNumber).filter((n) => n >= 20 && n <= 5000);
 
       let price = null;
       let qty = 1;
       const plausible = flatNums.filter((n) => n >= 20 && n <= 5000);
-      if (plausible.length) {
-        const counts = new Map();
-        for (const n of flatNums) {
-          counts.set(n, (counts.get(n) || 0) + 1);
-        }
-        const hasLarge = plausible.some((n) => n >= 500);
-        const scoreCandidate = (cand) => {
-          let s = 0;
-          const freq = counts.get(cand) || 0;
-          s += freq * 4;
-          if (cand >= 50) s += 2;
-          if (cand < 100 && hasLarge) s -= 3;
 
-          for (const total of flatNums) {
-            if (!Number.isFinite(total) || total <= cand) continue;
-            const ratio = total / cand;
-            const ratioInt = Math.round(ratio);
-            if (ratioInt >= 1 && ratioInt <= 20 && nearlyEquals(cand * ratioInt, total, 2.0)) {
-              s += 6;
-            }
+      // Prefer numbers from the SKU row itself. This avoids block leakage into the
+      // next item and handles common OCR rows like "147.581 ... 392 ... 784".
+      if (sameLineNums.length >= 2) {
+        let bestSameLinePair = null;
+        for (let a = 0; a < sameLineNums.length; a += 1) {
+          for (let b = a + 1; b < sameLineNums.length; b += 1) {
+            const small = Math.min(sameLineNums[a], sameLineNums[b]);
+            const big = Math.max(sameLineNums[a], sameLineNums[b]);
+            const ratio = small > 0 ? big / small : null;
+            const ratioInt = ratio ? Math.round(ratio) : null;
+            const coherent =
+              ratioInt &&
+              ratioInt >= 1 &&
+              ratioInt <= 20 &&
+              nearlyEquals(small * ratioInt, big, 2.0);
+            if (!coherent) continue;
+            const candidate = { price: small, qty: ratioInt, total: big };
+            if (!bestSameLinePair || candidate.total > bestSameLinePair.total) bestSameLinePair = candidate;
           }
-          return s;
-        };
+        }
+        if (bestSameLinePair) {
+          price = bestSameLinePair.price;
+          qty = bestSameLinePair.qty;
+        } else {
+          price = Math.max(...sameLineNums);
+          qty = 1;
+        }
+      } else if (sameLineNums.length === 1 && plausible.length <= 1) {
+        price = sameLineNums[0];
+        qty = 1;
+      } else if (plausible.length) {
+        let bestPair = null;
+        for (let a = 0; a < plausible.length; a += 1) {
+          for (let b = a + 1; b < plausible.length; b += 1) {
+            const small = Math.min(plausible[a], plausible[b]);
+            const big = Math.max(plausible[a], plausible[b]);
+            const ratio = small > 0 ? big / small : null;
+            const ratioInt = ratio ? Math.round(ratio) : null;
+            const coherent =
+              ratioInt &&
+              ratioInt >= 1 &&
+              ratioInt <= 20 &&
+              nearlyEquals(small * ratioInt, big, 2.0);
+            if (!coherent) continue;
+            const candidate = { price: small, qty: ratioInt, total: big };
+            if (!bestPair || candidate.total > bestPair.total) bestPair = candidate;
+          }
+        }
 
-        const bestPrice = plausible
-          .slice()
-          .sort((a, b) => scoreCandidate(b) - scoreCandidate(a) || a - b)[0];
-        price = bestPrice;
+        if (bestPair) {
+          price = bestPair.price;
+          qty = bestPair.qty;
+        } else {
+          const counts = new Map();
+          for (const n of flatNums) {
+            counts.set(n, (counts.get(n) || 0) + 1);
+          }
+          const hasLarge = plausible.some((n) => n >= 500);
+          const scoreCandidate = (cand) => {
+            let s = 0;
+            const freq = counts.get(cand) || 0;
+            s += freq * 4;
+            if (cand >= 50) s += 2;
+            if (cand < 100 && hasLarge) s -= 3;
 
-        // Derive qty from best-supported total candidate.
-        let bestQtyScore = -Infinity;
-        for (const total of flatNums) {
-          if (!Number.isFinite(total) || total < price) continue;
-          const ratio = total / price;
-          const ratioInt = Math.round(ratio);
-          if (ratioInt < 1 || ratioInt > 20) continue;
-          if (!nearlyEquals(price * ratioInt, total, 2.0)) continue;
-          const score = (counts.get(total) || 1) * 2 + (ratioInt === 1 ? 1 : 2);
-          if (score > bestQtyScore) {
-            bestQtyScore = score;
-            qty = ratioInt;
+            for (const total of flatNums) {
+              if (!Number.isFinite(total) || total <= cand) continue;
+              const ratio = total / cand;
+              const ratioInt = Math.round(ratio);
+              if (ratioInt >= 1 && ratioInt <= 20 && nearlyEquals(cand * ratioInt, total, 2.0)) {
+                s += 6;
+              }
+            }
+            return s;
+          };
+
+          const bestPrice = plausible
+            .slice()
+            .sort((a, b) => scoreCandidate(b) - scoreCandidate(a) || b - a)[0];
+          price = bestPrice;
+
+          // Derive qty from best-supported total candidate.
+          let bestQtyScore = -Infinity;
+          for (const total of flatNums) {
+            if (!Number.isFinite(total) || total < price) continue;
+            const ratio = total / price;
+            const ratioInt = Math.round(ratio);
+            if (ratioInt < 1 || ratioInt > 20) continue;
+            if (!nearlyEquals(price * ratioInt, total, 2.0)) continue;
+            const score = (counts.get(total) || 1) * 2 + (ratioInt === 1 ? 1 : 2);
+            if (score > bestQtyScore) {
+              bestQtyScore = score;
+              qty = ratioInt;
+            }
           }
         }
       } else if (flatNums.length === 1) {
@@ -1792,6 +1889,16 @@ function parseOcrText(text, ocrData = null) {
     const hasSkuLike = /\b[A-Z]{2,}\b/.test(line) && /[0-9]/.test(line);
     const hasLower = /[a-z]/.test(line);
     return hasLongNumber && hasSkuLike && !hasLower;
+  };
+
+  const extractBrandSpaceSku = (value) => {
+    const line = String(value || '').trim();
+    if (!line) return '';
+    const longDigitsMatch = line.match(/\bBMW\s+(\d{7,})\b/i);
+    if (longDigitsMatch && longDigitsMatch[1]) return String(longDigitsMatch[1]).trim();
+    const codeMatch = line.match(/\b(?:SKF|INA|SNR|DAYCO|GATES|CONTINENTAL)\s+([A-Z]{2,6}\s+\d{3,})\b/i);
+    if (codeMatch && codeMatch[1]) return String(codeMatch[1]).replace(/\s+/g, ' ').trim();
+    return '';
   };
 
   const parseRowLine = (line) => {
@@ -2051,11 +2158,14 @@ function parseOcrText(text, ocrData = null) {
   };
 
   const pushPart = (name, price, quantity, lineForPartNumber) => {
-    const cleanedName = normalizeLine(
+    let cleanedName = normalizeLine(
       String(name || '')
         .replace(/(?:терм\S*\s*постав\S*|поставк\S*|доставк\S*|на\s*склад\S*|склад\S*|наявност\S*|дн\.?)/gi, ' ')
         .replace(/[|©»«]/g, ' ')
     );
+    cleanedName = cleanedName.replace(/\bKAZNAHIB\b/gi, 'клапанів')
+                             .replace(/\bіврмосіа\b/gi, 'термостат')
+                             .replace(/\bПрокладха\b/gi, 'Прокладка');
     if (!cleanedName || isNoiseLine(cleanedName)) return;
     if (!Number.isFinite(price) || price < 10) return;
     const qty = Number.isFinite(quantity) && quantity > 0 ? quantity : 1;
@@ -2075,6 +2185,7 @@ function parseOcrText(text, ocrData = null) {
         /\b\d{2}\s\d{2}\s\d{4}\b/g, // 20 03 0009
         /\b[A-Z0-9]{2,}(?:[./-][A-Z0-9]{2,})+\b/gi, // 14-32101-01, MS0828-98, 505.090
         /\b[A-Z]{1,6}\d{3,}[A-Z0-9]*\b/gi, // K2W105, EATRMT7912X1L
+        /\b0\d{4,}\b/g, // 06051
         /\b\d{7,}\b/g, // long digits-only part numbers
       ];
 
@@ -2110,7 +2221,8 @@ function parseOcrText(text, ocrData = null) {
       return best ? best.trim() : '';
     };
 
-    const partNumber = isDimensionLike ? '' : extractPartNumber(partNumberSource);
+    const partNumber =
+      isDimensionLike ? '' : extractPartNumber(partNumberSource) || extractBrandSpaceSku(partNumberSource);
     const buildCanonicalName = (source, pn) => {
       const src = String(source || '').replace(/[|©»«]/g, ' ').replace(/\s+/g, ' ').trim();
       if (!src || !pn) return '';
@@ -2415,6 +2527,24 @@ function parseOcrText(text, ocrData = null) {
   const mergeParts = (a, b) => {
     const byPn = new Map();
     const byNamePrice = new Map();
+    const getBrandKey = (item) => {
+      const name = String(item?.name || '');
+      const match = name.match(brandRegex);
+      return match ? match[0].replace(/\s+/g, ' ').trim().toLowerCase() : '';
+    };
+    const normalizePn = (value) => String(value || '').replace(/[\s./-]+/g, '').toLowerCase();
+    const isSamePartFamily = (left, right) => {
+      const leftPn = normalizePn(left?.part_number || '');
+      const rightPn = normalizePn(right?.part_number || '');
+      if (!leftPn || !rightPn) return false;
+      if (leftPn === rightPn) return true;
+      if (leftPn.length < 6 || rightPn.length < 6) return false;
+      const suffixMatch = leftPn.endsWith(rightPn) || rightPn.endsWith(leftPn);
+      if (!suffixMatch) return false;
+      const leftBrand = getBrandKey(left);
+      const rightBrand = getBrandKey(right);
+      return Boolean(leftBrand && rightBrand && leftBrand === rightBrand);
+    };
     const itemQuality = (item) => {
       const price = Number(item?.price || 0);
       const qty = Number(item?.quantity || 1);
@@ -2422,7 +2552,6 @@ function parseOcrText(text, ocrData = null) {
       if (price >= 10 && price <= 5000) score += 3;
       else if (price > 5000) score -= 3;
       if (qty >= 1 && qty <= 20) score += 1;
-      if (qty > 1) score += 2;
       if (String(item?.part_number || '').trim()) score += 2;
       return score;
     };
@@ -2436,11 +2565,28 @@ function parseOcrText(text, ocrData = null) {
       const score = itemQuality(item);
 
       if (pn) {
+        for (const [existingPn, existing] of byPn.entries()) {
+          if (!existingPn) continue;
+          if (price !== Number(existing.item?.price || 0) || qty !== Number(existing.item?.quantity || 1)) continue;
+          if (!isSamePartFamily(item, existing.item)) continue;
+          if (score > existing.score || pn.length > existingPn.length) {
+            byPn.delete(existingPn);
+            byPn.set(pn, { item, score });
+          }
+          return;
+        }
         const prev = byPn.get(pn);
         if (!prev || score > prev.score) {
           byPn.set(pn, { item, score });
         }
         return;
+      }
+
+      for (const existing of byPn.values()) {
+        const existingPrice = Number(existing.item?.price || 0);
+        const existingQty = Number(existing.item?.quantity || 1);
+        if (price !== existingPrice || qty !== existingQty) continue;
+        if (existing.score >= score + 2) return;
       }
 
       const prev = byNamePrice.get(keyByNamePrice);
@@ -2486,8 +2632,7 @@ function parseOcrText(text, ocrData = null) {
     structured.parts.length &&
     structuredCoverageOk &&
     structuredHasReliableSignals &&
-    merged.length === 0 &&
-    structuredScore > bestScore + structuredSelectionDelta
+    structuredScore > bestScore - structuredSelectionDelta
   ) {
     bestItems = structured.parts;
     bestScore = structuredScore;
@@ -2932,3 +3077,8 @@ function extractLicensePlateFromText(text) {
 
   return null;
 }
+
+exports.__test__ = {
+  parseOcrText,
+  extractLicensePlateFromText,
+};
