@@ -75,6 +75,206 @@ const scoreOcrText = (value) => {
   return skuHits * 10 + moneyHits * 2 - noiseHits * 3 + Math.min(3000, len) / 100;
 };
 
+const partsCandidateBrandRegex =
+  /\b(VICTOR\s+REINZ|ELRING|FEBI(?:\s+BILSTEIN)?|BILSTEIN|SWAG|BMW|JP\s+GROUP|SKF|BOSCH|INA|SACHS|LEMFORDER|K2|К2)\b/i;
+const partsNameNoiseRegex = /\b(?:терм|постав|склад|наявност|разом|итого|всього)\b/i;
+
+const normalizePartNumberKey = (value) => String(value || '').replace(/[\s./-]+/g, '').toLowerCase();
+const normalizePartNameKey = (value) =>
+  String(value || '')
+    .toLowerCase()
+    .replace(/[|©»«]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+const getParsedPartsStats = (items) => {
+  const arr = Array.isArray(items) ? items : [];
+  let qtyGtOne = 0;
+  let withPartNumber = 0;
+  for (const item of arr) {
+    const qty = Number(item?.quantity || 0);
+    if (qty > 1) qtyGtOne += 1;
+    if (String(item?.part_number || '').trim()) withPartNumber += 1;
+  }
+  return { count: arr.length, qtyGtOne, withPartNumber };
+};
+
+const isNoisyParsedPartName = (value) => {
+  const name = normalizePartNameKey(value);
+  if (!name) return true;
+  if (partsNameNoiseRegex.test(name)) return true;
+  if (name.split(' ').filter((token) => token.length === 1).length >= 3) return true;
+  return false;
+};
+
+const getParsedPartQuality = (item) => {
+  if (!item) return -Infinity;
+  const name = String(item?.name || '');
+  const pn = String(item?.part_number || '').trim();
+  const price = Number(item?.price || 0);
+  const qty = Number(item?.quantity || 0);
+  let score = 0;
+  if (name.length >= 8) score += 2;
+  if (/[А-Яа-яІіЇїЄєҐґ]{4,}|[A-Za-z]{4,}/.test(name)) score += 1;
+  if (partsCandidateBrandRegex.test(name)) score += 2;
+  if (pn) score += 4;
+  if (price >= 10 && price <= 5000) score += 2;
+  else if (price > 5000) score -= 2;
+  if (qty >= 1 && qty <= 20) score += 1;
+  if (qty > 1) score += 1;
+  if (isNoisyParsedPartName(name)) score -= 4;
+  return score;
+};
+
+const scoreParsedParts = (items) => {
+  const arr = Array.isArray(items) ? items : [];
+  if (!arr.length) return -Infinity;
+  let score = 0;
+  for (const item of arr) {
+    score += getParsedPartQuality(item);
+  }
+  const stats = getParsedPartsStats(arr);
+  score += Math.min(60, arr.length * 4);
+  if (arr.length >= 6 && stats.qtyGtOne === 0) score -= 12;
+  return score;
+};
+
+const pickBetterParsedPart = (left, right) => {
+  if (!left) return right;
+  if (!right) return left;
+  const leftScore = getParsedPartQuality(left);
+  const rightScore = getParsedPartQuality(right);
+  if (rightScore !== leftScore) return rightScore > leftScore ? right : left;
+
+  const leftPn = normalizePartNumberKey(left?.part_number || '');
+  const rightPn = normalizePartNumberKey(right?.part_number || '');
+  if (rightPn.length !== leftPn.length) return rightPn.length > leftPn.length ? right : left;
+
+  const leftName = normalizePartNameKey(left?.name || '');
+  const rightName = normalizePartNameKey(right?.name || '');
+  if (rightName.length !== leftName.length) return rightName.length > leftName.length ? right : left;
+
+  return left;
+};
+
+const mergePartsAcrossOcrAttempts = (lists) => {
+  const byPn = new Map();
+  const byNamePriceQty = new Map();
+
+  for (const list of Array.isArray(lists) ? lists : []) {
+    for (const item of Array.isArray(list) ? list : []) {
+      if (!item) continue;
+      const price = Number(item?.price || 0);
+      const qty = Number(item?.quantity || 1);
+      if (!Number.isFinite(price) || price <= 0) continue;
+      const pnKey = normalizePartNumberKey(item?.part_number || '');
+      if (pnKey) {
+        byPn.set(pnKey, pickBetterParsedPart(byPn.get(pnKey), item));
+        continue;
+      }
+      const key = `${normalizePartNameKey(item?.name || '')}|${price}|${qty}`;
+      if (!key.startsWith('|')) {
+        byNamePriceQty.set(key, pickBetterParsedPart(byNamePriceQty.get(key), item));
+      }
+    }
+  }
+
+  const pnShadowKeys = new Set(
+    Array.from(byPn.values()).map(
+      (item) => `${normalizePartNameKey(item?.name || '')}|${Number(item?.price || 0)}|${Number(item?.quantity || 1)}`
+    )
+  );
+
+  return [
+    ...Array.from(byPn.values()),
+    ...Array.from(byNamePriceQty.entries())
+      .filter(([key]) => !pnShadowKeys.has(key))
+      .map(([, item]) => item),
+  ].filter(Boolean);
+};
+
+const selectBestPartsOcrAttempt = (attempts) => {
+  const normalized = (Array.isArray(attempts) ? attempts : [])
+    .map((attempt, index) => {
+      const parts = Array.isArray(attempt?.parts) ? attempt.parts.filter(Boolean) : [];
+      const partsScore = Number.isFinite(attempt?.partsScore) ? attempt.partsScore : scoreParsedParts(parts);
+      const ocrScore = Number.isFinite(attempt?.ocrScore)
+        ? attempt.ocrScore
+        : scoreOcrText(String(attempt?.rawText || ''));
+      const stats = getParsedPartsStats(parts);
+      const candidateScore =
+        (partsScore === -Infinity ? -1000 : partsScore * 20) +
+        Math.min(160, ocrScore) +
+        Math.min(18, stats.withPartNumber * 2);
+      return {
+        ...attempt,
+        index,
+        parts,
+        partsScore,
+        ocrScore,
+        stats,
+        candidateScore,
+      };
+    })
+    .filter((attempt) => attempt.parts.length || String(attempt?.rawText || '').trim());
+
+  if (!normalized.length) {
+    return {
+      attempts: [],
+      bestAttempt: null,
+      selectedParts: [],
+      selectedRawText: '',
+      selectedData: null,
+      selectedUsedPath: 'original',
+      selectedUsedPsm: '',
+      selectedMode: 'single',
+      mergeCandidates: [],
+      mergedParts: [],
+      mergedScore: -Infinity,
+    };
+  }
+
+  const ranked = normalized
+    .slice()
+    .sort(
+      (a, b) =>
+        (b.candidateScore || 0) - (a.candidateScore || 0) ||
+        (b.partsScore || 0) - (a.partsScore || 0) ||
+        (b.stats?.count || 0) - (a.stats?.count || 0)
+    );
+
+  const bestAttempt = ranked[0];
+  const mergeCandidates = ranked.filter((attempt) => attempt.parts.length && attempt.partsScore >= bestAttempt.partsScore - 8).slice(0, 4);
+  const mergedParts = mergePartsAcrossOcrAttempts(mergeCandidates.map((attempt) => attempt.parts));
+  const mergedScore = scoreParsedParts(mergedParts);
+  const mergedStats = getParsedPartsStats(mergedParts);
+
+  const shouldUseMerged =
+    mergeCandidates.length >= 2 &&
+    mergedParts.length > 0 &&
+    (
+      mergedScore > bestAttempt.partsScore + 3 ||
+      (mergedScore >= bestAttempt.partsScore - 1 && mergedStats.count >= bestAttempt.stats.count + 2) ||
+      (mergedScore >= bestAttempt.partsScore && mergedStats.withPartNumber > bestAttempt.stats.withPartNumber)
+    );
+
+  return {
+    attempts: ranked,
+    bestAttempt,
+    selectedParts: shouldUseMerged ? mergedParts : bestAttempt.parts,
+    selectedRawText: String(bestAttempt.rawText || ''),
+    selectedData: bestAttempt.data || null,
+    selectedUsedPath: shouldUseMerged ? 'ensemble' : String(bestAttempt.usedPath || bestAttempt.inputLabel || 'original'),
+    selectedUsedPsm: shouldUseMerged
+      ? `merge(${mergeCandidates.map((attempt) => `${attempt.inputLabel || attempt.usedPath || 'ocr'}:${attempt.psm || ''}`).join('+')})`
+      : String(bestAttempt.psm || ''),
+    selectedMode: shouldUseMerged ? 'merged' : 'single',
+    mergeCandidates: shouldUseMerged ? mergeCandidates : [],
+    mergedParts,
+    mergedScore,
+  };
+};
+
 async function getJimp() {
   if (jimpResolvePromise) return jimpResolvePromise;
   jimpResolvePromise = (async () => {
@@ -418,80 +618,140 @@ async function parsePartsFromImageInternal(req) {
     preprocessingApplied = false;
   }
 
-  // If preprocessing failed, run an additional eng-only pass to better capture Latin SKUs.
   let bestText = '';
   let bestData = null;
   let bestPsm = '6';
-  const worker = await createWorker('ukr+rus+eng');
-  try {
-    await worker.setParameters({
-      preserve_interword_spaces: '1',
-      user_defined_dpi: '300',
-    });
-  } catch (_) {
-    void _;
-  }
+  let bestParts = [];
+  let bestUsedPath = ocrPath === imagePath ? 'original' : 'preprocessed';
+  const ocrAttempts = [];
+  const candidateInputs = preprocessingApplied
+    ? [
+        { inputLabel: 'preprocessed', usedPath: 'preprocessed', path: preprocessedPath },
+        { inputLabel: 'original', usedPath: 'original', path: imagePath },
+      ]
+    : [{ inputLabel: 'original', usedPath: 'original', path: imagePath }];
 
-  try {
-    await worker.setParameters({ tessedit_pageseg_mode: '6' });
-  } catch (_) { void _; }
-  const {
-    data: { text: textPsm6, ...dataPsm6Rest },
-  } = await worker.recognize(ocrPath);
-  bestText = textPsm6 || '';
-  bestData = { text: textPsm6 || '', ...dataPsm6Rest };
-
-  try {
-    await worker.setParameters({ tessedit_pageseg_mode: '4' });
-  } catch (_) { void _; }
-  const {
-    data: { text: textPsm4, ...dataPsm4Rest },
-  } = await worker.recognize(ocrPath);
-
-  const score6 = scoreOcrText(textPsm6);
-  const score4 = scoreOcrText(textPsm4);
-  if (score4 > score6) {
-    bestText = textPsm4 || '';
-    bestData = { text: textPsm4 || '', ...dataPsm4Rest };
-    bestPsm = '4';
-  }
-
-  // If preprocessing failed, try eng-only OCR pass to better read Latin SKUs / brands.
-  if (!preprocessingApplied && bestText) {
+  const runPartsOcrAttempt = async (activeWorker, { inputLabel, usedPath, path, psm, lang }) => {
+    const label = `${lang}:${inputLabel}:psm${psm}`;
     try {
-      const engWorker = await createWorker('eng');
       try {
-        await engWorker.setParameters({
+        await activeWorker.setParameters({
           preserve_interword_spaces: '1',
           user_defined_dpi: '300',
-          tessedit_pageseg_mode: '6',
+          tessedit_pageseg_mode: String(psm),
         });
-      } catch (_) { void _; }
-      const {
-        data: { text: textEng, ...dataEngRest },
-      } = await engWorker.recognize(ocrPath);
-      await engWorker.terminate();
-      const scoreEng = scoreOcrText(textEng);
-      if (scoreEng > Math.max(score6, score4)) {
-        bestText = textEng || '';
-        bestData = { text: textEng || '', ...dataEngRest };
-        bestPsm = '6-eng';
+      } catch (_) {
+        void _;
       }
-    } catch (engErr) {
-      void engErr;
+
+      const recognized = await activeWorker.recognize(path);
+      const data = recognized?.data || {};
+      const rawText = String(data?.text || '');
+      const parsedParts = parseOcrText(rawText, data || null);
+      ocrAttempts.push({
+        label,
+        inputLabel,
+        usedPath,
+        psm: String(psm),
+        lang,
+        rawText,
+        data,
+        parts: parsedParts,
+      });
+    } catch (err) {
+      ocrAttempts.push({
+        label,
+        inputLabel,
+        usedPath,
+        psm: String(psm),
+        lang,
+        rawText: '',
+        data: null,
+        parts: [],
+        error: String(err?.message || err),
+      });
+    }
+  };
+
+  const worker = await createWorker('ukr+rus+eng');
+  try {
+    for (const input of candidateInputs) {
+      for (const psm of ['6', '4']) {
+        await runPartsOcrAttempt(worker, { ...input, psm, lang: 'ukr+rus+eng' });
+      }
+    }
+
+    let selection = selectBestPartsOcrAttempt(ocrAttempts);
+    let selectionStats = getParsedPartsStats(selection.selectedParts);
+
+    if (selectionStats.count < 4 || selectionStats.withPartNumber < Math.max(1, Math.floor(selectionStats.count * 0.5))) {
+      for (const input of candidateInputs) {
+        await runPartsOcrAttempt(worker, { ...input, psm: '11', lang: 'ukr+rus+eng' });
+      }
+      selection = selectBestPartsOcrAttempt(ocrAttempts);
+      selectionStats = getParsedPartsStats(selection.selectedParts);
+    }
+
+    if (selectionStats.count < 4 || selectionStats.withPartNumber === 0) {
+      let engWorker = null;
+      try {
+        engWorker = await createWorker('eng');
+        for (const input of candidateInputs) {
+          await runPartsOcrAttempt(engWorker, { ...input, psm: '6', lang: 'eng' });
+        }
+      } catch (engErr) {
+        void engErr;
+      } finally {
+        if (engWorker) {
+          try {
+            await engWorker.terminate();
+          } catch (_) {
+            void _;
+          }
+        }
+      }
+      selection = selectBestPartsOcrAttempt(ocrAttempts);
+    }
+
+    bestText = selection.selectedRawText || '';
+    bestData = selection.selectedData || null;
+    bestPsm = selection.selectedUsedPsm || '6';
+    bestParts = selection.selectedParts || [];
+    bestUsedPath = selection.selectedUsedPath || bestUsedPath;
+  } finally {
+    try {
+      await worker.terminate();
+    } catch (_) {
+      void _;
     }
   }
-
-  await worker.terminate();
 
   return {
     imagePath,
     preprocessedPath,
     preprocessingApplied,
-    usedPath: ocrPath === imagePath ? 'original' : 'preprocessed',
+    usedPath: bestUsedPath,
     usedPsm: bestPsm,
     rawText: bestText || '',
-    parts: parseOcrText(bestText || '', bestData || null),
+    parts: Array.isArray(bestParts) && bestParts.length ? bestParts : parseOcrText(bestText || '', bestData || null),
+    attempts: ocrAttempts.map((attempt) => {
+      const parts = Array.isArray(attempt?.parts) ? attempt.parts : [];
+      const stats = getParsedPartsStats(parts);
+      return {
+        label: attempt?.label || '',
+        inputLabel: attempt?.inputLabel || '',
+        usedPath: attempt?.usedPath || '',
+        psm: attempt?.psm || '',
+        lang: attempt?.lang || '',
+        rawText: attempt?.rawText || '',
+        partsCount: stats.count,
+        withPartNumber: stats.withPartNumber,
+        qtyGtOne: stats.qtyGtOne,
+        ocrScore: scoreOcrText(attempt?.rawText || ''),
+        partsScore: scoreParsedParts(parts),
+        error: attempt?.error || null,
+      };
+    }),
     jimpError: jimpLoadError,
     jimpPreprocError,
   };
@@ -537,6 +797,7 @@ exports.parsePartsFromImageDebug = async (req, res) => {
     return res.json({
       parts: result.parts,
       rawText: result.rawText,
+      attempts: result.attempts || [],
       meta: {
         serverCommit,
         preprocessingApplied: result.preprocessingApplied,
@@ -3080,5 +3341,8 @@ function extractLicensePlateFromText(text) {
 
 exports.__test__ = {
   parseOcrText,
+  scoreParsedParts,
+  mergePartsAcrossOcrAttempts,
+  selectBestPartsOcrAttempt,
   extractLicensePlateFromText,
 };

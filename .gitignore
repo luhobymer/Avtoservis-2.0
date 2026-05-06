@@ -23,6 +23,8 @@ desktop.ini
 
 .vscode/
 .trae/
+*.code-workspace
+tmp-ocr-debug*.js
 
 coverage/
 client/coverage/

@@ -90,4 +90,130 @@ FEBI BILSTEIN 06051 �� 658 � 558
     expect(parts.filter((item) => item.part_number === '32101-01')).toHaveLength(0);
     expect(parts.filter((item) => item.price === 519 && !item.part_number)).toHaveLength(0);
   });
+
+  test('prefers OCR attempt with better parsed parts, not just noisier raw text', () => {
+    const weakButNoisy = {
+      inputLabel: 'preprocessed',
+      usedPath: 'preprocessed',
+      psm: '6',
+      rawText: `
+        ELRING 147.581
+        SWAG 20 03 0009
+        BMW 11121726243
+        SKF VKM 38003
+        FEBI 06051
+      `,
+      parts: [
+        {
+          name: 'ELRING 147.581',
+          price: 392,
+          quantity: 2,
+          part_number: '147.581',
+        },
+      ],
+    };
+
+    const strongerParsedAttempt = {
+      inputLabel: 'original',
+      usedPath: 'original',
+      psm: '4',
+      rawText: `
+        ELRING 147.581 392 784
+        BMW 11121726243 164 327
+        SWAG 20 03 0009 608
+      `,
+      parts: [
+        {
+          name: 'Прокладка випускного колектора ELRING',
+          price: 392,
+          quantity: 2,
+          part_number: '147.581',
+        },
+        {
+          name: 'Втулка BMW',
+          price: 164,
+          quantity: 2,
+          part_number: '11121726243',
+        },
+        {
+          name: 'Натяжний ролик SWAG',
+          price: 608,
+          quantity: 1,
+          part_number: '20 03 0009',
+        },
+      ],
+    };
+
+    const selection = __test__.selectBestPartsOcrAttempt([weakButNoisy, strongerParsedAttempt]);
+
+    expect(selection.selectedMode).toBe('single');
+    expect(selection.selectedUsedPath).toBe('original');
+    expect(selection.selectedUsedPsm).toBe('4');
+    expect(selection.selectedParts).toHaveLength(3);
+    expect(selection.selectedParts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ part_number: '147.581', price: 392, quantity: 2 }),
+        expect.objectContaining({ part_number: '11121726243', price: 164, quantity: 2 }),
+        expect.objectContaining({ part_number: '20 03 0009', price: 608, quantity: 1 }),
+      ])
+    );
+  });
+
+  test('merges complementary OCR attempts when ensemble yields better coverage', () => {
+    const attemptA = {
+      inputLabel: 'preprocessed',
+      usedPath: 'preprocessed',
+      psm: '6',
+      rawText: `
+        ELRING 147.581 392 784
+        SWAG 20 03 0009 608
+      `,
+      parts: [
+        {
+          name: 'Прокладка випускного колектора ELRING',
+          price: 392,
+          quantity: 2,
+          part_number: '147.581',
+        },
+        {
+          name: 'Натяжний ролик SWAG',
+          price: 608,
+          quantity: 1,
+          part_number: '20 03 0009',
+        },
+      ],
+    };
+
+    const attemptB = {
+      inputLabel: 'original',
+      usedPath: 'original',
+      psm: '4',
+      rawText: `
+        BMW 11121726243 164 327
+        ELRING 147.581 392 784
+      `,
+      parts: [
+        {
+          name: 'Втулка BMW 11121726243',
+          price: 164,
+          quantity: 2,
+          part_number: '11121726243',
+        },
+        {
+          name: 'Прокладка випускного колектора ELRING 147.581',
+          price: 392,
+          quantity: 2,
+          part_number: '147.581',
+        },
+      ],
+    };
+
+    const selection = __test__.selectBestPartsOcrAttempt([attemptA, attemptB]);
+    const partNumbers = selection.selectedParts.map((item) => item.part_number).sort();
+
+    expect(selection.selectedMode).toBe('merged');
+    expect(selection.selectedUsedPath).toBe('ensemble');
+    expect(selection.selectedUsedPsm).toMatch(/^merge\(/);
+    expect(partNumbers).toEqual(['11121726243', '147.581', '20 03 0009']);
+  });
 });
