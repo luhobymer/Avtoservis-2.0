@@ -1637,25 +1637,29 @@ function parseOcrText(text, ocrData = null) {
         .map((w) => parseNumericToken(w.text))
         .filter((n) => Number.isFinite(n));
 
-    const extracted = [];
-    const seenKeys = new Set();
-    for (const r of rowsNorm) {
-      if (r.cy <= headerRow.cy + rowTol) continue;
+    const cleanStructuredName = (value) =>
+      normalizeLine(
+        String(value || '')
+          .replace(/[|©»«]/g, ' ')
+          .replace(/(?:терм\S*\s*постав\S*|поставк\S*|доставк\S*|на\s*склад\S*|склад\S*|наявност\S*|дн\.?)/gi, ' ')
+          .replace(/\bKAZNAHIB\b/gi, 'клапанів')
+          .replace(/\bіврмосіа\b/gi, 'термостат')
+          .replace(/\bПрокладха\b/gi, 'Прокладка')
+      );
+    const skuRe = /\b(?:\d{2,}-\d{2,}(?:-\d{2,})?|\d{2}\s\d{2}\s\d{4}|\d{3}[.]\d{3}|[A-Z]{1,6}\d{3,}[A-Z0-9]*|\d{7,})\b/i;
+    const rightBoundForName = Number.isFinite(commentX) ? commentX - 12 : priceX - 12;
+    const dataRows = rowsNorm.filter((r) => r.cy > headerRow.cy + rowTol);
+    const rowInfos = dataRows.map((r) => {
       const low = r.text.toLowerCase();
-      if (noiseKeywords.test(low) || /разом|итого|всього/.test(low)) continue;
-
-      const rightBoundForName = Number.isFinite(commentX) ? commentX - 12 : priceX - 12;
-      const leftWords = r.words.filter((w) => w.x1 < rightBoundForName);
       const priceWords = r.words.filter((w) => w.x0 >= priceX - 55 && w.x1 < qtyX - 12);
       const qtyWords = r.words.filter((w) => w.x0 >= qtyX - 40 && (!Number.isFinite(sumX) || w.x1 < sumX - 12));
       const sumWords = Number.isFinite(sumX)
         ? r.words.filter((w) => w.x0 >= sumX - 45)
         : [];
-
-      let name = normalizeLine(leftWords.map((w) => w.text).join(' '));
-      name = name.replace(/\bKAZNAHIB\b/gi, 'клапанів')
-                 .replace(/\bіврмосіа\b/gi, 'термостат')
-                 .replace(/\bПрокладха\b/gi, 'Прокладка');
+      const hasNumericColumns = priceWords.length > 0 || qtyWords.length > 0 || sumWords.length > 0;
+      const nameRightBound = hasNumericColumns ? rightBoundForName : priceX - 24;
+      const leftWords = r.words.filter((w) => w.x0 < nameRightBound);
+      const leftText = cleanStructuredName(leftWords.map((w) => w.text).join(' '));
       const rowNums = getNums(r.words);
       const priceNums = getNums(priceWords);
       const qtyNums = getNums(qtyWords).filter((n) => Number.isInteger(n) && n > 0 && n <= 20);
@@ -1669,8 +1673,6 @@ function parseOcrText(text, ocrData = null) {
         const sorted = rowNums.slice().sort((a, b) => a - b);
         price = sorted[sorted.length - 2];
       }
-      // OCR column drift may place "sum" into the price column and leave qty as default 1.
-      // Reconcile (price, qty, sum) and prefer coherent pair (price,total) -> qty.
       if (Number.isFinite(sum) && rowNums.length >= 2) {
         const sorted = rowNums.slice().sort((a, b) => a - b);
         const secondLargest = sorted[sorted.length - 2];
@@ -1699,32 +1701,113 @@ function parseOcrText(text, ocrData = null) {
           qty = ratioRounded;
         }
       }
-      if (!Number.isFinite(price) || price < 10 || price > 200000) continue;
       if (!Number.isFinite(qty) || qty <= 0 || qty > 20) qty = 1;
 
-      if (!name || name.length < 3) {
-        name = normalizeLine(
-          r.text
-            .replace(/[\d.,]+/g, ' ')
-            .replace(/\s+/g, ' ')
-        );
-      }
-      if (!name || isNoiseLine(name)) continue;
-
-      const pnMatch = r.text.match(/\b(?:\d{2,}-\d{2,}(?:-\d{2,})?|\d{2}\s\d{2}\s\d{4}|\d{3}[.]\d{3}|[A-Z]{1,6}\d{3,}[A-Z0-9]*|\d{7,})\b/i);
+      const pnMatch = r.text.match(skuRe);
       const partNumber = pnMatch ? String(pnMatch[0]).trim() : '';
-      if (!partNumber && !brandRegex.test(name)) continue;
+      const brandMatch = String(r.text).match(brandRegex);
+      const brand = brandMatch ? String(brandMatch[0]).replace(/\s+/g, ' ').trim() : '';
+      const hasAnchorSignals =
+        Number.isFinite(price) &&
+        price >= 10 &&
+        price <= 200000 &&
+        (Boolean(partNumber) || Boolean(brand) || hasNumericColumns);
 
-      const key = `${name.toLowerCase()}|${price}|${qty}`;
-      if (seenKeys.has(key)) continue;
-      seenKeys.add(key);
-      extracted.push({
-        name,
+      return {
+        row: r,
+        low,
+        leftText,
+        rowNums,
         price,
-        quantity: qty,
-        part_number: partNumber,
-        purchased_by: 'owner',
-      });
+        qty,
+        sum,
+        partNumber,
+        brand,
+        hasNumericColumns,
+        hasAnchorSignals,
+      };
+    });
+
+    const extracted = [];
+    const seenKeys = new Set();
+    let idx = 0;
+    while (idx < rowInfos.length) {
+      const current = rowInfos[idx];
+      if (!current) {
+        idx += 1;
+        continue;
+      }
+      if (noiseKeywords.test(current.low) || /разом|итого|всього/.test(current.low)) {
+        idx += 1;
+        continue;
+      }
+      if (!current.hasAnchorSignals) {
+        idx += 1;
+        continue;
+      }
+
+      const inlineName = (() => {
+        let candidate = cleanStructuredName(current.leftText);
+        if (current.partNumber) {
+          candidate = normalizeLine(
+            candidate.replace(new RegExp(String(current.partNumber).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), ' ')
+          );
+        }
+        const withoutBrand = current.brand
+          ? normalizeLine(candidate.replace(new RegExp(String(current.brand).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), ' '))
+          : candidate;
+        if (!/[А-Яа-яІіЇїЄєҐґ]{4,}/.test(withoutBrand) && withoutBrand.length < 6) return '';
+        return candidate;
+      })();
+
+      const descLines = [];
+      let nextIdx = idx + 1;
+      while (nextIdx < rowInfos.length && nextIdx <= idx + 4) {
+        const probe = rowInfos[nextIdx];
+        if (!probe) {
+          nextIdx += 1;
+          continue;
+        }
+        if (probe.hasAnchorSignals && (probe.partNumber || probe.brand || probe.hasNumericColumns)) break;
+        const desc = cleanStructuredName(probe.leftText);
+        if (
+          desc &&
+          !isNoiseLine(desc) &&
+          !noiseKeywords.test(desc) &&
+          !/^(?:[-–.,]|[ivxlcdm]+|\d{1,2})$/i.test(desc) &&
+          !isLikelyPartNumberLine(desc)
+        ) {
+          descLines.push(desc);
+        }
+        nextIdx += 1;
+      }
+
+      let name = cleanStructuredName(descLines.join(' '));
+      if (!name) name = inlineName;
+      if (!name && current.brand && current.partNumber) {
+        name = `${current.brand} ${current.partNumber}`.trim();
+      }
+      if (!name || isNoiseLine(name)) {
+        idx = nextIdx;
+        continue;
+      }
+      if (!current.partNumber && !brandRegex.test(name)) {
+        idx = nextIdx;
+        continue;
+      }
+
+      const key = `${name.toLowerCase()}|${current.price}|${current.qty}`;
+      if (!seenKeys.has(key)) {
+        seenKeys.add(key);
+        extracted.push({
+          name,
+          price: current.price,
+          quantity: current.qty,
+          part_number: current.partNumber,
+          purchased_by: 'owner',
+        });
+      }
+      idx = nextIdx;
     }
 
     return { headerDetected: true, parts: extracted };
