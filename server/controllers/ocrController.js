@@ -157,6 +157,24 @@ const pickBetterParsedPart = (left, right) => {
   return left;
 };
 
+const removeSuffixPartNumberDuplicates = (items) => {
+  const arr = Array.isArray(items) ? items.filter(Boolean) : [];
+  return arr.filter((item, index) => {
+    const pn = normalizePartNumberKey(item?.part_number || '');
+    if (!pn) return true;
+    const price = Number(item?.price || 0);
+    const qty = Number(item?.quantity || 1);
+    return !arr.some((other, otherIndex) => {
+      if (otherIndex === index) return false;
+      const otherPn = normalizePartNumberKey(other?.part_number || '');
+      if (!otherPn || otherPn.length <= pn.length) return false;
+      if (!otherPn.endsWith(pn)) return false;
+      if (price !== Number(other?.price || 0) || qty !== Number(other?.quantity || 1)) return false;
+      return getParsedPartQuality(other) >= getParsedPartQuality(item);
+    });
+  });
+};
+
 const mergePartsAcrossOcrAttempts = (lists) => {
   const byPn = new Map();
   const byNamePriceQty = new Map();
@@ -1541,6 +1559,7 @@ exports.parseLicensePlateFromImage = async (req, res) => {
 
 function parseOcrText(text, ocrData = null) {
   const normalizeLine = (line) => line.replace(/\s+/g, ' ').trim();
+  const escapeRegExp = (value) => String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const lines = text.replace(/\r/g, '\n').split('\n').map(normalizeLine).filter(Boolean);
   const brandRegex =
     /\b(VICTOR\s+REINZ|ELRING|FEBI(?:\s+BILSTEIN)?|BILSTEIN|SWAG|BMW|JP\s+GROUP|SKF|BOSCH|INA|SACHS|LEMFORDER|K2|К2)\b/i;
@@ -1638,7 +1657,7 @@ function parseOcrText(text, ocrData = null) {
         .filter((n) => Number.isFinite(n));
 
     const cleanStructuredName = (value) =>
-      normalizeLine(
+      trimTrailingNameNoise(
         String(value || '')
           .replace(/[|©»«]/g, ' ')
           .replace(/(?:терм\S*\s*постав\S*|поставк\S*|доставк\S*|на\s*склад\S*|склад\S*|наявност\S*|дн\.?)/gi, ' ')
@@ -1819,7 +1838,7 @@ function parseOcrText(text, ocrData = null) {
     const skuPattern =
       /\b(?:\d{2,}-\d{2,}(?:-\d{2,})?|\d{2}\s\d{2}\s\d{4}|\d{3}[.]\d{3}|0\d{4,}|[A-Z]{1,6}\d{3,}[A-Z0-9]*|\d{7,})\b/i;
     const cleanDesc = (value) =>
-      normalizeLine(
+      trimTrailingNameNoise(
         String(value || '')
           .replace(/[|©»«]/g, ' ')
           .replace(/(?:терм\S*\s*постав\S*|поставк\S*|доставк\S*|на\s*склад\S*|склад\S*|наявност\S*|дн\.?)/gi, ' ')
@@ -1905,17 +1924,23 @@ function parseOcrText(text, ocrData = null) {
         j += 1;
       }
 
-      const descLine =
-        block
-          .slice(1)
-          .map((x) => cleanDesc(x))
-          .find(
-            (x) =>
-              x &&
-              /[А-Яа-яІіЇїЄєҐґ]{4,}/.test(x) &&
-              !isLikelyPartNumberLine(x) &&
-              !/\b\d{1,3}\s+\d{1,3}\s+\d{1,3}\b/.test(x)
-          ) || '';
+      const descCandidates = block
+        .slice(1)
+        .map((x) => cleanDesc(x))
+        .filter(
+          (x) =>
+            x &&
+            /[А-Яа-яІіЇїЄєҐґ]{4,}/.test(x) &&
+            !isLikelyPartNumberLine(x) &&
+            !/\b\d{1,3}\s+\d{1,3}\s+\d{1,3}\b/.test(x)
+        );
+      const descParts = [];
+      for (const candidate of descCandidates) {
+        if (!candidate || isNoiseLine(candidate)) continue;
+        descParts.push(candidate);
+        if (descParts.length >= 2 && descParts.join(' ').length >= 26) break;
+      }
+      const descLine = cleanDesc(descParts.join(' '));
       const brand = (String(line).match(brandRegex) || [partNumber])[0];
       const name = cleanDesc(descLine || `${brand} ${partNumber}`);
       if (!name || isNoiseLine(name)) {
@@ -2204,6 +2229,53 @@ function parseOcrText(text, ocrData = null) {
     const noLetters = !/[A-Za-zА-Яа-яІіЇїЄє]/.test(line);
     if (noLetters && !hasNumber) return true;
     return false;
+  };
+
+  const hasStrongDescriptiveText = (value) => {
+    const src = normalizeLine(String(value || ''));
+    if (!src) return false;
+    const cyrWords = src.match(/[А-Яа-яІіЇїЄєҐґ]{4,}/g) || [];
+    const latWords = src.match(/[A-Za-z]{4,}/g) || [];
+    const cyrLetters = (src.match(/[А-Яа-яІіЇїЄєҐґ]/g) || []).length;
+    return cyrWords.length >= 2 || cyrLetters >= 12 || (cyrWords.length >= 1 && latWords.length >= 1 && src.length >= 18);
+  };
+
+  const trimTrailingNameNoise = (value) => {
+    let out = normalizeLine(String(value || '').replace(/[|©»«]/g, ' '));
+    if (!out) return '';
+
+    // Trim repeated short Latin/cyrillic garbage tails that OCR often appends after the real description.
+    if (/[А-Яа-яІіЇїЄєҐґ]/.test(out)) {
+      let changed = true;
+      let guard = 0;
+      while (changed && guard < 4) {
+        guard += 1;
+        const next = normalizeLine(
+          out.replace(/\s+(?:[A-Za-z]{1,6}|[А-Яа-яІіЇїЄєҐґ]{1,2}|[-–.])(?:\s+(?:[A-Za-z]{1,6}|[А-Яа-яІіЇїЄєҐґ]{1,2}|[-–.])){1,5}$/u, '')
+        );
+        changed = Boolean(next && next !== out);
+        if (changed) out = next;
+      }
+    }
+
+    if (hasStrongDescriptiveText(out)) {
+      out = normalizeLine(out.replace(/\s+[A-Za-z]{1,4}[.]?$/u, ''));
+    }
+
+    return out;
+  };
+
+  const trimLeadingNameNoise = (value) => {
+    let out = normalizeLine(String(value || ''));
+    if (!out) return '';
+    if (/[А-Яа-яІіЇїЄєҐґ]{4,}/.test(out)) {
+      out = normalizeLine(out.replace(/^(?:[A-Za-zА-Яа-яІіЇїЄєҐґ]{1,6}\s+\d+(?:[.\s-]+\d+){1,3}[.]?\s*)+/u, ''));
+      const firstStrongWord = out.search(/[А-Яа-яІіЇїЄєҐґ]{6,}/u);
+      if (firstStrongWord > 0 && hasStrongDescriptiveText(out.slice(firstStrongWord))) {
+        out = normalizeLine(out.slice(firstStrongWord));
+      }
+    }
+    return out;
   };
 
   const isPriceLine = (line) => {
@@ -2502,7 +2574,7 @@ function parseOcrText(text, ocrData = null) {
   };
 
   const pushPart = (name, price, quantity, lineForPartNumber) => {
-    let cleanedName = normalizeLine(
+    let cleanedName = trimTrailingNameNoise(
       String(name || '')
         .replace(/(?:терм\S*\s*постав\S*|поставк\S*|доставк\S*|на\s*склад\S*|склад\S*|наявност\S*|дн\.?)/gi, ' ')
         .replace(/[|©»«]/g, ' ')
@@ -2567,6 +2639,23 @@ function parseOcrText(text, ocrData = null) {
 
     const partNumber =
       isDimensionLike ? '' : extractPartNumber(partNumberSource) || extractBrandSpaceSku(partNumberSource);
+    if (partNumber && cleanedName) {
+      const sourceLine = normalizeLine(String(lineForPartNumber || ''));
+      if (sourceLine && cleanedName.length > sourceLine.length + 8) {
+        cleanedName = normalizeLine(cleanedName.replace(new RegExp(escapeRegExp(sourceLine), 'gi'), ' '));
+      }
+      cleanedName = normalizeLine(cleanedName.replace(new RegExp(`\\b${escapeRegExp(partNumber)}\\b`, 'gi'), ' '));
+      if (hasStrongDescriptiveText(cleanedName)) {
+        const brandMatchInName = cleanedName.match(brandRegex);
+        if (brandMatchInName && brandMatchInName[0]) {
+          const brandOnlyRemoved = normalizeLine(
+            cleanedName.replace(new RegExp(`\\b${escapeRegExp(String(brandMatchInName[0]))}\\b`, 'gi'), ' ')
+          );
+          if (hasStrongDescriptiveText(brandOnlyRemoved)) cleanedName = brandOnlyRemoved;
+        }
+      }
+      cleanedName = trimLeadingNameNoise(trimTrailingNameNoise(cleanedName));
+    }
     const buildCanonicalName = (source, pn) => {
       const src = String(source || '').replace(/[|©»«]/g, ' ').replace(/\s+/g, ' ').trim();
       if (!src || !pn) return '';
@@ -2590,7 +2679,9 @@ function parseOcrText(text, ocrData = null) {
       !/[А-Яа-яІіЇїЄєҐґ]{3,}|[A-Za-z]{3,}/.test(cleanedName);
 
     const canonicalName = buildCanonicalName(partNumberSource, partNumber);
-    const finalName = lowQualityName && canonicalName ? canonicalName : cleanedName;
+    const finalName = lowQualityName && canonicalName && !hasStrongDescriptiveText(cleanedName)
+      ? canonicalName
+      : trimLeadingNameNoise(trimTrailingNameNoise(cleanedName));
 
     // Keep only confident rows: either part number exists or name includes known brand.
     if (!partNumber && !brandRegex.test(finalName)) return;
@@ -2861,12 +2952,16 @@ function parseOcrText(text, ocrData = null) {
     return { count: arr.length, qtyGtOne, withPartNumber };
   };
 
-  const legacyScore = scorePartsQuality(parts);
-  const anchoredScore = scorePartsQuality(anchored);
-  const structuredScore = scorePartsQuality(structured.parts);
-  const legacyStats = getPartsStats(parts);
-  const anchoredStats = getPartsStats(anchored);
-  const structuredStats = getPartsStats(structured.parts);
+  const normalizedParts = removeSuffixPartNumberDuplicates(parts);
+  const normalizedAnchored = removeSuffixPartNumberDuplicates(anchored);
+  const normalizedStructured = removeSuffixPartNumberDuplicates(structured.parts);
+
+  const legacyScore = scoreParsedParts(normalizedParts);
+  const anchoredScore = scoreParsedParts(normalizedAnchored);
+  const structuredScore = scoreParsedParts(normalizedStructured);
+  const legacyStats = getPartsStats(normalizedParts);
+  const anchoredStats = getPartsStats(normalizedAnchored);
+  const structuredStats = getPartsStats(normalizedStructured);
 
   const mergeParts = (a, b) => {
     const byPn = new Map();
@@ -2946,13 +3041,13 @@ function parseOcrText(text, ocrData = null) {
     ];
   };
 
-  const merged = mergeParts(anchored, parts);
-  const mergedScore = scorePartsQuality(merged);
+  const merged = removeSuffixPartNumberDuplicates(mergeParts(normalizedAnchored, normalizedParts));
+  const mergedScore = scoreParsedParts(merged);
 
-  let bestItems = parts;
+  let bestItems = normalizedParts;
   let bestScore = legacyScore;
-  if (anchored.length && anchoredScore > bestScore + 2) {
-    bestItems = anchored;
+  if (normalizedAnchored.length && anchoredScore > bestScore + 2) {
+    bestItems = normalizedAnchored;
     bestScore = anchoredScore;
   }
   if (merged.length && mergedScore > bestScore + 2) {
@@ -2960,12 +3055,12 @@ function parseOcrText(text, ocrData = null) {
     bestScore = mergedScore;
   }
 
-  const bestNonStructuredCount = Math.max(parts.length, anchored.length, merged.length);
+  const bestNonStructuredCount = Math.max(normalizedParts.length, normalizedAnchored.length, merged.length);
   const bestNonStructuredQtyGtOne = Math.max(legacyStats.qtyGtOne, anchoredStats.qtyGtOne);
   const structuredPnRatio =
     structuredStats.count > 0 ? structuredStats.withPartNumber / structuredStats.count : 0;
   const structuredCoverageOk =
-    structured.parts.length >= Math.max(1, Math.ceil(bestNonStructuredCount * 0.85));
+    normalizedStructured.length >= Math.max(1, Math.ceil(bestNonStructuredCount * 0.85));
   const structuredHasReliableSignals =
     structuredStats.count >= 1 &&
     structuredStats.qtyGtOne >= Math.max(1, bestNonStructuredQtyGtOne) &&
@@ -2973,15 +3068,15 @@ function parseOcrText(text, ocrData = null) {
   const structuredSelectionDelta = structuredStats.count <= 3 ? 2 : 10;
 
   if (
-    structured.parts.length &&
+    normalizedStructured.length &&
     structuredCoverageOk &&
     structuredHasReliableSignals &&
     structuredScore > bestScore - structuredSelectionDelta
   ) {
-    bestItems = structured.parts;
+    bestItems = normalizedStructured;
     bestScore = structuredScore;
   }
-  return bestItems;
+  return removeSuffixPartNumberDuplicates(bestItems);
 }
 
 function extractLicensePlateFromText(text) {

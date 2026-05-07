@@ -284,4 +284,118 @@ FEBI BILSTEIN 06051 �� 658 � 558
       ])
     );
   });
+
+  test('keeps descriptive names on the current real-world noisy receipt OCR dump', () => {
+    const input = `У замовлення \\ Найменування & @      Коментар                Ціна (грк)              Кількість             Сума (грн)
+термы k погтявки |
+VICTOR REINZ 40-76149-00               да                                                                     38
+ласт 5                    38               1.
+Прокладха, іврмосіа;                    Са бое                                                         Nas
+к2 W105                                   fee поставки С                                                       290
+Очищунач гальмівної системи К2         нений в за                145              - 2 -             Pane
+W105 5C0an (W105)                         or                                                                Fan
+терм. псстаокА 1
+ELRING 147.581                              a4                             392                    й                    784
+Прокладка вигускного колектора         в топ                                                               ЕТ
+ELRING 318.580                           meet                                                       1538
+Прокладка кришки KAZNAHIB                насилає 4a                  1538               -1.               ще
+{комплект}                          що                                                 Журн
+ELRING 135.500                           терм. постави |
+Кільце ущльнююче, клапанна            ла                           52               - 6 -              313
+форсунка МВ МЗ 11 М271 9, 2*14, 852.8 | Вески дм                                                                пхати
+(вир-во Eing)                             D>
+Терим н ностевии |
+РЕВ) BILSTEIN 10258                          an                                23                 і                      23
+Кільце ущльнююче термостату            5 +                                                                   Angra
+ELRING 914.495                                 Tan к поставим |
+Прокладка, гопонка ципядра BMW       ла                           2235              - 1                  2235
+М50825 MS0B2E -98 VANOS +0. IMM 2, | песклає Zap                                                              халати
+DEMM (вир-во Eling)                      >
+SWAG 20 03 0009                          Na поставки 1                                                        608
+Нагнжний ролик поліклиноного         па cna 7 сп               608            CE           дінки
+ременк SW 20030009                         Ш                                                                         er
+ELRING 424.820                           Ne at                                                        635
+Сальники клапанів {к-кт) Mercedes       несила                   635              CRE
+й    Й                                  Hz cant Son                                                               жари
+Вевг Sprinter ОМ642
+4
+тер погоню |
+VICTOR REINZ 14-32101-01                аз                                                                    985
+14 32101-01 Victor Reinz Комплект        посклан                    985             RE
+Й                               ie conan 4 oe                                                    Nyaa
+болтів SL BMW                          ту
++ериль поставии |
+BMW 11121726243                        ла                          164              Ши                  327
+Втулка = 13, SMM MSO                     Su Tu                                                                CERIN
+JP GROUP 1411000300                    ia поставки!                                                        519
+Пагрубок вентиляції картера BMW E36    Но силах? on                  519               EE -               Й
+Tenring 95-99                            НА                                                      Airs
+SKF VKM 38003                           .
+щі             й                                           Зесмчи постав |
+Ролик пОЛклиНнОвС о ременя                да                                                                                  764
+(пластик) ВММУ 3 (G36), 3 Е46), 3 (592). налаляе чай                 764              Ss             ho
+3 (Е93), 5 (E34). 5 (E39). 5 (E50). 5 (E61). Й                                                              п
+(E63), 6 (E64), 7 (ЕЗЯХ Х5 (EFA),
+Ферма поставки |
+FEBI BILSTEIN 06051                      ла                          658              і                  558
+Ролих ГРМ BMW 5КОРА {Вир-во РЕВ!)      47 еп                                                                          PR.
+РАЗОМ`;
+
+    const parts = __test__.parseOcrText(input, null);
+
+    expect(parts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          part_number: '40-76149-00',
+          name: expect.stringMatching(/Прокладк|термостат/i),
+          price: 38,
+        }),
+        expect.objectContaining({
+          part_number: 'W105',
+          name: expect.stringMatching(/Очищ|гальмів/i),
+        }),
+        expect.objectContaining({
+          part_number: '147.581',
+          name: expect.stringMatching(/Прокладк|колектор/i),
+          price: 392,
+          quantity: 2,
+        }),
+        expect.objectContaining({
+          part_number: '20 03 0009',
+          name: expect.stringMatching(/ролик|ремен/i),
+          price: 608,
+        }),
+        expect.objectContaining({
+          part_number: '424.820',
+          name: expect.stringMatching(/Сальник|клапан/i),
+          price: 635,
+        }),
+        expect.objectContaining({
+          part_number: '11121726243',
+          name: expect.stringMatching(/Втулк/i),
+          price: 164,
+          quantity: 2,
+        }),
+        expect.objectContaining({
+          part_number: '1411000300',
+          name: expect.stringMatching(/Патруб|вентиляц/i),
+          price: 519,
+        }),
+        expect.objectContaining({
+          part_number: 'VKM 38003',
+          name: expect.stringMatching(/Ролик|ремен/i),
+          price: 764,
+        }),
+        expect.objectContaining({
+          part_number: '06051',
+          name: expect.stringMatching(/Ролик|ГРМ/i),
+          price: 658,
+        }),
+      ])
+    );
+
+    expect(parts.find((item) => item.part_number === '147.581')?.name).not.toBe('ELRING 147.581');
+    expect(parts.find((item) => item.part_number === '20 03 0009')?.name).not.toBe('SWAG 20 03 0009');
+    expect(parts.find((item) => item.part_number === '11121726243')?.name).not.toBe('BMW 11121726243');
+  });
 });
