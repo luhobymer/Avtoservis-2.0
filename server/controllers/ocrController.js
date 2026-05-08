@@ -104,6 +104,8 @@ const isNoisyParsedPartName = (value) => {
   if (!name) return true;
   if (partsNameNoiseRegex.test(name)) return true;
   if (name.split(' ').filter((token) => token.length === 1).length >= 3) return true;
+  if ((name.match(/\b\d{1,4}\b/g) || []).length >= 3) return true;
+  if (/(?:^|\s)(?:ce|re|ss|ee|tu|na|hz|or|at|an)(?:\s|$)/i.test(name)) return true;
   return false;
 };
 
@@ -113,15 +115,24 @@ const getParsedPartQuality = (item) => {
   const pn = String(item?.part_number || '').trim();
   const price = Number(item?.price || 0);
   const qty = Number(item?.quantity || 0);
+  const strongCyrWords = name.match(/[А-Яа-яІіЇїЄєҐґ]{4,}/g) || [];
+  const strongLatWords = name.match(/[A-Za-z]{4,}/g) || [];
+  const digitTokens = name.match(/\b\d{1,4}\b/g) || [];
   let score = 0;
   if (name.length >= 8) score += 2;
   if (/[А-Яа-яІіЇїЄєҐґ]{4,}|[A-Za-z]{4,}/.test(name)) score += 1;
+  if (strongCyrWords.length >= 2) score += 3;
+  else if (strongCyrWords.length >= 1 && strongLatWords.length >= 1) score += 2;
+  else if (strongLatWords.length >= 2) score += 1;
   if (partsCandidateBrandRegex.test(name)) score += 2;
   if (pn) score += 4;
   if (price >= 10 && price <= 5000) score += 2;
   else if (price > 5000) score -= 2;
   if (qty >= 1 && qty <= 20) score += 1;
   if (qty > 1) score += 1;
+  if (!strongCyrWords.length && !partsCandidateBrandRegex.test(name)) score -= 3;
+  if (digitTokens.length >= 2) score -= 2;
+  if (name.length > 96) score -= 3;
   if (isNoisyParsedPartName(name)) score -= 4;
   return score;
 };
@@ -2278,6 +2289,245 @@ function parseOcrText(text, ocrData = null) {
     return out;
   };
 
+  const getDescriptiveNameScore = (value) => {
+    const src = normalizeLine(String(value || ''));
+    if (!src) return -Infinity;
+    const cyrWords = src.match(/[А-Яа-яІіЇїЄєҐґ]{4,}/g) || [];
+    const latWords = src.match(/[A-Za-z]{4,}/g) || [];
+    const digitTokens = src.match(/\b\d{1,4}\b/g) || [];
+    let score = src.length;
+    score += cyrWords.length * 18;
+    score += latWords.length * 6;
+    if (partsNameNoiseRegex.test(src)) score -= 22;
+    if (digitTokens.length >= 2) score -= 12;
+    if (src.split(' ').filter((token) => token.length === 1).length >= 3) score -= 18;
+    return score;
+  };
+
+  const buildPartNumberSearchVariants = (value) => {
+    const raw = normalizeLine(String(value || ''));
+    if (!raw) return [];
+    const compact = raw.replace(/[\s./-]+/g, '').toLowerCase();
+    return Array.from(
+      new Set(
+        [
+          raw.toLowerCase(),
+          compact,
+          raw.replace(/\s+/g, ' ').toLowerCase(),
+          raw.replace(/[.\-]/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase(),
+        ].filter(Boolean)
+      )
+    );
+  };
+
+  const lineContainsPartNumber = (line, partNumber) => {
+    const src = normalizeLine(String(line || ''));
+    if (!src || !partNumber) return false;
+    const srcLower = src.toLowerCase();
+    const srcCompact = src.replace(/[\s./-]+/g, '').toLowerCase();
+    return buildPartNumberSearchVariants(partNumber).some((variant) => {
+      const compactVariant = variant.replace(/[\s./-]+/g, '');
+      return srcLower.includes(variant) || (compactVariant && srcCompact.includes(compactVariant));
+    });
+  };
+
+  const extractNearbyDescription = (line, partNumber = '') => {
+    let out = normalizeLine(String(line || ''));
+    if (!out) return '';
+    if (partNumber) {
+      out = normalizeLine(out.replace(new RegExp(escapeRegExp(partNumber), 'gi'), ' '));
+    }
+    out = out
+      .replace(numberPattern, ' ')
+      .replace(/[₴]/g, ' ')
+      .replace(/(?:^|\s)(?:an|or|na|ce|re|ss|ee|tu|hz|at|meet|fan|pane)(?=\s|$)/gi, ' ')
+      .replace(/KAZNAHIB/gi, 'клапанів')
+      .replace(/іврмосіа/gi, 'термостат')
+      .replace(/Прокладха/gi, 'Прокладка');
+    out = trimLeadingNameNoise(trimTrailingNameNoise(out));
+    if (!out || isNoiseLine(out)) return '';
+    if (isLikelyPartNumberLine(out) || isSkuOnlyLine(out)) return '';
+    const cyrWords = out.match(/[А-Яа-яІіЇїЄєҐґ]{4,}/g) || [];
+    if (partsNameNoiseRegex.test(out) && cyrWords.length < 2) return '';
+    if ((out.match(/\b\d{1,4}\b/g) || []).length >= 3 && cyrWords.length < 2) return '';
+    return out;
+  };
+
+  const looksLikeNextItemStart = (line, currentPartNumber = '') => {
+    const src = normalizeLine(String(line || ''));
+    if (!src) return false;
+    if (lineContainsPartNumber(src, currentPartNumber)) return false;
+    if (isSkuOnlyLine(src) || isLikelyPartNumberLine(src)) return true;
+    if (/\b[A-Z]{1,4}\d{3,}[A-Z0-9]*\b/i.test(src)) return true;
+    if (partsCandidateBrandRegex.test(src) && extractNumbersFromLine(src).some((n) => n >= 20 && n <= 200000)) {
+      return true;
+    }
+    return false;
+  };
+
+  const extractLoosePartNumber = (value) => {
+    const src = normalizeLine(String(value || ''));
+    if (!src) return '';
+    const patterns = [
+      /\b\d{2}\s\d{2}\s\d{4}\b/i,
+      /\b[A-Z0-9]{2,}(?:[./-][A-Z0-9]{2,})+\b/i,
+      /\b[A-Z]{1,6}\d{3,}[A-Z0-9]*\b/i,
+      /\b0\d{4,}\b/i,
+      /\b\d{7,}\b/i,
+    ];
+    for (const re of patterns) {
+      const match = src.match(re);
+      if (match && match[0]) return normalizeLine(String(match[0]));
+    }
+    return extractBrandSpaceSku(src);
+  };
+
+  const derivePriceQtyFromNearbyLines = (startIndex, partNumber = '') => {
+    const nearby = [];
+    for (let i = startIndex; i < lines.length && i <= startIndex + 2; i += 1) {
+      let line = String(lines[i] || '');
+      if (partNumber) {
+        for (const variant of buildPartNumberSearchVariants(partNumber)) {
+          if (!variant) continue;
+          line = line.replace(new RegExp(escapeRegExp(variant), 'gi'), ' ');
+        }
+      }
+      nearby.push(...extractNumbersFromLine(line).filter((n) => n >= 1 && n <= 200000));
+    }
+    const plausible = nearby.filter((n) => n >= 10 && n <= 5000);
+    for (let a = 0; a < plausible.length; a += 1) {
+      for (let b = a + 1; b < plausible.length; b += 1) {
+        const small = Math.min(plausible[a], plausible[b]);
+        const big = Math.max(plausible[a], plausible[b]);
+        const ratio = small > 0 ? big / small : null;
+        const ratioInt = ratio ? Math.round(ratio) : null;
+        if (
+          ratioInt &&
+          ratioInt >= 1 &&
+          ratioInt <= 20 &&
+          nearlyEquals(small * ratioInt, big, 2.0)
+        ) {
+          return { price: small, quantity: ratioInt };
+        }
+      }
+    }
+    if (plausible.length) return { price: Math.min(...plausible), quantity: 1 };
+    return null;
+  };
+
+  const improvePartNameFromContext = (item) => {
+    if (!item) return item;
+    const currentName = normalizeLine(String(item?.name || ''));
+    const partNumber = String(item?.part_number || '').trim();
+    if (!partNumber) return item;
+
+    const currentScore = getDescriptiveNameScore(currentName);
+    const anchorIndexes = [];
+    for (let idx = 0; idx < lines.length; idx += 1) {
+      if (lineContainsPartNumber(lines[idx], partNumber)) {
+        anchorIndexes.push(idx);
+      }
+    }
+    if (!anchorIndexes.length) return item;
+
+    let bestDesc = '';
+    let bestDescScore = -Infinity;
+
+    for (const anchorIdx of anchorIndexes) {
+      const collected = [];
+      for (let probe = anchorIdx + 1; probe < lines.length && probe <= anchorIdx + 4; probe += 1) {
+        const probeLine = lines[probe];
+        if (!probeLine) continue;
+        if (lineContainsPartNumber(probeLine, partNumber)) continue;
+        if (isPriceLine(probeLine)) continue;
+        if (looksLikeNextItemStart(probeLine, partNumber)) break;
+        const desc = extractNearbyDescription(probeLine, partNumber);
+        if (!desc) continue;
+        collected.push(desc);
+        if (normalizeLine(collected.join(' ')).length >= 28) break;
+      }
+
+      const candidate = trimLeadingNameNoise(trimTrailingNameNoise(collected.join(' ')));
+      const candidateScore = getDescriptiveNameScore(candidate);
+      if (candidateScore > bestDescScore) {
+        bestDesc = candidate;
+        bestDescScore = candidateScore;
+      }
+    }
+
+    const currentLooksCanonical =
+      Boolean(partNumber) &&
+      currentName.replace(new RegExp(escapeRegExp(partNumber), 'gi'), '').trim().length <= 8;
+    const currentDigitTokens = currentName.match(/\b\d{1,4}\b/g) || [];
+    const bestCyrWords = bestDesc.match(/[А-Яа-яІіЇїЄєҐґ]{4,}/g) || [];
+    const shouldReplace =
+      bestDesc &&
+      (
+        currentLooksCanonical ||
+        ((currentName.length >= 48 || currentDigitTokens.length >= 2) && bestCyrWords.length >= 1 && bestDescScore >= 14) ||
+        bestDescScore >= currentScore + 10 ||
+        (bestDescScore >= currentScore + 4 && /[А-Яа-яІіЇїЄєҐґ]{4,}/.test(bestDesc))
+      );
+
+    if (!shouldReplace) return item;
+    return {
+      ...item,
+      name: bestDesc,
+    };
+  };
+
+  const recoverPartNumberFromContext = (item) => {
+    if (!item || String(item?.part_number || '').trim()) return item;
+    const name = normalizeLine(String(item?.name || ''));
+    if (!name) return item;
+    const keywords = (name.match(/[А-Яа-яІіЇїЄєҐґ]{5,}/g) || []).slice(0, 3);
+    if (!keywords.length) return item;
+    for (let idx = 0; idx < lines.length; idx += 1) {
+      const line = String(lines[idx] || '');
+      if (!keywords.some((kw) => line.toLowerCase().includes(kw.toLowerCase().slice(0, 5)))) continue;
+      for (let back = Math.max(0, idx - 2); back <= idx; back += 1) {
+        const pn = extractLoosePartNumber(lines[back]);
+        if (pn) {
+          return {
+            ...item,
+            part_number: pn,
+          };
+        }
+      }
+    }
+    return item;
+  };
+
+  const appendMissingExplicitPartNumberItems = (items) => {
+    const out = Array.isArray(items) ? items.slice() : [];
+    const existingPn = new Set(out.map((item) => normalizePartNumberKey(item?.part_number || '')).filter(Boolean));
+    for (let idx = 0; idx < lines.length; idx += 1) {
+      const line = lines[idx];
+      const pn = extractLoosePartNumber(line);
+      const pnKey = normalizePartNumberKey(pn);
+      if (!pn || !pnKey || existingPn.has(pnKey)) continue;
+      const descParts = [];
+      for (let probe = idx + 1; probe < lines.length && probe <= idx + 3; probe += 1) {
+        if (looksLikeNextItemStart(lines[probe], pn)) break;
+        const desc = extractNearbyDescription(lines[probe], pn);
+        if (desc) descParts.push(desc);
+      }
+      const name = trimLeadingNameNoise(trimTrailingNameNoise(descParts.join(' ')));
+      if (getDescriptiveNameScore(name) < 18) continue;
+      const priceQty = derivePriceQtyFromNearbyLines(idx, pn);
+      if (!Number.isFinite(priceQty?.price) || priceQty.price < 10) continue;
+      out.push({
+        name,
+        price: priceQty.price,
+        quantity: priceQty.quantity || 1,
+        part_number: pn,
+        purchased_by: 'owner',
+      });
+      existingPn.add(pnKey);
+    }
+    return out;
+  };
+
   const isPriceLine = (line) => {
     if (!line) return false;
     if (!(priceKeywords.test(line) || currencyKeywords.test(line))) return false;
@@ -2586,7 +2836,9 @@ function parseOcrText(text, ocrData = null) {
     if (!Number.isFinite(price) || price < 10) return;
     const qty = Number.isFinite(quantity) && quantity > 0 ? quantity : 1;
 
-    const partNumberSource = String(lineForPartNumber || cleanedName);
+    const partNumberSource = normalizeLine(
+      [String(lineForPartNumber || '').trim(), cleanedName].filter(Boolean).join(' ')
+    );
     const isDimensionLike = /\d+(?:[.,]\d+)?\s*[xх]\s*\d+(?:[.,]\d+)?\s*[xх]\s*\d+(?:[.,]\d+)?/i.test(
       partNumberSource
     );
@@ -3076,7 +3328,30 @@ function parseOcrText(text, ocrData = null) {
     bestItems = normalizedStructured;
     bestScore = structuredScore;
   }
-  return removeSuffixPartNumberDuplicates(bestItems);
+  const supplementalCandidates = mergePartsAcrossOcrAttempts([
+    normalizedStructured,
+    normalizedAnchored,
+    normalizedParts,
+  ]);
+  const supplementedItems = Array.isArray(bestItems) ? bestItems.slice() : [];
+  const existingPnKeys = new Set(
+    supplementedItems.map((item) => normalizePartNumberKey(item?.part_number || '')).filter(Boolean)
+  );
+  for (const candidate of supplementalCandidates) {
+    if (!candidate) continue;
+    const pnKey = normalizePartNumberKey(candidate?.part_number || '');
+    if (!pnKey || existingPnKeys.has(pnKey)) continue;
+    if (getParsedPartQuality(candidate) < 5) continue;
+    existingPnKeys.add(pnKey);
+    supplementedItems.push(candidate);
+  }
+
+  const improvedItems = removeSuffixPartNumberDuplicates(
+    appendMissingExplicitPartNumberItems(
+      supplementedItems.map((item) => improvePartNameFromContext(recoverPartNumberFromContext(item)))
+    )
+  );
+  return removeSuffixPartNumberDuplicates(improvedItems);
 }
 
 function extractLicensePlateFromText(text) {
