@@ -532,6 +532,9 @@ const ensureSchemaSqliteSync = (sqliteDb) => {
     { name: 'price_text', def: 'TEXT' },
     { name: 'duration_text', def: 'TEXT' },
     { name: 'created_by_mechanic_id', def: 'TEXT' },
+    { name: 'service_station_id', def: 'TEXT' },
+    { name: 'station_id', def: 'TEXT' },
+    { name: 'category_id', def: 'TEXT' },
   ]);
   ensureColumnsSync('mechanics', [
     { name: 'specialization_id', def: 'TEXT' },
@@ -773,6 +776,9 @@ const ensureSchema = async (client) => {
     { name: 'price_text', def: 'TEXT' },
     { name: 'duration_text', def: 'TEXT' },
     { name: 'created_by_mechanic_id', def: 'TEXT' },
+    { name: 'service_station_id', def: 'TEXT' },
+    { name: 'station_id', def: 'TEXT' },
+    { name: 'category_id', def: 'TEXT' },
   ]);
   await ensureTableColumns(client, 'mechanics', [
     { name: 'specialization_id', def: 'TEXT' },
@@ -939,9 +945,6 @@ const getExistingColumn = async (tableName, candidates) => {
   const existing = candidates.find((candidate) => columnNames.has(candidate));
   if (existing) {
     return existing;
-  }
-  if (candidates.length > 0) {
-    return candidates[0];
   }
   return null;
 };

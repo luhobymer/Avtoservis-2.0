@@ -93,13 +93,6 @@ router.post(
         return res.status(400).json({ message: 'No file uploaded' });
       }
 
-      if (!(r2Client && r2Config)) {
-        return res.status(503).json({
-          message:
-            'Завантаження фото не налаштовано (потрібно підключити Cloudflare R2: R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET, R2_ENDPOINT, R2_PUBLIC_BASE_URL)',
-        });
-      }
-
       let fileUrl = null;
       let filename = null;
       let storageType = null;
@@ -115,6 +108,31 @@ router.post(
         return '.jpg';
       })();
       const key = `${Date.now()}-${crypto.randomUUID()}${safeExt}`;
+
+      if (!(r2Client && r2Config)) {
+        const uploadsDir = path.join(__dirname, '..', 'public', 'uploads');
+        try {
+          fs.mkdirSync(uploadsDir, { recursive: true });
+          const targetPath = path.join(uploadsDir, key);
+          fs.writeFileSync(targetPath, req.file.buffer);
+          filename = key;
+          fileUrl = `/api/uploads/${key}`;
+          storageType = 'local';
+          return res.json({
+            message: 'File uploaded successfully',
+            url: fileUrl,
+            filename,
+            storage: storageType,
+          });
+        } catch (err) {
+          console.error('Local upload error:', err);
+          return res.status(503).json({
+            message:
+              'Завантаження фото не налаштовано (потрібно підключити Cloudflare R2: R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET, R2_ENDPOINT, R2_PUBLIC_BASE_URL)',
+            details: err?.message || null,
+          });
+        }
+      }
 
       try {
         await r2Client.send(
