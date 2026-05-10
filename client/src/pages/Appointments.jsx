@@ -20,7 +20,11 @@ import {
   Box,
   Tabs,
   Tab,
-  Skeleton
+  Skeleton,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem
 } from '@mui/material';
 import { format } from 'date-fns';
 
@@ -32,6 +36,32 @@ const Appointments = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [tabValue, setTabValue] = useState(0);
+
+  const [sortKey, setSortKey] = useState(() => {
+    try {
+      return localStorage.getItem('appointments_sort_key') || 'scheduled';
+    } catch (e) {
+      void e;
+      return 'scheduled';
+    }
+  });
+  const [sortDir, setSortDir] = useState(() => {
+    try {
+      return localStorage.getItem('appointments_sort_dir') || 'desc';
+    } catch (e) {
+      void e;
+      return 'desc';
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('appointments_sort_key', sortKey);
+      localStorage.setItem('appointments_sort_dir', sortDir);
+    } catch (e) {
+      void e;
+    }
+  }, [sortDir, sortKey]);
 
   const location = useLocation();
   const navigate = useNavigate();
@@ -125,6 +155,63 @@ const Appointments = () => {
   };
 
   const currentList = isMasterUser && tabValue === 1 ? adminAppointments : appointments;
+  const sortedList = useMemo(() => {
+    const rows = Array.isArray(currentList) ? currentList : [];
+    const dir = sortDir === 'asc' ? 1 : -1;
+
+    const getString = (v) => String(v ?? '').trim().toLowerCase();
+    const getNumber = (v) => {
+      const n = Number(v);
+      return Number.isFinite(n) ? n : null;
+    };
+    const getScheduled = (a) => a?.scheduledDate || a?.scheduled_time || null;
+    const getStatus = (a) => a?.status || '';
+    const getPrice = (a) =>
+      getNumber(a?.appointment_price ?? a?.appointmentPrice ?? a?.price ?? null);
+    const getVehicleLabel = (a) => {
+      const vin = a?.vehicle_vin || '';
+      const vehicle = vehicles.find((v) => v.vin === vin);
+      if (!vehicle) return getString(vin);
+      return getString(`${vehicle.brand || vehicle.make || ''} ${vehicle.model || ''} ${vehicle.year || ''}`);
+    };
+
+    const keyFn = (a) => {
+      switch (sortKey) {
+        case 'status':
+          return getString(getStatus(a));
+        case 'vehicle':
+          return getVehicleLabel(a);
+        case 'price':
+          return getPrice(a);
+        case 'scheduled':
+        default:
+          return getScheduled(a) ? new Date(getScheduled(a)).getTime() : null;
+      }
+    };
+
+    return rows
+      .map((appointment, idx) => ({ appointment, idx }))
+      .sort((a, b) => {
+        const va = keyFn(a.appointment);
+        const vb = keyFn(b.appointment);
+        if (va == null && vb == null) return a.idx - b.idx;
+        if (va == null) return 1;
+        if (vb == null) return -1;
+
+        if (typeof va === 'number' && typeof vb === 'number') {
+          if (va === vb) return a.idx - b.idx;
+          return (va - vb) * dir;
+        }
+
+        const result = String(va).localeCompare(String(vb), undefined, {
+          numeric: true,
+          sensitivity: 'base',
+        });
+        if (result === 0) return a.idx - b.idx;
+        return result * dir;
+      })
+      .map((entry) => entry.appointment);
+  }, [currentList, sortDir, sortKey, vehicles]);
   const skeletonRows = useMemo(() => Array.from({ length: 7 }, (_, i) => i), []);
 
   if (error) {
@@ -170,6 +257,36 @@ const Appointments = () => {
         </Box>
       )}
 
+      <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+        <FormControl size="small" sx={{ minWidth: 220 }}>
+          <InputLabel id="appointments-sort-key-label">{t('common.sortBy', 'Сортувати за')}</InputLabel>
+          <Select
+            labelId="appointments-sort-key-label"
+            value={sortKey}
+            label={t('common.sortBy', 'Сортувати за')}
+            onChange={(e) => setSortKey(e.target.value)}
+          >
+            <MenuItem value="scheduled">{t('appointment.scheduledDate', 'Дата/час')}</MenuItem>
+            <MenuItem value="status">{t('appointment.status', 'Статус')}</MenuItem>
+            <MenuItem value="vehicle">{t('vehicle.title', 'Авто')}</MenuItem>
+            <MenuItem value="price">{t('appointment.price', 'Ціна')}</MenuItem>
+          </Select>
+        </FormControl>
+
+        <FormControl size="small" sx={{ minWidth: 160 }}>
+          <InputLabel id="appointments-sort-dir-label">{t('common.order', 'Порядок')}</InputLabel>
+          <Select
+            labelId="appointments-sort-dir-label"
+            value={sortDir}
+            label={t('common.order', 'Порядок')}
+            onChange={(e) => setSortDir(e.target.value)}
+          >
+            <MenuItem value="asc">{t('common.ascending', 'Зростання')}</MenuItem>
+            <MenuItem value="desc">{t('common.descending', 'Спадання')}</MenuItem>
+          </Select>
+        </FormControl>
+      </Box>
+
       {loading ? (
         <TableContainer component={Paper}>
           <Table sx={{ minWidth: { xs: 0, sm: 650 } }}>
@@ -199,7 +316,7 @@ const Appointments = () => {
             </TableBody>
           </Table>
         </TableContainer>
-      ) : currentList.length === 0 ? (
+      ) : sortedList.length === 0 ? (
         <Alert severity="info">
           {tabValue === 0 
             ? t('appointment.noAppointments', 'У вас ще немає записів на обслуговування') 
@@ -220,7 +337,7 @@ const Appointments = () => {
                 </TableRow>
               </TableHead>
             <TableBody>
-              {currentList.map((appointment) => (
+              {sortedList.map((appointment) => (
                 <TableRow 
                   key={appointment.id} 
                   hover 

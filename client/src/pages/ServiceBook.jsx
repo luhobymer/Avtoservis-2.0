@@ -37,6 +37,32 @@ const ServiceBook = () => {
   const [loadingRecords, setLoadingRecords] = useState(false);
   const [error, setError] = useState(null);
 
+  const [sortKey, setSortKey] = useState(() => {
+    try {
+      return localStorage.getItem('service_records_sort_key') || 'service_date';
+    } catch (e) {
+      void e;
+      return 'service_date';
+    }
+  });
+  const [sortDir, setSortDir] = useState(() => {
+    try {
+      return localStorage.getItem('service_records_sort_dir') || 'desc';
+    } catch (e) {
+      void e;
+      return 'desc';
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('service_records_sort_key', sortKey);
+      localStorage.setItem('service_records_sort_dir', sortDir);
+    } catch (e) {
+      void e;
+    }
+  }, [sortDir, sortKey]);
+
   const selectedVehicle = useMemo(
     () => vehicles.find((v) => String(v.vin) === String(selectedVehicleVin)) || null,
     [vehicles, selectedVehicleVin]
@@ -88,6 +114,58 @@ const ServiceBook = () => {
   useEffect(() => {
     fetchRecords();
   }, [fetchRecords]);
+
+  const sortedRecords = useMemo(() => {
+    const rows = Array.isArray(records) ? records : [];
+    const dir = sortDir === 'asc' ? 1 : -1;
+
+    const getString = (v) => String(v ?? '').trim().toLowerCase();
+    const getNumber = (v) => {
+      const n = Number(v);
+      return Number.isFinite(n) ? n : null;
+    };
+    const getServiceDate = (r) => r?.serviceDate || r?.service_date || null;
+    const getMileage = (r) => getNumber(r?.mileage);
+    const getCost = (r) => getNumber(r?.cost);
+    const getServiceType = (r) => getString(r?.serviceName || r?.serviceType || r?.service_type || '');
+
+    const keyFn = (r) => {
+      switch (sortKey) {
+        case 'mileage':
+          return getMileage(r);
+        case 'cost':
+          return getCost(r);
+        case 'service_type':
+          return getServiceType(r);
+        case 'service_date':
+        default:
+          return getServiceDate(r) ? new Date(getServiceDate(r)).getTime() : null;
+      }
+    };
+
+    return rows
+      .map((record, idx) => ({ record, idx }))
+      .sort((a, b) => {
+        const va = keyFn(a.record);
+        const vb = keyFn(b.record);
+        if (va == null && vb == null) return a.idx - b.idx;
+        if (va == null) return 1;
+        if (vb == null) return -1;
+
+        if (typeof va === 'number' && typeof vb === 'number') {
+          if (va === vb) return a.idx - b.idx;
+          return (va - vb) * dir;
+        }
+
+        const result = String(va).localeCompare(String(vb), undefined, {
+          numeric: true,
+          sensitivity: 'base',
+        });
+        if (result === 0) return a.idx - b.idx;
+        return result * dir;
+      })
+      .map((entry) => entry.record);
+  }, [records, sortDir, sortKey]);
 
   if (!user?.id) {
     return (
@@ -171,6 +249,35 @@ const ServiceBook = () => {
       ) : records.length === 0 ? (
         <Alert severity="info">{t('serviceRecord.noRecords', 'Немає сервісних записів')}</Alert>
       ) : (
+        <>
+          <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+            <FormControl size="small" sx={{ minWidth: 220 }}>
+              <InputLabel id="service-book-sort-key">{t('common.sortBy', 'Сортувати за')}</InputLabel>
+              <Select
+                labelId="service-book-sort-key"
+                value={sortKey}
+                label={t('common.sortBy', 'Сортувати за')}
+                onChange={(e) => setSortKey(e.target.value)}
+              >
+                <MenuItem value="service_date">{t('serviceRecord.serviceDate', 'Дата')}</MenuItem>
+                <MenuItem value="service_type">{t('serviceRecord.serviceType', 'Тип')}</MenuItem>
+                <MenuItem value="mileage">{t('serviceRecord.mileage', 'Пробіг')}</MenuItem>
+                <MenuItem value="cost">{t('serviceRecord.cost', 'Вартість')}</MenuItem>
+              </Select>
+            </FormControl>
+            <FormControl size="small" sx={{ minWidth: 160 }}>
+              <InputLabel id="service-book-sort-dir">{t('common.order', 'Порядок')}</InputLabel>
+              <Select
+                labelId="service-book-sort-dir"
+                value={sortDir}
+                label={t('common.order', 'Порядок')}
+                onChange={(e) => setSortDir(e.target.value)}
+              >
+                <MenuItem value="asc">{t('common.ascending', 'Зростання')}</MenuItem>
+                <MenuItem value="desc">{t('common.descending', 'Спадання')}</MenuItem>
+              </Select>
+            </FormControl>
+          </Box>
         <TableContainer component={Paper} variant="outlined">
           <Table>
             <TableHead>
@@ -183,7 +290,7 @@ const ServiceBook = () => {
               </TableRow>
             </TableHead>
             <TableBody>
-              {records.map((record, idx) => {
+              {sortedRecords.map((record, idx) => {
                 const serviceDate = record.serviceDate || record.service_date;
                 const formattedDate = serviceDate
                   ? dayjs(serviceDate).isValid()
@@ -209,6 +316,7 @@ const ServiceBook = () => {
             </TableBody>
           </Table>
         </TableContainer>
+        </>
       )}
     </Container>
   );

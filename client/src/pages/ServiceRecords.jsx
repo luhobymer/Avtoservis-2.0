@@ -18,7 +18,10 @@ import {
   CircularProgress,
   Alert,
   Box,
-  
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
 } from '@mui/material';
 import dayjs from 'dayjs';
 import ServiceBookExport from '../components/ServiceBookExport';
@@ -34,9 +37,34 @@ const ServiceRecords = ({ vehicleId: vehicleIdProp, ownerId: ownerIdProp, vehicl
   const [vehicles, setVehicles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [sortKey, setSortKey] = useState(() => {
+    try {
+      return localStorage.getItem('service_records_sort_key') || 'service_date';
+    } catch (e) {
+      void e;
+      return 'service_date';
+    }
+  });
+  const [sortDir, setSortDir] = useState(() => {
+    try {
+      return localStorage.getItem('service_records_sort_dir') || 'desc';
+    } catch (e) {
+      void e;
+      return 'desc';
+    }
+  });
   const filteredVehicleId = vehicleIdProp || vehicleIdParam || null;
   const filteredVehicleVin = vehicleVinProp || null;
   const effectiveUserId = ownerIdProp || user?.id || null;
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('service_records_sort_key', sortKey);
+      localStorage.setItem('service_records_sort_dir', sortDir);
+    } catch (e) {
+      void e;
+    }
+  }, [sortDir, sortKey]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -108,6 +136,74 @@ const ServiceRecords = ({ vehicleId: vehicleIdProp, ownerId: ownerIdProp, vehicl
       })`.trim()
     : null;
 
+  const sortedRecords = React.useMemo(() => {
+    const rows = Array.isArray(records) ? records : [];
+    const dir = sortDir === 'asc' ? 1 : -1;
+
+    const getString = (v) => String(v ?? '').trim().toLowerCase();
+    const getNumber = (v) => {
+      const n = Number(v);
+      return Number.isFinite(n) ? n : null;
+    };
+    const getServiceDate = (r) => r?.serviceDate || r?.service_date || null;
+    const getMileage = (r) => getNumber(r?.mileage);
+    const getCost = (r) => getNumber(r?.cost);
+    const getServiceType = (r) => getString(r?.serviceName || r?.serviceType || r?.service_type || '');
+
+    const vehicleLabel = (r) => {
+      const recordVehicleId = r.vehicleId || r.VehicleId || r.vehicle_id;
+      const recordVehicleVin = r.vehicleVin || r.vehicle_vin;
+      const inlineVehicle = r.Vehicle || r.vehicles || r.vehicle || null;
+      const vehicle = vehicles.find((v) => {
+        if (recordVehicleId) return v.id?.toString() === recordVehicleId?.toString();
+        if (recordVehicleVin) return v.vin === recordVehicleVin;
+        return false;
+      });
+      const resolvedVehicle = vehicle || inlineVehicle;
+      if (!resolvedVehicle) return '';
+      return getString(`${resolvedVehicle.brand || resolvedVehicle.make || ''} ${resolvedVehicle.model || ''} ${resolvedVehicle.year || ''}`);
+    };
+
+    const keyFn = (r) => {
+      switch (sortKey) {
+        case 'mileage':
+          return getMileage(r);
+        case 'cost':
+          return getCost(r);
+        case 'service_type':
+          return getServiceType(r);
+        case 'vehicle':
+          return vehicleLabel(r);
+        case 'service_date':
+        default:
+          return getServiceDate(r) ? new Date(getServiceDate(r)).getTime() : null;
+      }
+    };
+
+    return rows
+      .map((record, idx) => ({ record, idx }))
+      .sort((a, b) => {
+        const va = keyFn(a.record);
+        const vb = keyFn(b.record);
+        if (va == null && vb == null) return a.idx - b.idx;
+        if (va == null) return 1;
+        if (vb == null) return -1;
+
+        if (typeof va === 'number' && typeof vb === 'number') {
+          if (va === vb) return a.idx - b.idx;
+          return (va - vb) * dir;
+        }
+
+        const result = String(va).localeCompare(String(vb), undefined, {
+          numeric: true,
+          sensitivity: 'base',
+        });
+        if (result === 0) return a.idx - b.idx;
+        return result * dir;
+      })
+      .map((entry) => entry.record);
+  }, [records, sortDir, sortKey, vehicles]);
+
   if (loading) {
     return (
       <Container sx={{ mt: 4, display: 'flex', justifyContent: 'center' }}>
@@ -139,6 +235,34 @@ const ServiceRecords = ({ vehicleId: vehicleIdProp, ownerId: ownerIdProp, vehicl
               {t('serviceRecord.add')}
             </Button>
           </Box>
+          <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+            <FormControl size="small" sx={{ minWidth: 220 }}>
+              <InputLabel id="service-records-sort-key-embedded">{t('common.sortBy', 'Сортувати за')}</InputLabel>
+              <Select
+                labelId="service-records-sort-key-embedded"
+                value={sortKey}
+                label={t('common.sortBy', 'Сортувати за')}
+                onChange={(e) => setSortKey(e.target.value)}
+              >
+                <MenuItem value="service_date">{t('serviceRecord.serviceDate')}</MenuItem>
+                <MenuItem value="service_type">{t('serviceRecord.serviceType')}</MenuItem>
+                <MenuItem value="mileage">{t('serviceRecord.mileage')}</MenuItem>
+                <MenuItem value="cost">{t('serviceRecord.cost')}</MenuItem>
+              </Select>
+            </FormControl>
+            <FormControl size="small" sx={{ minWidth: 160 }}>
+              <InputLabel id="service-records-sort-dir-embedded">{t('common.order', 'Порядок')}</InputLabel>
+              <Select
+                labelId="service-records-sort-dir-embedded"
+                value={sortDir}
+                label={t('common.order', 'Порядок')}
+                onChange={(e) => setSortDir(e.target.value)}
+              >
+                <MenuItem value="asc">{t('common.ascending', 'Зростання')}</MenuItem>
+                <MenuItem value="desc">{t('common.descending', 'Спадання')}</MenuItem>
+              </Select>
+            </FormControl>
+          </Box>
           {records.length === 0 ? (
             <Alert severity="info">{t('serviceRecord.noRecords')}</Alert>
           ) : (
@@ -154,7 +278,7 @@ const ServiceRecords = ({ vehicleId: vehicleIdProp, ownerId: ownerIdProp, vehicl
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {records.map((record, index) => {
+                  {sortedRecords.map((record, index) => {
                     const serviceDate = record.serviceDate || record.service_date;
                     const formattedServiceDate = serviceDate
                       ? dayjs(serviceDate).isValid()
@@ -221,6 +345,36 @@ const ServiceRecords = ({ vehicleId: vehicleIdProp, ownerId: ownerIdProp, vehicl
           </Button>
         </Box>
       </Box>
+      <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+        <FormControl size="small" sx={{ minWidth: 220 }}>
+          <InputLabel id="service-records-sort-key">{t('common.sortBy', 'Сортувати за')}</InputLabel>
+          <Select
+            labelId="service-records-sort-key"
+            value={sortKey}
+            label={t('common.sortBy', 'Сортувати за')}
+            onChange={(e) => setSortKey(e.target.value)}
+          >
+            <MenuItem value="service_date">{t('serviceRecord.serviceDate')}</MenuItem>
+            {!filteredVehicleId && <MenuItem value="vehicle">{t('serviceRecord.vehicle', 'Авто')}</MenuItem>}
+            <MenuItem value="service_type">{t('serviceRecord.serviceType')}</MenuItem>
+            <MenuItem value="mileage">{t('serviceRecord.mileage')}</MenuItem>
+            <MenuItem value="cost">{t('serviceRecord.cost')}</MenuItem>
+          </Select>
+        </FormControl>
+
+        <FormControl size="small" sx={{ minWidth: 160 }}>
+          <InputLabel id="service-records-sort-dir">{t('common.order', 'Порядок')}</InputLabel>
+          <Select
+            labelId="service-records-sort-dir"
+            value={sortDir}
+            label={t('common.order', 'Порядок')}
+            onChange={(e) => setSortDir(e.target.value)}
+          >
+            <MenuItem value="asc">{t('common.ascending', 'Зростання')}</MenuItem>
+            <MenuItem value="desc">{t('common.descending', 'Спадання')}</MenuItem>
+          </Select>
+        </FormControl>
+      </Box>
       {records.length === 0 ? (
         <Alert severity="info">{t('serviceRecord.noRecords')}</Alert>
       ) : (
@@ -238,7 +392,7 @@ const ServiceRecords = ({ vehicleId: vehicleIdProp, ownerId: ownerIdProp, vehicl
               </TableRow>
             </TableHead>
             <TableBody>
-              {records.map((record, index) => {
+              {sortedRecords.map((record, index) => {
                 const recordVehicleId = record.vehicleId || record.VehicleId || record.vehicle_id;
                 const recordVehicleVin = record.vehicleVin || record.vehicle_vin;
                 const inlineVehicle =
