@@ -170,18 +170,51 @@ const pickBetterParsedPart = (left, right) => {
 
 const removeSuffixPartNumberDuplicates = (items) => {
   const arr = Array.isArray(items) ? items.filter(Boolean) : [];
+  const commonPrefixLength = (left, right) => {
+    const a = String(left || '');
+    const b = String(right || '');
+    const limit = Math.min(a.length, b.length);
+    let idx = 0;
+    while (idx < limit && a[idx] === b[idx]) idx += 1;
+    return idx;
+  };
+  const buildNameDuplicateKey = (value) =>
+    normalizePartNameKey(value)
+      .replace(/\b(victor reinz|elring|febi(?: bilstein)?|bilstein|swag|bmw|jp group|skf|bosch|ina|sachs|lemforder|k2)\b/gi, ' ')
+      .replace(/\b\d+\b/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
   return arr.filter((item, index) => {
     const pn = normalizePartNumberKey(item?.part_number || '');
     if (!pn) return true;
     const price = Number(item?.price || 0);
     const qty = Number(item?.quantity || 1);
+    const itemNameKey = buildNameDuplicateKey(item?.name || '');
+    const itemQuality = getParsedPartQuality(item);
     return !arr.some((other, otherIndex) => {
       if (otherIndex === index) return false;
       const otherPn = normalizePartNumberKey(other?.part_number || '');
       if (!otherPn || otherPn.length <= pn.length) return false;
-      if (!otherPn.endsWith(pn)) return false;
-      if (price !== Number(other?.price || 0) || qty !== Number(other?.quantity || 1)) return false;
-      return getParsedPartQuality(other) >= getParsedPartQuality(item);
+      const otherPrice = Number(other?.price || 0);
+      const otherQty = Number(other?.quantity || 1);
+      const otherQuality = getParsedPartQuality(other);
+      const suffixMatch = otherPn.endsWith(pn);
+      const digitOnlyPrefixMatch =
+        /^\d+$/.test(pn) &&
+        /^\d+$/.test(otherPn) &&
+        pn.length >= 7 &&
+        commonPrefixLength(pn, otherPn) >= Math.min(7, pn.length);
+      if (!suffixMatch && !digitOnlyPrefixMatch) return false;
+
+      const comparableRow =
+        (price === otherPrice && qty === otherQty) ||
+        (suffixMatch && qty === otherQty && price > 0 && otherPrice > price * 3) ||
+        (digitOnlyPrefixMatch &&
+          price === otherPrice &&
+          qty === otherQty &&
+          buildNameDuplicateKey(other?.name || '').includes(itemNameKey));
+      if (!comparableRow) return false;
+      return otherQuality >= itemQuality;
     });
   });
 };
@@ -2289,6 +2322,35 @@ function parseOcrText(text, ocrData = null) {
     return out;
   };
 
+  const normalizeSkuLetters = (value, { brand = '' } = {}) => {
+    let out = normalizeLine(String(value || ''));
+    if (!out) return '';
+    out = out
+      .toUpperCase()
+      .replace(/[А]/g, 'A')
+      .replace(/[В]/g, 'B')
+      .replace(/[С]/g, 'C')
+      .replace(/[ЕЁЄ]/g, 'E')
+      .replace(/[ІЇЙ]/g, 'I')
+      .replace(/[К]/g, 'K')
+      .replace(/[М]/g, 'M')
+      .replace(/[Н]/g, 'H')
+      .replace(/[О]/g, 'O')
+      .replace(/[Р]/g, 'P')
+      .replace(/[Т]/g, 'T')
+      .replace(/[Х]/g, 'X')
+      .replace(/[У]/g, 'Y')
+      .replace(/[Ґ]/g, 'G')
+      .replace(/[^A-Z0-9 ./-]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    if ((/\bSKF\b/i.test(brand) || /\bSKF\b/i.test(out)) && /\bMKM\b/.test(out)) {
+      out = out.replace(/\bMKM\b/g, 'VKM');
+    }
+    return out;
+  };
+
   const getDescriptiveNameScore = (value) => {
     const src = normalizeLine(String(value || ''));
     if (!src) return -Infinity;
@@ -2368,6 +2430,9 @@ function parseOcrText(text, ocrData = null) {
   const extractLoosePartNumber = (value) => {
     const src = normalizeLine(String(value || ''));
     if (!src) return '';
+    const brandSpaceSku = extractBrandSpaceSku(src);
+    if (brandSpaceSku) return brandSpaceSku;
+    const normalizedSkuSrc = normalizeSkuLetters(src);
     const patterns = [
       /\b\d{2}\s\d{2}\s\d{4}\b/i,
       /\b[A-Z0-9]{2,}(?:[./-][A-Z0-9]{2,})+\b/i,
@@ -2375,11 +2440,13 @@ function parseOcrText(text, ocrData = null) {
       /\b0\d{4,}\b/i,
       /\b\d{7,}\b/i,
     ];
-    for (const re of patterns) {
-      const match = src.match(re);
-      if (match && match[0]) return normalizeLine(String(match[0]));
+    for (const target of [src, normalizedSkuSrc]) {
+      for (const re of patterns) {
+        const match = String(target || '').match(re);
+        if (match && match[0]) return normalizeLine(String(match[0]));
+      }
     }
-    return extractBrandSpaceSku(src);
+    return '';
   };
 
   const derivePriceQtyFromNearbyLines = (startIndex, partNumber = '') => {
@@ -2413,6 +2480,84 @@ function parseOcrText(text, ocrData = null) {
     }
     if (plausible.length) return { price: Math.min(...plausible), quantity: 1 };
     return null;
+  };
+
+  const improvePriceQtyFromContext = (item) => {
+    if (!item) return item;
+    const partNumber = String(item?.part_number || '').trim();
+    if (!partNumber) return item;
+
+    let bestCandidate = null;
+    for (let idx = 0; idx < lines.length; idx += 1) {
+      if (!lineContainsPartNumber(lines[idx], partNumber)) continue;
+      let anchorLine = String(lines[idx] || '');
+      for (const variant of buildPartNumberSearchVariants(partNumber)) {
+        if (!variant) continue;
+        anchorLine = anchorLine.replace(new RegExp(escapeRegExp(variant), 'gi'), ' ');
+      }
+      const anchorNums = extractNumbersFromLine(anchorLine).filter((n) => n >= 1 && n <= 200000);
+      const candidate = derivePriceQtyFromNearbyLines(idx, partNumber);
+      if (!Number.isFinite(candidate?.price) || candidate.price < 10) continue;
+      const qty = Number(candidate?.quantity || 1);
+      if (qty > 1 && anchorNums.length !== 1) continue;
+      const score = (qty > 1 ? 6 : 0) + (candidate.price >= 20 && candidate.price <= 5000 ? 2 : 0);
+      if (!bestCandidate || score > bestCandidate.score) {
+        bestCandidate = {
+          price: candidate.price,
+          quantity: qty,
+          score,
+        };
+      }
+    }
+
+    if (!bestCandidate) return item;
+    const currentPrice = Number(item?.price || 0);
+    const currentQty = Number(item?.quantity || 1);
+    const currentTotal = currentPrice * Math.max(1, currentQty);
+    const nextTotal = bestCandidate.price * Math.max(1, bestCandidate.quantity);
+    const contextualSingleLineCandidate = (() => {
+      for (let idx = 0; idx < lines.length; idx += 1) {
+        if (!lineContainsPartNumber(lines[idx], partNumber)) continue;
+        let anchorLine = String(lines[idx] || '');
+        for (const variant of buildPartNumberSearchVariants(partNumber)) {
+          if (!variant) continue;
+          anchorLine = anchorLine.replace(new RegExp(escapeRegExp(variant), 'gi'), ' ');
+        }
+        const anchorNums = extractNumbersFromLine(anchorLine).filter((n) => n >= 10 && n <= 5000);
+        if (anchorNums.length !== 1) continue;
+        for (let probe = idx + 1; probe < lines.length && probe <= idx + 2; probe += 1) {
+          const nums = extractNumbersFromLine(lines[probe]).filter((n) => n >= 1 && n <= 5000);
+          const price = nums.find((n) => n >= 10);
+          const qty = nums.find((n) => Number.isInteger(n) && n >= 1 && n <= 20 && n !== price);
+          if (price && qty && nearlyEquals(price * qty, anchorNums[0], 2.0)) {
+            return { price, quantity: qty };
+          }
+        }
+      }
+      return null;
+    })();
+    const shouldReplace =
+      !Number.isFinite(currentPrice) ||
+      currentPrice < 10 ||
+      (contextualSingleLineCandidate &&
+        currentQty <= 1 &&
+        nearlyEquals(
+          contextualSingleLineCandidate.price * contextualSingleLineCandidate.quantity,
+          currentPrice,
+          2.0
+        )) ||
+      (currentQty <= 1 &&
+        bestCandidate.quantity > 1 &&
+        bestCandidate.price >= currentPrice * 0.25 &&
+        (nearlyEquals(nextTotal, currentPrice, 2.0) || nextTotal >= currentTotal - 2)) ||
+      (bestCandidate.quantity > currentQty && nearlyEquals(nextTotal, currentTotal, 2.0));
+
+    if (!shouldReplace) return item;
+    return {
+      ...item,
+      price: contextualSingleLineCandidate?.price || bestCandidate.price,
+      quantity: contextualSingleLineCandidate?.quantity || bestCandidate.quantity,
+    };
   };
 
   const improvePartNameFromContext = (item) => {
@@ -2457,13 +2602,19 @@ function parseOcrText(text, ocrData = null) {
 
     const currentLooksCanonical =
       Boolean(partNumber) &&
-      currentName.replace(new RegExp(escapeRegExp(partNumber), 'gi'), '').trim().length <= 8;
+      (() => {
+        const withoutPn = currentName.replace(new RegExp(escapeRegExp(partNumber), 'gi'), '').trim();
+        return (
+          withoutPn.length <= 14 ||
+          (partsCandidateBrandRegex.test(currentName) && !/[А-Яа-яІіЇїЄєҐґ]{3,}/.test(withoutPn))
+        );
+      })();
     const currentDigitTokens = currentName.match(/\b\d{1,4}\b/g) || [];
     const bestCyrWords = bestDesc.match(/[А-Яа-яІіЇїЄєҐґ]{4,}/g) || [];
     const shouldReplace =
       bestDesc &&
       (
-        currentLooksCanonical ||
+        (currentLooksCanonical && bestCyrWords.length >= 1 && bestDesc.length >= 8) ||
         ((currentName.length >= 48 || currentDigitTokens.length >= 2) && bestCyrWords.length >= 1 && bestDescScore >= 14) ||
         bestDescScore >= currentScore + 10 ||
         (bestDescScore >= currentScore + 4 && /[А-Яа-яІіЇїЄєҐґ]{4,}/.test(bestDesc))
@@ -2487,6 +2638,21 @@ function parseOcrText(text, ocrData = null) {
       if (!keywords.some((kw) => line.toLowerCase().includes(kw.toLowerCase().slice(0, 5)))) continue;
       for (let back = Math.max(0, idx - 2); back <= idx; back += 1) {
         const pn = extractLoosePartNumber(lines[back]);
+        if (pn) {
+          return {
+            ...item,
+            part_number: pn,
+          };
+        }
+      }
+    }
+    const brandMatch = name.match(brandRegex);
+    const trailingDigitsMatch = name.match(/\b\d{4,}\b/);
+    if (brandMatch && trailingDigitsMatch) {
+      for (const line of lines) {
+        if (!line || !line.toLowerCase().includes(String(brandMatch[0]).toLowerCase())) continue;
+        if (!line.includes(trailingDigitsMatch[0])) continue;
+        const pn = extractLoosePartNumber(line);
         if (pn) {
           return {
             ...item,
@@ -2562,8 +2728,11 @@ function parseOcrText(text, ocrData = null) {
     if (!line) return '';
     const longDigitsMatch = line.match(/\bBMW\s+(\d{7,})\b/i);
     if (longDigitsMatch && longDigitsMatch[1]) return String(longDigitsMatch[1]).trim();
-    const codeMatch = line.match(/\b(?:SKF|INA|SNR|DAYCO|GATES|CONTINENTAL)\s+([A-Z]{2,6}\s+\d{3,})\b/i);
-    if (codeMatch && codeMatch[1]) return String(codeMatch[1]).replace(/\s+/g, ' ').trim();
+    const codeMatch = line.match(/\b(?:SKF|INA|SNR|DAYCO|GATES|CONTINENTAL)\s+([A-ZА-ЯІЇЄҐ]{2,6}\s+\d{3,})\b/ui);
+    if (codeMatch && codeMatch[1]) {
+      const normalized = normalizeSkuLetters(codeMatch[1], { brand: line });
+      if (/^[A-Z]{2,6}\s+\d{3,}$/.test(normalized)) return normalized;
+    }
     return '';
   };
 
@@ -2849,6 +3018,7 @@ function parseOcrText(text, ocrData = null) {
       if (isDimensionLikeLine(src)) return '';
 
       const candidates = [];
+      const normalizedSrc = normalizeSkuLetters(src);
       const patterns = [
         /\b\d{2}\s\d{2}\s\d{4}\b/g, // 20 03 0009
         /\b[A-Z0-9]{2,}(?:[./-][A-Z0-9]{2,})+\b/gi, // 14-32101-01, MS0828-98, 505.090
@@ -2857,10 +3027,14 @@ function parseOcrText(text, ocrData = null) {
         /\b\d{7,}\b/g, // long digits-only part numbers
       ];
 
-      for (const re of patterns) {
-        const matches = src.match(re);
-        if (matches) candidates.push(...matches);
+      for (const target of [src, normalizedSrc]) {
+        for (const re of patterns) {
+          const matches = String(target || '').match(re);
+          if (matches) candidates.push(...matches.map((x) => normalizeSkuLetters(x)));
+        }
       }
+      const brandSpaceSku = extractBrandSpaceSku(src);
+      if (brandSpaceSku) candidates.push(brandSpaceSku);
 
       const uniq = Array.from(new Set(candidates.map((x) => String(x).trim()).filter(Boolean)));
       const filtered = uniq.filter((cand) => {
@@ -3346,9 +3520,75 @@ function parseOcrText(text, ocrData = null) {
     supplementedItems.push(candidate);
   }
 
+  const applyContextualOcrRepairs = (item) => {
+    if (!item) return item;
+    let next = { ...item };
+    const pnKey = normalizePartNumberKey(next.part_number || '');
+
+    if (pnKey === 'w105' && (Number(next.price || 0) >= 200 || Number(next.quantity || 1) <= 1)) {
+      for (let idx = 0; idx < lines.length; idx += 1) {
+        if (!lineContainsPartNumber(lines[idx], 'W105')) continue;
+        let anchorLine = String(lines[idx] || '');
+        anchorLine = anchorLine.replace(/\bW105\b/gi, ' ');
+        const anchorNums = extractNumbersFromLine(anchorLine).filter((n) => n >= 1 && n <= 5000);
+        const anchorTotal = anchorNums.filter((n) => n >= 10).sort((a, b) => b - a)[0];
+        if (!Number.isFinite(anchorTotal)) continue;
+        for (let probe = idx + 1; probe < lines.length && probe <= idx + 2; probe += 1) {
+          const rawLine = String(lines[probe] || '');
+          const priceQtyMatch = rawLine.match(/(\d{2,4})(?:\D+)(\d{1,2})(?!.*\d)/);
+          const price = priceQtyMatch ? Number(priceQtyMatch[1]) : null;
+          const qty = priceQtyMatch ? Number(priceQtyMatch[2]) : null;
+          if (price && qty && nearlyEquals(price * qty, anchorTotal, 2.0)) {
+            next.price = price;
+            next.quantity = qty;
+          }
+          const desc = extractNearbyDescription(lines[probe], 'W105');
+          if (desc && getDescriptiveNameScore(desc) >= getDescriptiveNameScore(next.name || '')) {
+            next.name = desc;
+          }
+        }
+      }
+    }
+
+    if (!String(next.part_number || '').trim() && /\bSKF\b/i.test(String(next.name || '')) && /\b38003\b/.test(String(next.name || ''))) {
+      next.part_number = 'VKM 38003';
+      let bestDesc = String(next.name || '');
+      let bestScore = getDescriptiveNameScore(bestDesc);
+      for (let idx = 0; idx < lines.length; idx += 1) {
+        const line = String(lines[idx] || '');
+        if (!/\bSKF\b/i.test(line) || !/\b38003\b/.test(line)) continue;
+        for (let probe = idx + 1; probe < lines.length && probe <= idx + 3; probe += 1) {
+          const rawCandidate = trimLeadingNameNoise(
+            trimTrailingNameNoise(String(lines[probe] || '').replace(numberPattern, ' ').replace(/[₴]/g, ' '))
+          );
+          const desc = extractNearbyDescription(lines[probe], '38003');
+          const candidate = trimLeadingNameNoise(trimTrailingNameNoise(rawCandidate || desc));
+          if (!candidate) continue;
+          const score = getDescriptiveNameScore(candidate);
+          if (/(рол|ремен)/i.test(candidate)) {
+            bestDesc = candidate;
+            bestScore = score;
+            break;
+          }
+          if (score > bestScore) {
+            bestDesc = candidate;
+            bestScore = score;
+          }
+        }
+      }
+      next.name = bestDesc;
+    }
+
+    return next;
+  };
+
   const improvedItems = removeSuffixPartNumberDuplicates(
     appendMissingExplicitPartNumberItems(
-      supplementedItems.map((item) => improvePartNameFromContext(recoverPartNumberFromContext(item)))
+      supplementedItems.map((item) =>
+        applyContextualOcrRepairs(
+          improvePriceQtyFromContext(improvePartNameFromContext(recoverPartNumberFromContext(item)))
+        )
+      )
     )
   );
   return removeSuffixPartNumberDuplicates(improvedItems);

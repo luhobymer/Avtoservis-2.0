@@ -398,4 +398,116 @@ FEBI BILSTEIN 06051                      ла                          658      
     expect(parts.find((item) => item.part_number === '20 03 0009')?.name).not.toBe('SWAG 20 03 0009');
     expect(parts.find((item) => item.part_number === '11121726243')?.name).not.toBe('BMW 11121726243');
   });
+
+  test('fixes merged OCR regressions from the latest production order dump', () => {
+    const input = `У замовлення \\ Найменування & @     Коментар               Ціна (грк)             Кількість             Сума (грн)
+
+ терми OPT ERK |
+
+ VICTOR REINZ 40-76149-00               да                           38               гі                   38
+ Прокладка, іврмосіа;                    ©                                                                 Narre
+ с
+ к2 W105                                   Теплі поставки С                                                       290
+ Очищунач гальмівної системи К2                                      145              2             aa
+ W105 5C0an (W105)                                                                                            Fan
+ теам.н necTaokA 1
+ ELRING 147.581                              a4                             392                    й                    784
+ Прокладка вигускного колекторо         В тб                                                               Atta
+ ELRING 318.580                           meet                                                       1538
+ hon нини                 Ha скло! 4 og                   1538               Sr               Куно
+ | Ke       К                                  -
+ й                                               ©
+ ELRING 135.500                           терм. постави |
+ Кільце ущльнююче, клапанна            ла                           52               - 6 -              313
+ форсунка МВ МЗА1 М271 9. 2*14, 852.8 | Носклыа д п                                                          UTE
+ (вир-во E¥ing)                             D>
+ Терим н ностевии |
+ РЕВ) BILSTEIN 10258                      дя                           23               з                   23
+ Кільце ущльнююче термостату            3 Conant 4 ої                                                                   Дуда
+ ELRING 914.495                                 Tan к поставим |
+ Прокладка, голонка цилвндра BMW       ла                           2235              - 13.              2235
+ М50825 М50В28 -98 МАМО5 +0. ЭММ 7, | пе склає 2 ор                                                            худа
+ DEMM (вир-во Eling)
+ SWAG 20 03 0009                          Na поставки 1                                                        608
+ Нагнжний ролик поліклиноного          Й         й                  608              CE
+ пасиляді 2 en                                                    PANTER
+ ременк SW 20030009
+ ELRING 424.820                           Na                                                        635
+ Сальники клапанів {к-кт) Mercedes       несила                   635              CRE
+ й                                      Ho склаг! Son                                                               жари
+ Вевг Sprinter ОМ642                       @
+ “4
+ тер погоню |
+ VICTOR REINZ 14-32101-01                а                                                                    985
+ 14 32101-01 Victor Renz Комплект        на скан Зоо                985             Е            име
+ болтів ГБЦ BMW                          ту                                                                   п
+ тери поставки |
+ BMW 11121726243                        E
+ 11121728      ar    164   Sz.   327
+ Втулка © = 13, SMM MSO                    © na ой                                                             CERIN
+ JP GROUP 1411000300                    ia necro!                                                        519
+ Пагрубок вентиляції картера BMW E36              Й                       519                EE -
+ a                                        8 силам | on                                                            Asin as
+ Тепгіпу 95-99                              Е
+ SKF МКМ 38003                           N
+ й                                           терми поставки |
+ Ролик поліклинокого ременя                да                                                                                  764
+ eons BMW 3 (636). 3{E46), 3 (F92). к лаги on                   764               - 1                   па
+ (E63), 6 (E64), 7 (ЕЗЯХ Х5 (EFA),             ©
+ Ферма поставки 1
+ FEBI BILSTEIN 06051                      ла                          658              і                  558
+ Ролих ГРМ BMW SKODA {Вир-во РЕВ!) meri tra                                                                          PR.
+
+ о
+ РАЗОМ`;
+
+    const parts = __test__.parseOcrText(input, null);
+    const thermostat = parts.find((item) => item.part_number === '40-76149-00');
+    const cleaner = parts.find((item) => item.part_number === 'W105');
+    const gasket = parts.find((item) => item.part_number === '914.495');
+    const breather = parts.find((item) => item.part_number === '1411000300');
+    const beltRoller = parts.find((item) => item.part_number === 'VKM 38003');
+
+    expect(thermostat).toEqual(
+      expect.objectContaining({
+        part_number: '40-76149-00',
+        name: expect.stringMatching(/Прокладк|термостат/i),
+        price: 38,
+        quantity: 1,
+      })
+    );
+    expect(cleaner).toEqual(
+      expect.objectContaining({
+        part_number: 'W105',
+        name: expect.stringMatching(/Очищ|гальмів/i),
+        price: 145,
+        quantity: 2,
+      })
+    );
+    expect(gasket).toEqual(
+      expect.objectContaining({
+        part_number: '914.495',
+        price: 2235,
+        quantity: 1,
+      })
+    );
+    expect(breather).toEqual(
+      expect.objectContaining({
+        part_number: '1411000300',
+        price: 519,
+        quantity: 1,
+      })
+    );
+    expect(beltRoller).toEqual(
+      expect.objectContaining({
+        part_number: 'VKM 38003',
+        name: expect.stringMatching(/Ролик|ремен/i),
+        price: 764,
+        quantity: 1,
+      })
+    );
+
+    expect(parts.filter((item) => item.part_number === '32101-01')).toHaveLength(0);
+    expect(parts.filter((item) => item.part_number === '11121728')).toHaveLength(0);
+  });
 });
