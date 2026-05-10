@@ -26,7 +26,8 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  Paper
+  Paper,
+  TableSortLabel
 } from '@mui/material';
 import { format } from 'date-fns';
 
@@ -94,6 +95,19 @@ const Vehicles = () => {
       void e;
     }
   }, [sortDir, sortKey]);
+
+  const requestSort = useCallback(
+    (nextKey, options = {}) => {
+      const defaultDir = options?.defaultDir || 'asc';
+      if (sortKey === nextKey) {
+        setSortDir((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+        return;
+      }
+      setSortKey(nextKey);
+      setSortDir(defaultDir);
+    },
+    [sortKey]
+  );
 
   const withRetry = useCallback(async (fn, options = {}) => {
     const retries = typeof options.retries === 'number' ? options.retries : 2;
@@ -361,12 +375,52 @@ const Vehicles = () => {
             <Table size="small">
               <TableHead>
                 <TableRow>
-                  <TableCell>{t('vehicle.make')}</TableCell>
-                  <TableCell>{t('vehicle.model')}</TableCell>
-                  <TableCell>{t('vehicle.year')}</TableCell>
-                  <TableCell>{t('vehicle.licensePlate')}</TableCell>
+                  <TableCell sortDirection={sortKey === 'make_model' ? sortDir : false}>
+                    <TableSortLabel
+                      active={sortKey === 'make_model'}
+                      direction={sortKey === 'make_model' ? sortDir : 'asc'}
+                      onClick={() => requestSort('make_model')}
+                    >
+                      {t('vehicle.make')}
+                    </TableSortLabel>
+                  </TableCell>
+                  <TableCell sortDirection={sortKey === 'make_model' ? sortDir : false}>
+                    <TableSortLabel
+                      active={sortKey === 'make_model'}
+                      direction={sortKey === 'make_model' ? sortDir : 'asc'}
+                      onClick={() => requestSort('make_model')}
+                    >
+                      {t('vehicle.model')}
+                    </TableSortLabel>
+                  </TableCell>
+                  <TableCell sortDirection={sortKey === 'year' ? sortDir : false}>
+                    <TableSortLabel
+                      active={sortKey === 'year'}
+                      direction={sortKey === 'year' ? sortDir : 'asc'}
+                      onClick={() => requestSort('year')}
+                    >
+                      {t('vehicle.year')}
+                    </TableSortLabel>
+                  </TableCell>
+                  <TableCell sortDirection={sortKey === 'license_plate' ? sortDir : false}>
+                    <TableSortLabel
+                      active={sortKey === 'license_plate'}
+                      direction={sortKey === 'license_plate' ? sortDir : 'asc'}
+                      onClick={() => requestSort('license_plate')}
+                    >
+                      {t('vehicle.licensePlate')}
+                    </TableSortLabel>
+                  </TableCell>
                   <TableCell>VIN</TableCell>
-                  <TableCell>{t('vehicle.mileage')}</TableCell>
+                  <TableCell sortDirection={sortKey === 'mileage' ? sortDir : false}>
+                    <TableSortLabel
+                      active={sortKey === 'mileage'}
+                      direction={sortKey === 'mileage' ? sortDir : 'asc'}
+                      onClick={() => requestSort('mileage')}
+                    >
+                      {t('vehicle.mileage')}
+                    </TableSortLabel>
+                  </TableCell>
                   <TableCell>{t('vehicle.lastService')}</TableCell>
                 </TableRow>
               </TableHead>

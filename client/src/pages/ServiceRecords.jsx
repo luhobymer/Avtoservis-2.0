@@ -22,6 +22,7 @@ import {
   InputLabel,
   Select,
   MenuItem,
+  TableSortLabel,
 } from '@mui/material';
 import dayjs from 'dayjs';
 import ServiceBookExport from '../components/ServiceBookExport';
@@ -65,6 +66,19 @@ const ServiceRecords = ({ vehicleId: vehicleIdProp, ownerId: ownerIdProp, vehicl
       void e;
     }
   }, [sortDir, sortKey]);
+
+  const requestSort = React.useCallback(
+    (nextKey, options = {}) => {
+      const defaultDir = options?.defaultDir || 'asc';
+      if (sortKey === nextKey) {
+        setSortDir((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+        return;
+      }
+      setSortKey(nextKey);
+      setSortDir(defaultDir);
+    },
+    [sortKey]
+  );
 
   useEffect(() => {
     const fetchData = async () => {
@@ -270,10 +284,42 @@ const ServiceRecords = ({ vehicleId: vehicleIdProp, ownerId: ownerIdProp, vehicl
               <Table>
                 <TableHead>
                   <TableRow>
-                    <TableCell>{t('serviceRecord.serviceDate')}</TableCell>
-                    <TableCell>{t('serviceRecord.serviceType')}</TableCell>
-                    <TableCell>{t('serviceRecord.mileage')}</TableCell>
-                    <TableCell>{t('serviceRecord.cost')}</TableCell>
+                    <TableCell sortDirection={sortKey === 'service_date' ? sortDir : false}>
+                      <TableSortLabel
+                        active={sortKey === 'service_date'}
+                        direction={sortKey === 'service_date' ? sortDir : 'asc'}
+                        onClick={() => requestSort('service_date', { defaultDir: 'desc' })}
+                      >
+                        {t('serviceRecord.serviceDate')}
+                      </TableSortLabel>
+                    </TableCell>
+                    <TableCell sortDirection={sortKey === 'service_type' ? sortDir : false}>
+                      <TableSortLabel
+                        active={sortKey === 'service_type'}
+                        direction={sortKey === 'service_type' ? sortDir : 'asc'}
+                        onClick={() => requestSort('service_type')}
+                      >
+                        {t('serviceRecord.serviceType')}
+                      </TableSortLabel>
+                    </TableCell>
+                    <TableCell sortDirection={sortKey === 'mileage' ? sortDir : false}>
+                      <TableSortLabel
+                        active={sortKey === 'mileage'}
+                        direction={sortKey === 'mileage' ? sortDir : 'asc'}
+                        onClick={() => requestSort('mileage')}
+                      >
+                        {t('serviceRecord.mileage')}
+                      </TableSortLabel>
+                    </TableCell>
+                    <TableCell sortDirection={sortKey === 'cost' ? sortDir : false}>
+                      <TableSortLabel
+                        active={sortKey === 'cost'}
+                        direction={sortKey === 'cost' ? sortDir : 'asc'}
+                        onClick={() => requestSort('cost')}
+                      >
+                        {t('serviceRecord.cost')}
+                      </TableSortLabel>
+                    </TableCell>
                     <TableCell align="right">{t('common.edit')}</TableCell>
                   </TableRow>
                 </TableHead>
@@ -382,12 +428,54 @@ const ServiceRecords = ({ vehicleId: vehicleIdProp, ownerId: ownerIdProp, vehicl
           <Table sx={{ minWidth: { xs: 0, sm: 650 } }}>
             <TableHead>
               <TableRow>
-                <TableCell>{t('serviceRecord.serviceDate')}</TableCell>
-                {!filteredVehicleId && <TableCell>{t('serviceRecord.vehicle')}</TableCell>}
-                <TableCell>{t('serviceRecord.serviceType')}</TableCell>
-                <TableCell>{t('serviceRecord.mileage')}</TableCell>
+                <TableCell sortDirection={sortKey === 'service_date' ? sortDir : false}>
+                  <TableSortLabel
+                    active={sortKey === 'service_date'}
+                    direction={sortKey === 'service_date' ? sortDir : 'asc'}
+                    onClick={() => requestSort('service_date', { defaultDir: 'desc' })}
+                  >
+                    {t('serviceRecord.serviceDate')}
+                  </TableSortLabel>
+                </TableCell>
+                {!filteredVehicleId && (
+                  <TableCell sortDirection={sortKey === 'vehicle' ? sortDir : false}>
+                    <TableSortLabel
+                      active={sortKey === 'vehicle'}
+                      direction={sortKey === 'vehicle' ? sortDir : 'asc'}
+                      onClick={() => requestSort('vehicle')}
+                    >
+                      {t('serviceRecord.vehicle')}
+                    </TableSortLabel>
+                  </TableCell>
+                )}
+                <TableCell sortDirection={sortKey === 'service_type' ? sortDir : false}>
+                  <TableSortLabel
+                    active={sortKey === 'service_type'}
+                    direction={sortKey === 'service_type' ? sortDir : 'asc'}
+                    onClick={() => requestSort('service_type')}
+                  >
+                    {t('serviceRecord.serviceType')}
+                  </TableSortLabel>
+                </TableCell>
+                <TableCell sortDirection={sortKey === 'mileage' ? sortDir : false}>
+                  <TableSortLabel
+                    active={sortKey === 'mileage'}
+                    direction={sortKey === 'mileage' ? sortDir : 'asc'}
+                    onClick={() => requestSort('mileage')}
+                  >
+                    {t('serviceRecord.mileage')}
+                  </TableSortLabel>
+                </TableCell>
                 <TableCell>{t('serviceRecord.performedBy', 'Виконано')}</TableCell>
-                <TableCell>{t('serviceRecord.cost')}</TableCell>
+                <TableCell sortDirection={sortKey === 'cost' ? sortDir : false}>
+                  <TableSortLabel
+                    active={sortKey === 'cost'}
+                    direction={sortKey === 'cost' ? sortDir : 'asc'}
+                    onClick={() => requestSort('cost')}
+                  >
+                    {t('serviceRecord.cost')}
+                  </TableSortLabel>
+                </TableCell>
                 <TableCell align="right">{t('common.edit')}</TableCell>
               </TableRow>
             </TableHead>

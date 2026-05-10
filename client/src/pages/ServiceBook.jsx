@@ -22,7 +22,8 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  Typography
+  Typography,
+  TableSortLabel
 } from '@mui/material';
 import dayjs from 'dayjs';
 
@@ -62,6 +63,19 @@ const ServiceBook = () => {
       void e;
     }
   }, [sortDir, sortKey]);
+
+  const requestSort = useCallback(
+    (nextKey, options = {}) => {
+      const defaultDir = options?.defaultDir || 'asc';
+      if (sortKey === nextKey) {
+        setSortDir((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+        return;
+      }
+      setSortKey(nextKey);
+      setSortDir(defaultDir);
+    },
+    [sortKey]
+  );
 
   const selectedVehicle = useMemo(
     () => vehicles.find((v) => String(v.vin) === String(selectedVehicleVin)) || null,
@@ -282,10 +296,42 @@ const ServiceBook = () => {
           <Table>
             <TableHead>
               <TableRow>
-                <TableCell>{t('serviceRecord.serviceDate', 'Дата')}</TableCell>
-                <TableCell>{t('serviceRecord.serviceType', 'Тип')}</TableCell>
-                <TableCell>{t('serviceRecord.mileage', 'Пробіг')}</TableCell>
-                <TableCell>{t('serviceRecord.cost', 'Вартість')}</TableCell>
+                <TableCell sortDirection={sortKey === 'service_date' ? sortDir : false}>
+                  <TableSortLabel
+                    active={sortKey === 'service_date'}
+                    direction={sortKey === 'service_date' ? sortDir : 'asc'}
+                    onClick={() => requestSort('service_date', { defaultDir: 'desc' })}
+                  >
+                    {t('serviceRecord.serviceDate', 'Дата')}
+                  </TableSortLabel>
+                </TableCell>
+                <TableCell sortDirection={sortKey === 'service_type' ? sortDir : false}>
+                  <TableSortLabel
+                    active={sortKey === 'service_type'}
+                    direction={sortKey === 'service_type' ? sortDir : 'asc'}
+                    onClick={() => requestSort('service_type')}
+                  >
+                    {t('serviceRecord.serviceType', 'Тип')}
+                  </TableSortLabel>
+                </TableCell>
+                <TableCell sortDirection={sortKey === 'mileage' ? sortDir : false}>
+                  <TableSortLabel
+                    active={sortKey === 'mileage'}
+                    direction={sortKey === 'mileage' ? sortDir : 'asc'}
+                    onClick={() => requestSort('mileage')}
+                  >
+                    {t('serviceRecord.mileage', 'Пробіг')}
+                  </TableSortLabel>
+                </TableCell>
+                <TableCell sortDirection={sortKey === 'cost' ? sortDir : false}>
+                  <TableSortLabel
+                    active={sortKey === 'cost'}
+                    direction={sortKey === 'cost' ? sortDir : 'asc'}
+                    onClick={() => requestSort('cost')}
+                  >
+                    {t('serviceRecord.cost', 'Вартість')}
+                  </TableSortLabel>
+                </TableCell>
                 <TableCell align="right">{t('common.edit', 'Редагувати')}</TableCell>
               </TableRow>
             </TableHead>

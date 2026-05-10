@@ -24,7 +24,8 @@ import {
   FormControl,
   InputLabel,
   Select,
-  MenuItem
+  MenuItem,
+  TableSortLabel
 } from '@mui/material';
 import { format } from 'date-fns';
 
@@ -62,6 +63,19 @@ const Appointments = () => {
       void e;
     }
   }, [sortDir, sortKey]);
+
+  const requestSort = useCallback(
+    (nextKey, options = {}) => {
+      const defaultDir = options?.defaultDir || 'asc';
+      if (sortKey === nextKey) {
+        setSortDir((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+        return;
+      }
+      setSortKey(nextKey);
+      setSortDir(defaultDir);
+    },
+    [sortKey]
+  );
 
   const location = useLocation();
   const navigate = useNavigate();
@@ -292,10 +306,34 @@ const Appointments = () => {
           <Table sx={{ minWidth: { xs: 0, sm: 650 } }}>
             <TableHead>
               <TableRow>
-                <TableCell>{t('appointment.scheduledDate')}</TableCell>
-                <TableCell>{t('vehicle.title')}</TableCell>
+                <TableCell sortDirection={sortKey === 'scheduled' ? sortDir : false}>
+                  <TableSortLabel
+                    active={sortKey === 'scheduled'}
+                    direction={sortKey === 'scheduled' ? sortDir : 'asc'}
+                    onClick={() => requestSort('scheduled', { defaultDir: 'desc' })}
+                  >
+                    {t('appointment.scheduledDate')}
+                  </TableSortLabel>
+                </TableCell>
+                <TableCell sortDirection={sortKey === 'vehicle' ? sortDir : false}>
+                  <TableSortLabel
+                    active={sortKey === 'vehicle'}
+                    direction={sortKey === 'vehicle' ? sortDir : 'asc'}
+                    onClick={() => requestSort('vehicle')}
+                  >
+                    {t('vehicle.title')}
+                  </TableSortLabel>
+                </TableCell>
                 <TableCell>{t('appointment.serviceType')}</TableCell>
-                <TableCell>{t('appointment.status')}</TableCell>
+                <TableCell sortDirection={sortKey === 'status' ? sortDir : false}>
+                  <TableSortLabel
+                    active={sortKey === 'status'}
+                    direction={sortKey === 'status' ? sortDir : 'asc'}
+                    onClick={() => requestSort('status')}
+                  >
+                    {t('appointment.status')}
+                  </TableSortLabel>
+                </TableCell>
                 <TableCell>{t('appointment.estimatedCompletionDate')}</TableCell>
                 <TableCell>{t('appointment.actualCompletionDate', 'Фактичне завершення')}</TableCell>
                 <TableCell align="right">{t('common.edit')}</TableCell>
@@ -327,10 +365,34 @@ const Appointments = () => {
           <Table sx={{ minWidth: { xs: 0, sm: 650 } }}>
               <TableHead>
                 <TableRow>
-                  <TableCell>{t('appointment.scheduledDate')}</TableCell>
-                  <TableCell>{t('vehicle.title')}</TableCell>
+                  <TableCell sortDirection={sortKey === 'scheduled' ? sortDir : false}>
+                    <TableSortLabel
+                      active={sortKey === 'scheduled'}
+                      direction={sortKey === 'scheduled' ? sortDir : 'asc'}
+                      onClick={() => requestSort('scheduled', { defaultDir: 'desc' })}
+                    >
+                      {t('appointment.scheduledDate')}
+                    </TableSortLabel>
+                  </TableCell>
+                  <TableCell sortDirection={sortKey === 'vehicle' ? sortDir : false}>
+                    <TableSortLabel
+                      active={sortKey === 'vehicle'}
+                      direction={sortKey === 'vehicle' ? sortDir : 'asc'}
+                      onClick={() => requestSort('vehicle')}
+                    >
+                      {t('vehicle.title')}
+                    </TableSortLabel>
+                  </TableCell>
                   <TableCell>{t('appointment.serviceType')}</TableCell>
-                  <TableCell>{t('appointment.status')}</TableCell>
+                  <TableCell sortDirection={sortKey === 'status' ? sortDir : false}>
+                    <TableSortLabel
+                      active={sortKey === 'status'}
+                      direction={sortKey === 'status' ? sortDir : 'asc'}
+                      onClick={() => requestSort('status')}
+                    >
+                      {t('appointment.status')}
+                    </TableSortLabel>
+                  </TableCell>
                   <TableCell>{t('appointment.estimatedCompletionDate')}</TableCell>
                   <TableCell>{t('appointment.actualCompletionDate', 'Фактичне завершення')}</TableCell>
                   <TableCell align="right">{t('common.edit')}</TableCell>
