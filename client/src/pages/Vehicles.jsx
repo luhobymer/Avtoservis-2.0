@@ -163,13 +163,31 @@ const Vehicles = () => {
 
   return (
     <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h4">
+      <Box
+        sx={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: { xs: 'stretch', sm: 'center' },
+          flexDirection: { xs: 'column', sm: 'row' },
+          gap: { xs: 2, sm: 0 },
+          mb: 3,
+        }}
+      >
+        <Typography variant="h4" sx={{ lineHeight: 1.2 }}>
           {t('vehicle.title')}
         </Typography>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: { xs: 'flex-start', sm: 'flex-end' },
+            flexWrap: 'wrap',
+            gap: 1,
+            width: { xs: '100%', sm: 'auto' },
+          }}
+        >
           {isMasterUser && (
-            <Box sx={{ display: 'flex', gap: 1, mr: 1 }}>
+            <Box sx={{ display: 'flex', gap: 1, mr: { xs: 0, sm: 1 }, flexWrap: 'wrap' }}>
               <Button
                 variant={mode === 'serviced' ? 'contained' : 'outlined'}
                 onClick={() => setMode('serviced')}
@@ -191,6 +209,7 @@ const Vehicles = () => {
               if (next) setViewMode(next);
             }}
             size="small"
+            sx={{ width: { xs: '100%', sm: 'auto' } }}
           >
             <ToggleButton value="cards">{t('common.cards', 'Картки')}</ToggleButton>
             <ToggleButton value="table">{t('common.table', 'Таблиця')}</ToggleButton>
@@ -200,6 +219,7 @@ const Vehicles = () => {
             to="/vehicles/add"
             variant="contained"
             color="primary"
+            sx={{ width: { xs: '100%', sm: 'auto' } }}
           >
             {t('vehicle.add')}
           </Button>
