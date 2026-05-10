@@ -13,7 +13,16 @@ import {
   CardMedia,
   Alert,
   Box,
-  Skeleton
+  Skeleton,
+  ToggleButton,
+  ToggleButtonGroup,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Paper
 } from '@mui/material';
 import { format } from 'date-fns';
 
@@ -38,6 +47,23 @@ const Vehicles = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [mode, setMode] = useState(isMasterUser ? 'serviced' : 'owned'); // 'serviced' | 'owned'
+  const [viewMode, setViewMode] = useState(() => {
+    try {
+      const stored = localStorage.getItem('vehicles_view_mode');
+      return stored === 'table' ? 'table' : 'cards';
+    } catch (e) {
+      void e;
+      return 'cards';
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('vehicles_view_mode', viewMode);
+    } catch (e) {
+      void e;
+    }
+  }, [viewMode]);
 
   const withRetry = useCallback(async (fn, options = {}) => {
     const retries = typeof options.retries === 'number' ? options.retries : 2;
@@ -141,40 +167,93 @@ const Vehicles = () => {
         <Typography variant="h4">
           {t('vehicle.title')}
         </Typography>
-        {isMasterUser && (
-          <Box sx={{ display: 'flex', gap: 1, mr: 2 }}>
-            <Button
-              variant={mode === 'serviced' ? 'contained' : 'outlined'}
-              onClick={() => setMode('serviced')}
-            >
-              {t('vehicles.serviced') || 'Обслуговувані'}
-            </Button>
-            <Button
-              variant={mode === 'owned' ? 'contained' : 'outlined'}
-              onClick={() => setMode('owned')}
-            >
-              {t('vehicles.owned') || 'Мої'}
-            </Button>
-          </Box>
-        )}
-        <Button 
-          component={Link} 
-          to="/vehicles/add" 
-          variant="contained" 
-          color="primary"
-        >
-          {t('vehicle.add')}
-        </Button>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          {isMasterUser && (
+            <Box sx={{ display: 'flex', gap: 1, mr: 1 }}>
+              <Button
+                variant={mode === 'serviced' ? 'contained' : 'outlined'}
+                onClick={() => setMode('serviced')}
+              >
+                {t('vehicles.serviced') || 'Обслуговувані'}
+              </Button>
+              <Button
+                variant={mode === 'owned' ? 'contained' : 'outlined'}
+                onClick={() => setMode('owned')}
+              >
+                {t('vehicles.owned') || 'Мої'}
+              </Button>
+            </Box>
+          )}
+          <ToggleButtonGroup
+            value={viewMode}
+            exclusive
+            onChange={(_, next) => {
+              if (next) setViewMode(next);
+            }}
+            size="small"
+          >
+            <ToggleButton value="cards">{t('common.cards', 'Картки')}</ToggleButton>
+            <ToggleButton value="table">{t('common.table', 'Таблиця')}</ToggleButton>
+          </ToggleButtonGroup>
+          <Button
+            component={Link}
+            to="/vehicles/add"
+            variant="contained"
+            color="primary"
+          >
+            {t('vehicle.add')}
+          </Button>
+        </Box>
       </Box>
 
       {vehicles.length === 0 ? (
         <Alert severity="info">{t('vehicle.noVehicles')}</Alert>
       ) : (
-        <Grid container spacing={3}>
-          
-          {vehicles.map((vehicle, index) => (
-            <Grid item key={vehicle.id || `vehicle-${index}`} xs={12} sm={6} md={4}>
-                <Card 
+        viewMode === 'table' ? (
+          <TableContainer component={Paper}>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>{t('vehicle.make')}</TableCell>
+                  <TableCell>{t('vehicle.model')}</TableCell>
+                  <TableCell>{t('vehicle.year')}</TableCell>
+                  <TableCell>{t('vehicle.licensePlate')}</TableCell>
+                  <TableCell>VIN</TableCell>
+                  <TableCell>{t('vehicle.mileage')}</TableCell>
+                  <TableCell>{t('vehicle.lastService')}</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {vehicles.map((vehicle, index) => (
+                  <TableRow
+                    key={vehicle.id || `vehicle-${index}`}
+                    hover
+                    sx={{ cursor: 'pointer' }}
+                    onClick={() => navigate(`/vehicles/${vehicle.vin}`)}
+                  >
+                    <TableCell>{vehicle.make || t('common.notAvailable')}</TableCell>
+                    <TableCell>{vehicle.model || t('common.notAvailable')}</TableCell>
+                    <TableCell>{vehicle.year || t('common.notAvailable')}</TableCell>
+                    <TableCell>{vehicle.licensePlate || t('common.notAvailable')}</TableCell>
+                    <TableCell>{vehicle.vin || t('common.notAvailable')}</TableCell>
+                    <TableCell>
+                      {vehicle.mileage ? `${vehicle.mileage} ${t('common.km')}` : t('common.notAvailable')}
+                    </TableCell>
+                    <TableCell>
+                      {vehicle.lastService
+                        ? format(new Date(vehicle.lastService), 'dd.MM.yyyy')
+                        : t('common.notAvailable')}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        ) : (
+          <Grid container spacing={3}>
+            {vehicles.map((vehicle, index) => (
+              <Grid item key={vehicle.id || `vehicle-${index}`} xs={12} sm={6} md={4}>
+                <Card
                   sx={{ height: '100%', display: 'flex', flexDirection: 'column', cursor: 'pointer' }}
                   onClick={() => navigate(`/vehicles/${vehicle.vin}`)}
                 >
@@ -190,10 +269,7 @@ const Vehicles = () => {
                   />
                   <CardContent sx={{ flexGrow: 1 }}>
                     <Typography gutterBottom variant="h5" component="h2">
-                      {vehicle.make && vehicle.model ? 
-                        `${vehicle.make} ${vehicle.model}` : 
-                        t('common.notAvailable')
-                      }
+                      {vehicle.make && vehicle.model ? `${vehicle.make} ${vehicle.model}` : t('common.notAvailable')}
                     </Typography>
                     <Typography variant="body2" color="text.secondary" gutterBottom>
                       {t('vehicle.year')}: {vehicle.year || t('common.notAvailable')}
@@ -206,7 +282,8 @@ const Vehicles = () => {
                     </Typography>
                     {vehicle.engineType && (
                       <Typography variant="body2" color="text.secondary">
-                        {t('vehicle.engineType')}: {t(`vehicle.engineTypes.${vehicle.engineType}`) || vehicle.engineType} {vehicle.engineVolume ? `(${vehicle.engineVolume}L)` : ''}
+                        {t('vehicle.engineType')}: {t(`vehicle.engineTypes.${vehicle.engineType}`) || vehicle.engineType}{' '}
+                        {vehicle.engineVolume ? `(${vehicle.engineVolume}L)` : ''}
                       </Typography>
                     )}
                     {vehicle.transmission && (
@@ -231,7 +308,8 @@ const Vehicles = () => {
                 </Card>
               </Grid>
             ))}
-        </Grid>
+          </Grid>
+        )
       )}
     </Container>
   );
