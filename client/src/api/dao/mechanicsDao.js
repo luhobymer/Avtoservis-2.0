@@ -1,4 +1,4 @@
-const DEFAULT_API_BASE_URL = 'https://avtoservis-2-0.onrender.com';
+const DEFAULT_API_BASE_URL = 'https://avtoservis-server.onrender.com';
 const API_BASE_URL = (
   import.meta.env.VITE_API_BASE_URL || DEFAULT_API_BASE_URL
 )
