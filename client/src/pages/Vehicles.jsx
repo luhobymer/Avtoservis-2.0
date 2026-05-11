@@ -16,10 +16,6 @@ import {
   Skeleton,
   ToggleButton,
   ToggleButtonGroup,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
   Table,
   TableBody,
   TableCell,
@@ -324,47 +320,6 @@ const Vehicles = () => {
             {t('vehicle.add')}
           </Button>
         </Box>
-      </Box>
-
-      <Box
-        sx={{
-          display: 'flex',
-          gap: 1,
-          mb: 2,
-          flexWrap: 'wrap',
-          alignItems: 'center',
-        }}
-      >
-        <FormControl size="small" sx={{ minWidth: 220 }}>
-          <InputLabel id="vehicles-sort-key-label">
-            {t('common.sortBy', 'Сортувати за')}
-          </InputLabel>
-          <Select
-            labelId="vehicles-sort-key-label"
-            value={sortKey}
-            label={t('common.sortBy', 'Сортувати за')}
-            onChange={(e) => setSortKey(e.target.value)}
-          >
-            <MenuItem value="make_model">{t('vehicle.make', 'Марка')}/{t('vehicle.model', 'Модель')}</MenuItem>
-            <MenuItem value="year">{t('vehicle.year', 'Рік')}</MenuItem>
-            <MenuItem value="mileage">{t('vehicle.mileage', 'Пробіг')}</MenuItem>
-            <MenuItem value="license_plate">{t('vehicle.licensePlate', 'Держ. номер')}</MenuItem>
-            <MenuItem value="created_at">{t('common.createdAt', 'Дата створення')}</MenuItem>
-          </Select>
-        </FormControl>
-
-        <FormControl size="small" sx={{ minWidth: 160 }}>
-          <InputLabel id="vehicles-sort-dir-label">{t('common.order', 'Порядок')}</InputLabel>
-          <Select
-            labelId="vehicles-sort-dir-label"
-            value={sortDir}
-            label={t('common.order', 'Порядок')}
-            onChange={(e) => setSortDir(e.target.value)}
-          >
-            <MenuItem value="asc">{t('common.ascending', 'Зростання')}</MenuItem>
-            <MenuItem value="desc">{t('common.descending', 'Спадання')}</MenuItem>
-          </Select>
-        </FormControl>
       </Box>
 
       {sortedVehicles.length === 0 ? (

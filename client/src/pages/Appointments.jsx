@@ -21,10 +21,6 @@ import {
   Tabs,
   Tab,
   Skeleton,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
   TableSortLabel
 } from '@mui/material';
 import { format } from 'date-fns';
@@ -270,36 +266,6 @@ const Appointments = () => {
           </Tabs>
         </Box>
       )}
-
-      <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap', alignItems: 'center' }}>
-        <FormControl size="small" sx={{ minWidth: 220 }}>
-          <InputLabel id="appointments-sort-key-label">{t('common.sortBy', 'Сортувати за')}</InputLabel>
-          <Select
-            labelId="appointments-sort-key-label"
-            value={sortKey}
-            label={t('common.sortBy', 'Сортувати за')}
-            onChange={(e) => setSortKey(e.target.value)}
-          >
-            <MenuItem value="scheduled">{t('appointment.scheduledDate', 'Дата/час')}</MenuItem>
-            <MenuItem value="status">{t('appointment.status', 'Статус')}</MenuItem>
-            <MenuItem value="vehicle">{t('vehicle.title', 'Авто')}</MenuItem>
-            <MenuItem value="price">{t('appointment.price', 'Ціна')}</MenuItem>
-          </Select>
-        </FormControl>
-
-        <FormControl size="small" sx={{ minWidth: 160 }}>
-          <InputLabel id="appointments-sort-dir-label">{t('common.order', 'Порядок')}</InputLabel>
-          <Select
-            labelId="appointments-sort-dir-label"
-            value={sortDir}
-            label={t('common.order', 'Порядок')}
-            onChange={(e) => setSortDir(e.target.value)}
-          >
-            <MenuItem value="asc">{t('common.ascending', 'Зростання')}</MenuItem>
-            <MenuItem value="desc">{t('common.descending', 'Спадання')}</MenuItem>
-          </Select>
-        </FormControl>
-      </Box>
 
       {loading ? (
         <TableContainer component={Paper}>

@@ -264,34 +264,6 @@ const ServiceBook = () => {
         <Alert severity="info">{t('serviceRecord.noRecords', 'Немає сервісних записів')}</Alert>
       ) : (
         <>
-          <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap', alignItems: 'center' }}>
-            <FormControl size="small" sx={{ minWidth: 220 }}>
-              <InputLabel id="service-book-sort-key">{t('common.sortBy', 'Сортувати за')}</InputLabel>
-              <Select
-                labelId="service-book-sort-key"
-                value={sortKey}
-                label={t('common.sortBy', 'Сортувати за')}
-                onChange={(e) => setSortKey(e.target.value)}
-              >
-                <MenuItem value="service_date">{t('serviceRecord.serviceDate', 'Дата')}</MenuItem>
-                <MenuItem value="service_type">{t('serviceRecord.serviceType', 'Тип')}</MenuItem>
-                <MenuItem value="mileage">{t('serviceRecord.mileage', 'Пробіг')}</MenuItem>
-                <MenuItem value="cost">{t('serviceRecord.cost', 'Вартість')}</MenuItem>
-              </Select>
-            </FormControl>
-            <FormControl size="small" sx={{ minWidth: 160 }}>
-              <InputLabel id="service-book-sort-dir">{t('common.order', 'Порядок')}</InputLabel>
-              <Select
-                labelId="service-book-sort-dir"
-                value={sortDir}
-                label={t('common.order', 'Порядок')}
-                onChange={(e) => setSortDir(e.target.value)}
-              >
-                <MenuItem value="asc">{t('common.ascending', 'Зростання')}</MenuItem>
-                <MenuItem value="desc">{t('common.descending', 'Спадання')}</MenuItem>
-              </Select>
-            </FormControl>
-          </Box>
         <TableContainer component={Paper} variant="outlined">
           <Table>
             <TableHead>
