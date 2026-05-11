@@ -32,7 +32,7 @@ router.post(
       return true;
     }),
     check('model', "Модель обов'язкова").not().isEmpty(),
-    check('year', 'Рік має бути числом').isNumeric(),
+    check('year', 'Рік має бути числом').optional().isNumeric(),
     check('mileage', 'Пробіг має бути числом').optional().isNumeric(),
     check('licensePlate', 'Номерний знак').optional(),
     check('license_plate', 'Номерний знак').optional(),
