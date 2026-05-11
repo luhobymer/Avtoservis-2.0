@@ -45,6 +45,29 @@ async function resolveCurrentMechanic(user, options = {}) {
     mechanic = await db.prepare('SELECT * FROM mechanics WHERE phone = ? LIMIT 1').get(phone);
   }
 
+  // If mechanic exists already, but caller wants to ensure all services are enabled,
+  // perform the upsert before returning.
+  if (mechanic && options.enableAllServices) {
+    const mechanicId = mechanic?.id ? String(mechanic.id) : '';
+    if (mechanicId) {
+      const now = new Date().toISOString();
+      const rows = await db.prepare('SELECT id FROM services WHERE COALESCE(is_active, 1) = 1').all();
+      const serviceIds = (rows || []).map((r) => r.id).filter(Boolean);
+      for (const sid of serviceIds) {
+        await db
+          .prepare(
+            `INSERT INTO mechanic_services (id, mechanic_id, service_id, is_enabled, created_at, updated_at)
+             VALUES (?, ?, ?, 1, ?, ?)
+             ON CONFLICT(mechanic_id, service_id) DO UPDATE SET
+               is_enabled = excluded.is_enabled,
+               updated_at = excluded.updated_at`
+          )
+          .run(crypto.randomUUID(), mechanicId, String(sid), now, now);
+      }
+    }
+    return mechanic;
+  }
+
   if (mechanic) return mechanic;
 
   if (!options.createIfMissing) return null;
