@@ -17,39 +17,6 @@ async function resolveCurrentMechanic(user, options = {}) {
 
   const db = await getDb();
 
-  const upsertMechanicServiceEnabled = async (mechanicId, serviceId, now) => {
-    try {
-      await db
-        .prepare(
-          `INSERT INTO mechanic_services (id, mechanic_id, service_id, is_enabled, created_at, updated_at)
-           VALUES (?, ?, ?, 1, ?, ?)
-           ON CONFLICT(mechanic_id, service_id) DO UPDATE SET
-             is_enabled = excluded.is_enabled,
-             updated_at = excluded.updated_at`
-        )
-        .run(crypto.randomUUID(), mechanicId, String(serviceId), now, now);
-      return;
-    } catch (err) {
-      void err;
-    }
-
-    const existing = await db
-      .prepare('SELECT id FROM mechanic_services WHERE mechanic_id = ? AND service_id = ? LIMIT 1')
-      .get(mechanicId, String(serviceId));
-    if (existing?.id) {
-      await db
-        .prepare('UPDATE mechanic_services SET is_enabled = 1, updated_at = ? WHERE id = ?')
-        .run(now, existing.id);
-      return;
-    }
-
-    await db
-      .prepare(
-        'INSERT INTO mechanic_services (id, mechanic_id, service_id, is_enabled, created_at, updated_at) VALUES (?, ?, ?, 1, ?, ?)'
-      )
-      .run(crypto.randomUUID(), mechanicId, String(serviceId), now, now);
-  };
-
   const userId = user?.id ? String(user.id).trim() : '';
   let email = user?.email ? String(user.email).trim() : '';
   let phone = user?.phone ? String(user.phone).trim() : '';
@@ -87,7 +54,15 @@ async function resolveCurrentMechanic(user, options = {}) {
       const rows = await db.prepare('SELECT id FROM services WHERE COALESCE(is_active, 1) = 1').all();
       const serviceIds = (rows || []).map((r) => r.id).filter(Boolean);
       for (const sid of serviceIds) {
-        await upsertMechanicServiceEnabled(mechanicId, sid, now);
+        await db
+          .prepare(
+            `INSERT INTO mechanic_services (id, mechanic_id, service_id, is_enabled, created_at, updated_at)
+             VALUES (?, ?, ?, 1, ?, ?)
+             ON CONFLICT(mechanic_id, service_id) DO UPDATE SET
+               is_enabled = excluded.is_enabled,
+               updated_at = excluded.updated_at`
+          )
+          .run(crypto.randomUUID(), mechanicId, String(sid), now, now);
       }
     }
     return mechanic;
@@ -132,7 +107,15 @@ async function resolveCurrentMechanic(user, options = {}) {
     const rows = await db.prepare('SELECT id FROM services WHERE COALESCE(is_active, 1) = 1').all();
     const serviceIds = (rows || []).map((r) => r.id).filter(Boolean);
     for (const sid of serviceIds) {
-      await upsertMechanicServiceEnabled(userId, sid, now);
+      await db
+        .prepare(
+          `INSERT INTO mechanic_services (id, mechanic_id, service_id, is_enabled, created_at, updated_at)
+           VALUES (?, ?, ?, 1, ?, ?)
+           ON CONFLICT(mechanic_id, service_id) DO UPDATE SET
+             is_enabled = excluded.is_enabled,
+             updated_at = excluded.updated_at`
+        )
+        .run(crypto.randomUUID(), userId, String(sid), now, now);
     }
   }
 
