@@ -156,10 +156,10 @@ router.put('/:id', auth, async (req, res) => {
       for (const sid of unique) {
         const row = await db
           .prepare(
-            'SELECT ms.is_enabled, s.is_active FROM mechanic_services ms LEFT JOIN services s ON s.id = ms.service_id WHERE ms.mechanic_id = ? AND ms.service_id = ?'
+            'SELECT COALESCE(ms.is_enabled, 1) AS is_enabled, COALESCE(s.is_active, 1) AS is_active FROM services s LEFT JOIN mechanic_services ms ON ms.service_id = s.id AND ms.mechanic_id = ? WHERE s.id = ?'
           )
           .get(updateMechanicId, sid);
-        const isEnabled = row && Number(row.is_enabled || 0) === 1;
+        const isEnabled = row ? Number(row.is_enabled ?? 1) === 1 : true;
         const isActive = row ? Number(row.is_active ?? 1) === 1 : false;
         if (!isEnabled || !isActive) {
           return res.status(400).json({ message: 'Послуга недоступна для вибраного механіка' });
