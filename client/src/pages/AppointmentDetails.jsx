@@ -1195,7 +1195,7 @@ const AppointmentDetails = ({ isNew }) => {
                     )}
                   />
                 </Grid>
-                {isNewAppointment && isMasterUser ? (
+                {isMasterUser ? (
                   <Grid item xs={12}>
                     <Button
                       variant="text"
