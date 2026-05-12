@@ -82,21 +82,19 @@ const assertServicesEnabledForMechanic = async (db, mechanicId, serviceIds) => {
     : [];
   if (ids.length === 0) return;
 
-  const enabled = await hasMechanicServicesTable(db);
-  if (!enabled) return;
+  const hasMsTable = await hasMechanicServicesTable(db);
 
   for (const sid of ids) {
     const row = await db
       .prepare(
         `SELECT
-          COALESCE(ms.is_enabled, 1) AS is_enabled,
+          ${hasMsTable ? 'COALESCE(ms.is_enabled, 1)' : '1'} AS is_enabled,
           COALESCE(s.is_active, 1) AS is_active
         FROM services s
-        LEFT JOIN mechanic_services ms
-          ON ms.service_id = s.id AND ms.mechanic_id = ?
+        ${hasMsTable ? 'LEFT JOIN mechanic_services ms ON ms.service_id = s.id AND ms.mechanic_id = ?' : ''}
         WHERE s.id = ?`
       )
-      .get(mechanicId, sid);
+      .get(...(hasMsTable ? [mechanicId, sid] : [sid]));
     const isEnabled = row ? Number(row.is_enabled ?? 1) === 1 : true;
     const isActive = row ? Number(row.is_active ?? 1) === 1 : false;
     if (!isEnabled || !isActive) {
