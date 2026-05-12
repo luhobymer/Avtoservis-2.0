@@ -336,6 +336,10 @@ const AppointmentDetails = ({ isNew }) => {
       }
       try {
         const appointment = await getAppointmentById(id);
+        console.log('[fetchAppointment] Raw appointment data:', appointment);
+        console.log('[fetchAppointment] scheduled_time:', appointment?.scheduled_time);
+        console.log('[fetchAppointment] appointment_price:', appointment?.appointment_price);
+        console.log('[fetchAppointment] appointment_duration:', appointment?.appointment_duration);
         setAppointmentUserId(appointment?.UserId || appointment?.user_id || '');
         const serviceIdsFromAppointment = Array.isArray(appointment?.service_ids)
           ? appointment.service_ids
@@ -380,6 +384,11 @@ const AppointmentDetails = ({ isNew }) => {
               ? String(appointment.appointment_duration)
               : (appointment.appointmentDuration != null ? String(appointment.appointmentDuration) : ''),
         }));
+        console.log('[fetchAppointment] Form data after update:', {
+          scheduledDate: appointment.scheduled_time,
+          appointment_price: appointment.appointment_price,
+          appointment_duration: appointment.appointment_duration,
+        });
       } catch (err) {
         setError(err.message || t('errors.failedToLoadAppointment'));
       } finally {
