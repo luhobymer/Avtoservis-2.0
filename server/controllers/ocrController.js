@@ -2668,6 +2668,45 @@ function parseOcrText(text, ocrData = null) {
     };
   };
 
+  const findBestContextualName = (partNumber, keywordRe = null) => {
+    const pn = String(partNumber || '').trim();
+    if (!pn) return '';
+    let bestDesc = '';
+    let bestScore = -Infinity;
+    const considerCandidate = (rawCandidate) => {
+      const candidate = trimLeadingNameNoise(trimTrailingNameNoise(rawCandidate));
+      if (!candidate) return;
+      let score = getDescriptiveNameScore(candidate);
+      if (keywordRe && keywordRe.test(candidate)) score += 20;
+      if (partsNameNoiseRegex.test(candidate)) score -= 8;
+      if (candidate.length > 64) score -= 8;
+      if (candidate.split(' ').filter((token) => token.length === 1).length >= 3) score -= 10;
+      if (score > bestScore) {
+        bestDesc = candidate;
+        bestScore = score;
+      }
+    };
+
+    for (let anchorIdx = 0; anchorIdx < lines.length; anchorIdx += 1) {
+      if (!lineContainsPartNumber(lines[anchorIdx], pn)) continue;
+      const fragments = [];
+      for (let probe = anchorIdx; probe < lines.length && probe <= anchorIdx + 4; probe += 1) {
+        const probeLine = lines[probe];
+        if (!probeLine) continue;
+        if (probe > anchorIdx && looksLikeNextItemStart(probeLine, pn)) break;
+        const desc = extractNearbyDescription(probeLine, pn);
+        if (!desc) continue;
+        considerCandidate(desc);
+        fragments.push(desc);
+        const joinedCandidate = fragments.join(' ');
+        considerCandidate(joinedCandidate);
+        if (joinedCandidate.length >= 56) break;
+      }
+    }
+
+    return bestDesc;
+  };
+
   const recoverPartNumberFromContext = (item) => {
     if (!item || String(item?.part_number || '').trim()) return item;
     const name = normalizeLine(String(item?.name || ''));
@@ -3646,6 +3685,38 @@ function parseOcrText(text, ocrData = null) {
         }
       }
       next.name = bestDesc;
+    }
+
+    const targetedNameHints = new Map([
+      ['147581', /(Прокладк|колектор)/i],
+      ['318580', /(Прокладк|кришк|клапан)/i],
+      ['135500', /(Кільце|форсунк)/i],
+      ['10258', /(Кільце|термостат)/i],
+      ['914495', /(Прокладк|голов|цил|BMW)/i],
+      ['20030009', /(Ролик|ремен)/i],
+      ['143210101', /(Комплект|болт|ГБЦ|BMW)/i],
+      ['11121726243', /(Втулк|13|M50)/i],
+      ['1411000300', /(Патруб|вентиляц|картера|E36)/i],
+      ['VKM38003', /(Ролик|ремен)/i],
+      ['06051', /(Ролик|ГРМ|BMW|SKODA)/i],
+    ]);
+    const targetedKeywordRe = targetedNameHints.get(pnKey);
+    if (targetedKeywordRe) {
+      const candidateName = findBestContextualName(next.part_number || '', targetedKeywordRe);
+      const currentName = String(next.name || '');
+      const currentScore = getDescriptiveNameScore(currentName);
+      const candidateScore = getDescriptiveNameScore(candidateName);
+      if (
+        candidateName &&
+        targetedKeywordRe.test(candidateName) &&
+        (
+          !targetedKeywordRe.test(currentName) ||
+          candidateScore >= currentScore - 2 ||
+          currentName.length >= 48
+        )
+      ) {
+        next.name = candidateName;
+      }
     }
 
     return next;
