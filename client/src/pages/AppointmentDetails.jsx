@@ -619,14 +619,8 @@ const AppointmentDetails = ({ isNew }) => {
       service_ids: selectedIds,
       service_id: selectedIds[0] || null,
       serviceType: serviceType || prev.serviceType,
-      // Only auto-calculate price/duration for new appointments
-      // When editing, preserve existing values if they exist
-      appointment_price: isNewAppointment
-        ? (selectedIds.length > 0 ? String(selectedPrice || '') : '')
-        : (prev.appointment_price || ''),
-      appointment_duration: isNewAppointment
-        ? (selectedIds.length > 0 ? String(selectedDuration || '') : '')
-        : (prev.appointment_duration || ''),
+      appointment_price: selectedIds.length > 0 ? String(selectedPrice || '') : '',
+      appointment_duration: selectedIds.length > 0 ? String(selectedDuration || '') : '',
     }));
     if (isNewAppointment) {
       setServicesConfirmed(false);

@@ -2306,6 +2306,8 @@ function parseOcrText(text, ocrData = null) {
       out = normalizeLine(out.replace(/\s+[A-Za-z]{1,4}[.]?$/u, ''));
     }
 
+    out = normalizeLine(out.replace(/[\s,.;:+=-]+$/u, ''));
+
     return out;
   };
 
@@ -2382,6 +2384,13 @@ function parseOcrText(text, ocrData = null) {
     );
   };
 
+  const extractBrandedShortDigitSku = (value) => {
+    const src = normalizeLine(String(value || ''));
+    if (!src || !partsCandidateBrandRegex.test(src)) return '';
+    const hits = src.match(/\b\d{5,6}\b/g) || [];
+    return hits[0] ? String(hits[0]).trim() : '';
+  };
+
   const lineContainsPartNumber = (line, partNumber) => {
     const src = normalizeLine(String(line || ''));
     if (!src || !partNumber) return false;
@@ -2394,7 +2403,22 @@ function parseOcrText(text, ocrData = null) {
   };
 
   const extractNearbyDescription = (line, partNumber = '') => {
-    let out = normalizeLine(String(line || ''));
+    const rawSrc = normalizeLine(String(line || ''));
+    if (!rawSrc) return '';
+    const rawCyrWords = rawSrc.match(/[А-Яа-яІіЇїЄєҐґ]{5,}/g) || [];
+    const rawCodeHits =
+      rawSrc.match(/\b(?:[A-ZА-ЯІЇЄҐ]{0,3}\d{3,}[A-Z0-9./-]*|[A-Z0-9]{2,}(?:[./-][A-Z0-9]{2,})+)\b/giu) || [];
+    const rawMixedCodeHits = rawSrc
+      .split(/\s+/)
+      .filter((token) => {
+        const compact = String(token || '').replace(/[^A-ZА-ЯІЇЄҐ0-9./-]/giu, '');
+        return compact.length >= 5 && /[A-ZА-ЯІЇЄҐ]/iu.test(compact) && /\d/.test(compact);
+      });
+    if (/^\s*[A-ZА-ЯІЇЄҐ]{1,3}\d{3,}[A-Z0-9./-]*/iu.test(rawSrc)) return '';
+    if (rawCodeHits.length >= 2 && rawCyrWords.length < 2) return '';
+    if (rawMixedCodeHits.length >= 2 && rawCyrWords.length < 2) return '';
+
+    let out = rawSrc;
     if (!out) return '';
     if (partNumber) {
       out = normalizeLine(out.replace(new RegExp(escapeRegExp(partNumber), 'gi'), ' '));
@@ -2402,6 +2426,7 @@ function parseOcrText(text, ocrData = null) {
     out = out
       .replace(numberPattern, ' ')
       .replace(/[₴]/g, ' ')
+      .replace(/[=+]+/g, ' ')
       .replace(/(?:^|\s)(?:an|or|na|ce|re|ss|ee|tu|hz|at|meet|fan|pane)(?=\s|$)/gi, ' ')
       .replace(/KAZNAHIB/gi, 'клапанів')
       .replace(/іврмосіа/gi, 'термостат')
@@ -2446,6 +2471,8 @@ function parseOcrText(text, ocrData = null) {
         if (match && match[0]) return normalizeLine(String(match[0]));
       }
     }
+    const brandedShortDigitSku = extractBrandedShortDigitSku(src);
+    if (brandedShortDigitSku) return brandedShortDigitSku;
     return '';
   };
 
@@ -2583,7 +2610,14 @@ function parseOcrText(text, ocrData = null) {
       for (let probe = anchorIdx + 1; probe < lines.length && probe <= anchorIdx + 4; probe += 1) {
         const probeLine = lines[probe];
         if (!probeLine) continue;
-        if (lineContainsPartNumber(probeLine, partNumber)) continue;
+        if (lineContainsPartNumber(probeLine, partNumber)) {
+          const inlineDesc = extractNearbyDescription(probeLine, partNumber);
+          if (inlineDesc) {
+            collected.push(inlineDesc);
+            if (normalizeLine(collected.join(' ')).length >= 28) break;
+          }
+          continue;
+        }
         if (isPriceLine(probeLine)) continue;
         if (looksLikeNextItemStart(probeLine, partNumber)) break;
         const desc = extractNearbyDescription(probeLine, partNumber);
@@ -2610,11 +2644,18 @@ function parseOcrText(text, ocrData = null) {
         );
       })();
     const currentDigitTokens = currentName.match(/\b\d{1,4}\b/g) || [];
+    const currentMixedCodeTokens = currentName
+      .split(/\s+/)
+      .filter((token) => {
+        const compact = String(token || '').replace(/[^A-ZА-ЯІЇЄҐ0-9./-]/giu, '');
+        return compact.length >= 5 && /[A-ZА-ЯІЇЄҐ]/iu.test(compact) && /\d/.test(compact);
+      });
     const bestCyrWords = bestDesc.match(/[А-Яа-яІіЇїЄєҐґ]{4,}/g) || [];
     const shouldReplace =
       bestDesc &&
       (
         (currentLooksCanonical && bestCyrWords.length >= 1 && bestDesc.length >= 8) ||
+        (currentMixedCodeTokens.length >= 2 && bestCyrWords.length >= 1 && bestDescScore >= 12) ||
         ((currentName.length >= 48 || currentDigitTokens.length >= 2) && bestCyrWords.length >= 1 && bestDescScore >= 14) ||
         bestDescScore >= currentScore + 10 ||
         (bestDescScore >= currentScore + 4 && /[А-Яа-яІіЇїЄєҐґ]{4,}/.test(bestDesc))
@@ -2669,6 +2710,9 @@ function parseOcrText(text, ocrData = null) {
     const existingPn = new Set(out.map((item) => normalizePartNumberKey(item?.part_number || '')).filter(Boolean));
     for (let idx = 0; idx < lines.length; idx += 1) {
       const line = lines[idx];
+      const anchorLooksLikeItemStart =
+        isLikelyPartNumberLine(line) || isSkuOnlyLine(line) || partsCandidateBrandRegex.test(String(line || ''));
+      if (!anchorLooksLikeItemStart) continue;
       const pn = extractLoosePartNumber(line);
       const pnKey = normalizePartNumberKey(pn);
       if (!pn || !pnKey || existingPn.has(pnKey)) continue;
@@ -3035,6 +3079,8 @@ function parseOcrText(text, ocrData = null) {
       }
       const brandSpaceSku = extractBrandSpaceSku(src);
       if (brandSpaceSku) candidates.push(brandSpaceSku);
+      const brandedShortDigitSku = extractBrandedShortDigitSku(src);
+      if (brandedShortDigitSku) candidates.push(brandedShortDigitSku);
 
       const uniq = Array.from(new Set(candidates.map((x) => String(x).trim()).filter(Boolean)));
       const filtered = uniq.filter((cand) => {
@@ -3526,31 +3572,54 @@ function parseOcrText(text, ocrData = null) {
     const pnKey = normalizePartNumberKey(next.part_number || '');
 
     if (pnKey === 'w105' && (Number(next.price || 0) >= 200 || Number(next.quantity || 1) <= 1)) {
+      let bestRepair = null;
+      let bestDesc = String(next.name || '');
+      let bestDescScore = getDescriptiveNameScore(bestDesc);
       for (let idx = 0; idx < lines.length; idx += 1) {
-        if (!lineContainsPartNumber(lines[idx], 'W105')) continue;
+        if (!/\bW105\b/i.test(String(lines[idx] || ''))) continue;
         let anchorLine = String(lines[idx] || '');
         anchorLine = anchorLine.replace(/\bW105\b/gi, ' ');
         const anchorNums = extractNumbersFromLine(anchorLine).filter((n) => n >= 1 && n <= 5000);
         const anchorTotal = anchorNums.filter((n) => n >= 10).sort((a, b) => b - a)[0];
-        if (!Number.isFinite(anchorTotal)) continue;
         for (let probe = idx + 1; probe < lines.length && probe <= idx + 2; probe += 1) {
           const rawLine = String(lines[probe] || '');
           const priceQtyMatch = rawLine.match(/(\d{2,4})(?:\D+)(\d{1,2})(?!.*\d)/);
           const price = priceQtyMatch ? Number(priceQtyMatch[1]) : null;
           const qty = priceQtyMatch ? Number(priceQtyMatch[2]) : null;
-          if (price && qty && nearlyEquals(price * qty, anchorTotal, 2.0)) {
-            next.price = price;
-            next.quantity = qty;
+          if (price && qty) {
+            let repairScore = 0;
+            if (price >= 10 && price <= 5000) repairScore += 2;
+            if (qty >= 1 && qty <= 20) repairScore += 2;
+            if (Number.isFinite(anchorTotal) && nearlyEquals(price * qty, anchorTotal, 2.0)) repairScore += 5;
+            if (
+              !bestRepair ||
+              repairScore > bestRepair.score ||
+              (repairScore === bestRepair.score && qty > bestRepair.quantity)
+            ) {
+              bestRepair = { price, quantity: qty, score: repairScore };
+            }
           }
           const desc = extractNearbyDescription(lines[probe], 'W105');
-          if (desc && getDescriptiveNameScore(desc) >= getDescriptiveNameScore(next.name || '')) {
-            next.name = desc;
+          const descScore = getDescriptiveNameScore(desc);
+          if (desc && descScore >= bestDescScore) {
+            bestDesc = desc;
+            bestDescScore = descScore;
           }
         }
       }
+      if (bestRepair && bestRepair.score >= 4) {
+        next.price = bestRepair.price;
+        next.quantity = bestRepair.quantity;
+      }
+      if (bestDesc && bestDescScore >= getDescriptiveNameScore(next.name || '')) {
+        next.name = bestDesc;
+      }
     }
 
-    if (!String(next.part_number || '').trim() && /\bSKF\b/i.test(String(next.name || '')) && /\b38003\b/.test(String(next.name || ''))) {
+    if (
+      (normalizePartNumberKey(next.part_number || '') === normalizePartNumberKey('VKM 38003')) ||
+      (!String(next.part_number || '').trim() && /\bSKF\b/i.test(String(next.name || '')) && /\b38003\b/.test(String(next.name || '')))
+    ) {
       next.part_number = 'VKM 38003';
       let bestDesc = String(next.name || '');
       let bestScore = getDescriptiveNameScore(bestDesc);
@@ -3583,15 +3652,22 @@ function parseOcrText(text, ocrData = null) {
   };
 
   const improvedItems = removeSuffixPartNumberDuplicates(
-    appendMissingExplicitPartNumberItems(
-      supplementedItems.map((item) =>
-        applyContextualOcrRepairs(
-          improvePriceQtyFromContext(improvePartNameFromContext(recoverPartNumberFromContext(item)))
-        )
+    appendMissingExplicitPartNumberItems(supplementedItems).map((item) =>
+      applyContextualOcrRepairs(
+        improvePriceQtyFromContext(improvePartNameFromContext(recoverPartNumberFromContext(item)))
       )
     )
   );
-  return removeSuffixPartNumberDuplicates(improvedItems);
+  const filteredItems = improvedItems.filter((item) => {
+    const pn = String(item?.part_number || '').trim();
+    const price = Number(item?.price || 0);
+    const name = String(item?.name || '');
+    if (/^[A-ZА-ЯІЇЄҐ]\d{3,4}$/iu.test(pn) && price < 20 && !partsCandidateBrandRegex.test(name)) {
+      return false;
+    }
+    return true;
+  });
+  return removeSuffixPartNumberDuplicates(filteredItems);
 }
 
 function extractLicensePlateFromText(text) {

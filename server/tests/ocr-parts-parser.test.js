@@ -397,6 +397,19 @@ FEBI BILSTEIN 06051                      ла                          658      
     expect(parts.find((item) => item.part_number === '147.581')?.name).not.toBe('ELRING 147.581');
     expect(parts.find((item) => item.part_number === '20 03 0009')?.name).not.toBe('SWAG 20 03 0009');
     expect(parts.find((item) => item.part_number === '11121726243')?.name).not.toBe('BMW 11121726243');
+    expect(parts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          part_number: '10258',
+          name: expect.stringMatching(/термостат/i),
+          price: 23,
+          quantity: 1,
+        }),
+      ])
+    );
+    expect(parts.filter((item) => item.part_number === 'M271')).toHaveLength(0);
+    expect(parts.filter((item) => item.part_number === 'M50825')).toHaveLength(0);
+    expect(parts).toHaveLength(14);
   });
 
   test('fixes merged OCR regressions from the latest production order dump', () => {
