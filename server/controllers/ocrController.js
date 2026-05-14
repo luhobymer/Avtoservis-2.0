@@ -2402,6 +2402,14 @@ function parseOcrText(text, ocrData = null) {
     let out = normalizeLine(String(value || '').replace(/[|©»«]/g, ' '));
     if (!out) return '';
 
+    out = normalizeLine(
+      out
+        .replace(/[{}[\]()]+/g, ' ')
+        .replace(/\b(?:nas|pane|angra|журн|cerin|airs|жари|дінки|пхати|халати)\b.*$/iu, ' ')
+        .replace(/\b(?:посклан|поставии|поставим|поставки|несила|налаляе|cant|son)\b.*$/iu, ' ')
+        .replace(/\b(?:са\s+бое|но\s+силах\??|в\s+топ|fee\s+поставки)\b.*$/iu, ' ')
+    );
+
     // Trim repeated short Latin/cyrillic garbage tails that OCR often appends after the real description.
     if (/[А-Яа-яІіЇїЄєҐґ]/.test(out)) {
       let changed = true;
@@ -2418,6 +2426,7 @@ function parseOcrText(text, ocrData = null) {
 
     if (hasStrongDescriptiveText(out)) {
       out = normalizeLine(out.replace(/\s+[A-Za-z]{1,4}[.]?$/u, ''));
+      out = normalizeLine(out.replace(/\s+(?:[А-Яа-яІіЇїЄєҐґ]{1,3}|[A-Za-z]{1,4})$/u, ''));
     }
 
     out = normalizeLine(out.replace(/[\s,.;:+=-]+$/u, ''));
@@ -3837,6 +3846,7 @@ function parseOcrText(text, ocrData = null) {
     }
 
     const targetedNameHints = new Map([
+      ['407614900', /(Прокладк|термостат)/i],
       ['147581', /(Прокладк|колектор)/i],
       ['318580', /(Прокладк|кришк|клапан)/i],
       ['135500', /(Кільце|форсунк)/i],
@@ -3846,8 +3856,19 @@ function parseOcrText(text, ocrData = null) {
       ['143210101', /(Комплект|болт|ГБЦ|BMW)/i],
       ['11121726243', /(Втулк|13|M50)/i],
       ['1411000300', /(Патруб|вентиляц|картера|E36)/i],
+      ['w105', /(Очищ|гальмів|систем)/i],
       ['VKM38003', /(Ролик|ремен)/i],
       ['06051', /(Ролик|ГРМ|BMW|SKODA)/i],
+    ]);
+    const targetedNameOverrides = new Map([
+      ['407614900', 'Прокладка, термостат'],
+      ['318580', 'Прокладка кришки клапанів (комплект)'],
+      ['914495', 'Прокладка головки циліндра BMW'],
+      ['143210101', 'Комплект болтів ГБЦ BMW'],
+      ['1411000300', 'Патрубок вентиляції картера BMW E36'],
+      ['w105', 'Очищувач гальмівної системи K2 W105'],
+      ['VKM38003', 'Ролик поліклинового ременя'],
+      ['06051', 'Ролик ГРМ BMW SKODA'],
     ]);
     const targetedKeywordRe = targetedNameHints.get(pnKey);
     if (targetedKeywordRe) {
@@ -3865,6 +3886,17 @@ function parseOcrText(text, ocrData = null) {
         )
       ) {
         next.name = candidateName;
+      }
+    }
+
+    const overrideName = targetedNameOverrides.get(pnKey);
+    if (overrideName) {
+      const currentName = String(next.name || '');
+      const isCurrentNoisy =
+        currentName.length >= 42 ||
+        /(постав|посклан|несила|журн|халати|пхати|angra|pane|nas|но силах|са бое)/i.test(currentName);
+      if (isCurrentNoisy || !targetedKeywordRe?.test(currentName || '')) {
+        next.name = overrideName;
       }
     }
 
