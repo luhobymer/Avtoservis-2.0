@@ -201,12 +201,17 @@ router.put('/:id', auth, async (req, res) => {
     params.push(new Date().toISOString());
     params.push(req.params.id);
 
+    console.log('[appointments][PUT] Update query:', `UPDATE appointments SET ${updates.join(', ')} WHERE id = ?`);
+    console.log('[appointments][PUT] Params count:', params.length);
+    console.log('[appointments][PUT] Params:', params.map((p, i) => `[${i}] ${typeof p}: ${p}`));
+
     await db.prepare(`UPDATE appointments SET ${updates.join(', ')} WHERE id = ?`).run(...params);
 
     const updated = await db.prepare('SELECT * FROM appointments WHERE id = ?').get(req.params.id);
     res.json(updated);
   } catch (error) {
     console.error('[appointments][PUT] Помилка:', error);
+    console.error('[appointments][PUT] Stack:', error.stack);
     res.status(500).json({
       error: 'Помилка сервера при оновленні запису',
       details: error.message,
