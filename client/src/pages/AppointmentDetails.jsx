@@ -921,6 +921,15 @@ const AppointmentDetails = ({ isNew }) => {
           : null,
       };
 
+      console.log('[handleSubmit] Form data:', {
+        formData_service_id: formData.service_id,
+        formData_service_ids: formData.service_ids,
+        effectiveServiceIds,
+        payload_service_id: payload.service_id,
+        payload_service_ids: payload.service_ids,
+        isNewAppointment,
+      });
+
       if (formData.appointment_price !== '' && formData.appointment_price != null) {
         payload.appointment_price = Number(formData.appointment_price);
       }
