@@ -703,11 +703,20 @@ const ensureSchema = async (client) => {
     )
   `);
   await ensureTableColumns(client, 'appointments', [
+    { name: 'user_id', def: 'TEXT' },
+    { name: 'vehicle_id', def: 'TEXT' },
+    { name: 'vehicle_vin', def: 'TEXT' },
+    { name: 'service_type', def: 'TEXT' },
     { name: 'mechanic_id', def: 'TEXT' },
     { name: 'service_id', def: 'TEXT' },
     { name: 'service_ids', def: 'TEXT' },
     { name: 'appointment_price', def: 'REAL' },
     { name: 'appointment_duration', def: 'INTEGER' },
+    { name: 'scheduled_time', def: 'TEXT' },
+    { name: 'status', def: 'TEXT' },
+    { name: 'appointment_date', def: 'TEXT' },
+    { name: 'notes', def: 'TEXT' },
+    { name: 'car_info', def: 'TEXT' },
     { name: 'completion_notes', def: 'TEXT' },
     { name: 'completion_mileage', def: 'INTEGER' },
   ]);
