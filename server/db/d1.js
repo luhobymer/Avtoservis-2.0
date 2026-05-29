@@ -718,6 +718,7 @@ const ensureSchema = async (client) => {
     { name: 'notes', def: 'TEXT' },
     { name: 'car_info', def: 'TEXT' },
     { name: 'completion_notes', def: 'TEXT' },
+    { name: 'actual_completion_date', def: 'TEXT' },
     { name: 'completion_mileage', def: 'INTEGER' },
   ]);
   await ensureTableColumns(client, 'service_records', [{ name: 'appointment_id', def: 'TEXT' }]);

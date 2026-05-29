@@ -800,6 +800,7 @@ const AppointmentDetails = ({ isNew }) => {
       if (formData.appointment_duration !== '') {
         payload.appointment_duration = Number(formData.appointment_duration);
       }
+      payload.actual_completion_date = new Date().toISOString();
       await updateStatus(id, 'completed', payload);
       setFormData(prev => ({ ...prev, status: 'completed' }));
       setSuccess(true);

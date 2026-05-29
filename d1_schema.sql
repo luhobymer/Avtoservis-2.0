@@ -185,6 +185,7 @@ CREATE TABLE IF NOT EXISTS appointments (
   notes TEXT,
   car_info TEXT,
   completion_notes TEXT,
+  actual_completion_date TEXT,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
