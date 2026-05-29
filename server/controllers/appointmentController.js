@@ -637,6 +637,7 @@ exports.updateAppointmentStatus = async (req, res) => {
       parts,
       appointment_price,
       appointment_duration,
+      actual_completion_date,
     } = req.body;
 
     const db = await getDb();
@@ -669,6 +670,7 @@ exports.updateAppointmentStatus = async (req, res) => {
     const hasCompletionNotes = names.has('completion_notes');
     const hasAppointmentPrice = names.has('appointment_price');
     const hasAppointmentDuration = names.has('appointment_duration');
+    const hasActualCompletionDate = names.has('actual_completion_date');
 
     const updates = ['status = ?'];
     const updateParams = [status];
@@ -695,6 +697,11 @@ exports.updateAppointmentStatus = async (req, res) => {
       const n = raw.trim() === '' ? null : Number(raw.replace(',', '.'));
       updates.push('appointment_duration = ?');
       updateParams.push(Number.isFinite(n) ? n : null);
+    }
+
+    if (hasActualCompletionDate && actual_completion_date !== undefined) {
+      updates.push('actual_completion_date = ?');
+      updateParams.push(actual_completion_date);
     }
 
     const updateQuery = `UPDATE appointments SET ${updates.join(', ')} WHERE id = ?`;
