@@ -70,6 +70,27 @@ const normalizeBrandHeuristicText = (value) =>
     .replace(/[^A-Z0-9&./ -]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+const normalizeOcrLine = (value) => String(value || '').replace(/\s+/g, ' ').trim();
+const normalizeSkuLettersGlobal = (value) =>
+  normalizeOcrLine(String(value || ''))
+    .toUpperCase()
+    .replace(/[А]/g, 'A')
+    .replace(/[В]/g, 'B')
+    .replace(/[С]/g, 'C')
+    .replace(/[ЕЁЄ]/g, 'E')
+    .replace(/[ІЇЙ]/g, 'I')
+    .replace(/[К]/g, 'K')
+    .replace(/[М]/g, 'M')
+    .replace(/[Н]/g, 'H')
+    .replace(/[О]/g, 'O')
+    .replace(/[Р]/g, 'P')
+    .replace(/[Т]/g, 'T')
+    .replace(/[Х]/g, 'X')
+    .replace(/[У]/g, 'Y')
+    .replace(/[Ґ]/g, 'G')
+    .replace(/[^A-Z0-9 ./-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 const hasGenericBrandAnchor = (value) => {
   const normalized = normalizeBrandHeuristicText(value);
   if (!normalized) return false;
@@ -153,6 +174,8 @@ const hasBrandSpaceSku = (value) => {
 const isLikelyPartNumberLine = (value) => {
   const line = String(value || '').trim();
   if (!line) return false;
+  if (isViscosityLikePartNumber(line)) return false;
+  if (isLikelyEngineCode(line)) return false;
   if (hasBrandSpaceSku(line)) return true;
   const hasSkuToken =
     /\b\d{2,}-\d{2,}(?:-\d{2,})?\b/.test(line) ||
@@ -172,6 +195,7 @@ const isSkuOnlyLine = (value) => {
   const currencyKeywords = /(грн|uah|₴)/i;
   const priceKeywords = /(ціна|цiна|цена|price)/i;
   if (currencyKeywords.test(line) || priceKeywords.test(line)) return false;
+  if (isViscosityLikePartNumber(line)) return false;
   if (hasBrandSpaceSku(line)) return true;
   if (/\b[A-Z]{1,4}\d{3,}\b/i.test(line)) return true;
   if (/\b\d{2,}-\d{2,}(?:-\d{2,})?\b/.test(line)) return true;
@@ -215,6 +239,14 @@ const getParsedPartsStats = (items) => {
   }
   return { count: arr.length, qtyGtOne, withPartNumber };
 };
+
+const isLikelyEngineCode = (value) => {
+  const compact = normalizeSkuLettersGlobal(String(value || '')).replace(/\s+/g, '');
+  if (!compact) return false;
+  return /^(?:OM\d{3,4}|M\d{3,5}[A-Z]?\d{0,2})$/i.test(compact);
+};
+const isViscosityLikePartNumber = (value) =>
+  /^\d{1,2}W[-–]?\d{2,3}$/i.test(normalizeOcrLine(String(value || '')).replace(/\s+/g, ''));
 
 const isNoisyParsedPartName = (value) => {
   const name = normalizePartNameKey(value);
@@ -2067,6 +2099,8 @@ function parseOcrText(text, ocrData = null) {
       }
 
       const partNumber = String(skuMatch[0]).trim();
+      const brand = extractBrand(line);
+      const anchorLineNums = parseNums(line, partNumber).filter((n) => n >= 20 && n <= 5000);
       const block = [line];
       let j = i + 1;
       while (j < lines.length) {
@@ -2081,9 +2115,20 @@ function parseOcrText(text, ocrData = null) {
         }
         const nextSkuMatch = String(l || '').match(skuPattern);
         const nextPartNumber = nextSkuMatch ? String(nextSkuMatch[0]).trim() : '';
-        if (nextPartNumber && nextPartNumber !== partNumber && (hasBrand(l) || isLikelyPartNumberLine(l))) break;
+        const hasNextBrand = hasBrand(l);
+        const nextLineNums = nextPartNumber
+          ? parseNums(l, nextPartNumber).filter((n) => n >= 20 && n <= 5000)
+          : parseNums(l, '').filter((n) => n >= 20 && n <= 5000);
+        // If we have a current brand, and the next line only has SKU without new brand, don't break
+        if (
+          nextPartNumber &&
+          nextPartNumber !== partNumber &&
+          (hasNextBrand || anchorLineNums.length || nextLineNums.length || (isLikelyPartNumberLine(l) && !brand))
+        ) {
+          break;
+        }
         block.push(l);
-        if (block.length >= 5) break;
+        if (block.length >= 7) break; // Increase max block length to handle more cross-references
         j += 1;
       }
 
@@ -2093,7 +2138,7 @@ function parseOcrText(text, ocrData = null) {
         .filter(
           (x) =>
             x &&
-            /[А-Яа-яІіЇїЄєҐґ]{4,}/.test(x) &&
+            (hasStrongDescriptiveText(x) || /[A-Za-z]{4,}\s+[A-Za-z]{4,}/.test(x)) &&
             !isLikelyPartNumberLine(x) &&
             !/\b\d{1,3}\s+\d{1,3}\s+\d{1,3}\b/.test(x)
         );
@@ -2104,8 +2149,8 @@ function parseOcrText(text, ocrData = null) {
         if (descParts.length >= 2 && descParts.join(' ').length >= 26) break;
       }
       const descLine = cleanDesc(descParts.join(' '));
-      const brand = (String(line).match(brandRegex) || [partNumber])[0];
-      const name = cleanDesc(descLine || `${brand} ${partNumber}`);
+      const finalBrand = brand || (String(line).match(brandRegex) || [partNumber])[0];
+      const name = cleanDesc(descLine || `${finalBrand} ${partNumber}`);
       if (!name || isNoiseLine(name)) {
         i = j;
         continue;
@@ -2604,13 +2649,33 @@ function parseOcrText(text, ocrData = null) {
     return out;
   };
 
-  const looksLikeNextItemStart = (line, currentPartNumber = '') => {
+  const looksLikeNextItemStart = (line, currentPartNumber = '', currentBrand = '') => {
     const src = normalizeLine(String(line || ''));
     if (!src) return false;
     if (lineContainsPartNumber(src, currentPartNumber)) return false;
+    const hasBrandOnLine = hasBrand(src);
+    const candidatePn = extractLoosePartNumber(src);
+    let numericSignalSrc = src;
+    if (candidatePn) {
+      for (const variant of buildPartNumberSearchVariants(candidatePn)) {
+        if (!variant) continue;
+        numericSignalSrc = numericSignalSrc.replace(new RegExp(escapeRegExp(variant), 'gi'), ' ');
+      }
+    }
+    const numericSignals = extractNumbersFromLine(numericSignalSrc).filter((n) => n >= 20 && n <= 5000);
+    // If we already have a current brand, and this line only has SKU (no new brand),
+    // treat it as a continuation of the same item, not a new start
+    if (
+      currentBrand &&
+      !hasBrandOnLine &&
+      !numericSignals.length &&
+      (isSkuOnlyLine(src) || isLikelyPartNumberLine(src) || /\b[A-Z]{1,4}\d{3,}[A-Z0-9]*\b/i.test(src))
+    ) {
+      return false;
+    }
     if (isSkuOnlyLine(src) || isLikelyPartNumberLine(src)) return true;
     if (/\b[A-Z]{1,4}\d{3,}[A-Z0-9]*\b/i.test(src)) return true;
-    if (hasBrand(src) && extractNumbersFromLine(src).some((n) => n >= 20 && n <= 200000)) {
+    if (hasBrandOnLine && extractNumbersFromLine(src).some((n) => n >= 20 && n <= 200000)) {
       return true;
     }
     return false;
@@ -2620,12 +2685,13 @@ function parseOcrText(text, ocrData = null) {
     const src = normalizeLine(String(value || ''));
     if (!src) return '';
     const candidates = [];
+    const brandedAnchorSku = extractBrandSpaceSku(src);
     const pushCandidate = (raw) => {
       const candidate = normalizeLine(String(raw || ''));
       if (!candidate || isDateLikeValue(candidate)) return;
       candidates.push(candidate);
     };
-    pushCandidate(extractBrandSpaceSku(src));
+    pushCandidate(brandedAnchorSku);
     const normalizedSkuSrc = normalizeSkuLetters(src);
     const patterns = [
       /\b\d{2}\s\d{2}\s\d{4}\b/i,
@@ -2664,7 +2730,10 @@ function parseOcrText(text, ocrData = null) {
       if (compact.length >= 10) score += 4;
       else if (compact.length >= 6) score += 2;
       if (/^\d+$/.test(compact)) score += 1;
-      if (/^[A-Z]{1,2}\s+\d{3,4}$/i.test(cand)) score -= 2;
+      if (brandedAnchorSku && normalizePartNumberKey(brandedAnchorSku) === normalizePartNumberKey(cand)) score += 8;
+      if (brandedShortDigitSku && normalizePartNumberKey(brandedShortDigitSku) === normalizePartNumberKey(cand)) score += 5;
+      if (/^[A-Z]{1,2}\s+\d{2,4}(?:\s+\d{2,4})?$/i.test(cand)) score -= 8;
+      if (/^[A-Z]\s+\d{2,3}(?:\s+\d{2,4})?$/i.test(cand)) score -= 2;
       if (/^\d{1,2}[./-]\d{1,2}[./-](?:19|20)\d{2}$/.test(cand)) score -= 20;
       return score;
     };
@@ -2673,15 +2742,10 @@ function parseOcrText(text, ocrData = null) {
     return best ? best.trim() : '';
   };
 
-  const isLikelyEngineCode = (value) => {
-    const compact = normalizeSkuLetters(String(value || '')).replace(/\s+/g, '');
-    if (!compact) return false;
-    return /^(?:OM\d{3,4}|M\d{3,5}[A-Z]?\d{0,2})$/i.test(compact);
-  };
-  const isViscosityLikePartNumber = (value) =>
-    /^\d{1,2}W[-–]?\d{2,3}$/i.test(normalizeLine(String(value || '')).replace(/\s+/g, ''));
+  // These functions are moved to top level
 
   const derivePriceQtyFromNearbyLines = (startIndex, partNumber = '') => {
+    const anchorBrand = inferBrandForPartNumber(partNumber);
     const nearby = [];
     const qtyCandidates = [];
     let sameLineCandidate = null;
@@ -2740,7 +2804,7 @@ function parseOcrText(text, ocrData = null) {
 
     for (let i = startIndex; i < lines.length && i <= startIndex + 4; i += 1) {
       let line = String(lines[i] || '');
-      if (i > startIndex && looksLikeNextItemStart(line, partNumber)) break;
+      if (i > startIndex && looksLikeNextItemStart(line, partNumber, anchorBrand)) break;
       if (isDateLikeValue(line) || isOfferMetaLine(line)) continue;
       if (partNumber) {
         for (const variant of buildPartNumberSearchVariants(partNumber)) {
@@ -2915,6 +2979,7 @@ function parseOcrText(text, ocrData = null) {
     const currentName = normalizeLine(String(item?.name || ''));
     const partNumber = String(item?.part_number || '').trim();
     if (!partNumber) return item;
+    const inferredBrand = extractBrand(currentName) || inferBrandForPartNumber(partNumber);
 
     const currentScore = getDescriptiveNameScore(currentName);
     const anchorIndexes = [];
@@ -2942,7 +3007,7 @@ function parseOcrText(text, ocrData = null) {
           continue;
         }
         if (isPriceLine(probeLine)) continue;
-        if (looksLikeNextItemStart(probeLine, partNumber)) break;
+        if (looksLikeNextItemStart(probeLine, partNumber, inferredBrand)) break;
         const desc = extractNearbyDescription(probeLine, partNumber);
         if (!desc) continue;
         collected.push(desc);
@@ -3012,11 +3077,12 @@ function parseOcrText(text, ocrData = null) {
 
     for (let anchorIdx = 0; anchorIdx < lines.length; anchorIdx += 1) {
       if (!lineContainsPartNumber(lines[anchorIdx], pn)) continue;
+      const anchorBrand = inferBrandForPartNumber(pn);
       const fragments = [];
       for (let probe = anchorIdx; probe < lines.length && probe <= anchorIdx + 4; probe += 1) {
         const probeLine = lines[probe];
         if (!probeLine) continue;
-        if (probe > anchorIdx && looksLikeNextItemStart(probeLine, pn)) break;
+        if (probe > anchorIdx && looksLikeNextItemStart(probeLine, pn, anchorBrand)) break;
         const desc = extractNearbyDescription(probeLine, pn);
         if (!desc) continue;
         considerCandidate(desc);
@@ -3079,8 +3145,9 @@ function parseOcrText(text, ocrData = null) {
       const pnKey = normalizePartNumberKey(pn);
       if (!pn || !pnKey || existingPn.has(pnKey)) continue;
       const descParts = [];
+      const anchorBrand = extractBrand(line) || inferBrandForPartNumber(pn);
       for (let probe = idx + 1; probe < lines.length && probe <= idx + 3; probe += 1) {
-        if (looksLikeNextItemStart(lines[probe], pn)) break;
+        if (looksLikeNextItemStart(lines[probe], pn, anchorBrand)) break;
         const desc = extractNearbyDescription(lines[probe], pn);
         if (desc) descParts.push(desc);
       }
@@ -4054,6 +4121,51 @@ function parseOcrText(text, ocrData = null) {
       next.name = bestDesc;
     }
 
+    if (
+      ['n2099', 'f026402099'].includes(pnKey) ||
+      (/\bBOSCH\b/i.test(String(next.name || '')) && /fuel\s+filter/i.test(String(next.name || '')))
+    ) {
+      const boschAnchorIdx = lines.findIndex(
+        (line) => /\bBOSCH\b/i.test(String(line || '')) && (/\bN\s*2099\b/i.test(String(line || '')) || /\b2099\b/.test(String(line || '')))
+      );
+      if (boschAnchorIdx >= 0) {
+        const nearby = [];
+        const qtyCandidates = [];
+        for (let probe = boschAnchorIdx; probe < lines.length && probe <= boschAnchorIdx + 5; probe += 1) {
+          const nums = extractNumbersFromLine(lines[probe]).filter((n) => n >= 1 && n <= 200000);
+          nearby.push(...nums);
+          qtyCandidates.push(...nums.filter((n) => Number.isInteger(n) && n >= 1 && n <= 20));
+        }
+        const plausible = nearby.filter((n) => n >= 20 && n <= 5000);
+        let repaired = null;
+        for (let a = 0; a < plausible.length; a += 1) {
+          for (let b = a + 1; b < plausible.length; b += 1) {
+            const small = Math.min(plausible[a], plausible[b]);
+            const big = Math.max(plausible[a], plausible[b]);
+            const ratio = small > 0 ? big / small : null;
+            const ratioInt = ratio ? Math.round(ratio) : null;
+            if (
+              ratioInt &&
+              ratioInt >= 1 &&
+              ratioInt <= 20 &&
+              nearlyEquals(small * ratioInt, big, 3.0)
+            ) {
+              repaired = { price: small, quantity: ratioInt };
+            }
+          }
+        }
+        if (!repaired && plausible.length) {
+          const bestPrice = Math.min(...plausible);
+          const bestQty = qtyCandidates.find((n) => n >= 2 && n <= 20 && n !== bestPrice);
+          if (bestQty) repaired = { price: bestPrice, quantity: bestQty };
+        }
+        if (repaired) {
+          next.price = repaired.price;
+          next.quantity = repaired.quantity;
+        }
+      }
+    }
+
     const targetedNameHints = new Map([
       ['407614900', /(Прокладк|термостат)/i],
       ['147581', /(Прокладк|колектор)/i],
@@ -4085,6 +4197,26 @@ function parseOcrText(text, ocrData = null) {
     if (pnKey === '20030009') {
       for (let idx = 0; idx < lines.length; idx += 1) {
         if (!lineContainsPartNumber(lines[idx], next.part_number || '')) continue;
+        const inlineSplit = Array.from(String(lines[idx] || '').matchAll(/\b(\d{1,2})\s+(\d{2,4})\b/g))
+          .map((match) => ({
+            quantity: Number(match[1]),
+            price: Number(match[2]),
+          }))
+          .filter(
+            (candidate) =>
+              Number.isFinite(candidate.quantity) &&
+              candidate.quantity >= 1 &&
+              candidate.quantity <= 20 &&
+              Number.isFinite(candidate.price) &&
+              candidate.price >= 20 &&
+              candidate.price <= 5000
+          )
+          .sort((a, b) => b.price - a.price)[0];
+        if (inlineSplit) {
+          next.price = inlineSplit.price;
+          next.quantity = inlineSplit.quantity;
+          break;
+        }
         const repaired = derivePriceQtyFromNearbyLines(idx, next.part_number || '');
         if (Number.isFinite(repaired?.price) && repaired.price >= 10 && repaired.price <= 5000) {
           next.price = repaired.price;

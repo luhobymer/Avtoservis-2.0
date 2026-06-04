@@ -164,6 +164,41 @@ FEBI BILSTEIN 06051 �� 658 � 558
     );
   });
 
+  test('scores raw-text-only OCR attempts without crashing on engine codes or viscosity specs', () => {
+    const weakAttempt = {
+      inputLabel: 'weak',
+      usedPath: 'original',
+      psm: '6',
+      rawText: `
+        random noise
+        OM642
+        75W-90
+      `,
+      parts: [],
+    };
+
+    const strongerAttempt = {
+      inputLabel: 'strong',
+      usedPath: 'preprocessed',
+      psm: '4',
+      rawText: `
+        BOSCH N 2099
+        Fuel filter
+        F 026 402 099
+        873
+        2
+        1746
+      `,
+      parts: [],
+    };
+
+    const selection = __test__.selectBestPartsOcrAttempt([weakAttempt, strongerAttempt]);
+
+    expect(selection.bestAttempt).toBeTruthy();
+    expect(selection.selectedUsedPath).toBe('preprocessed');
+    expect(selection.selectedUsedPsm).toBe('4');
+  });
+
   test('merges complementary OCR attempts when ensemble yields better coverage', () => {
     const attemptA = {
       inputLabel: 'preprocessed',
@@ -564,8 +599,10 @@ FEBI BILSTEIN 06051                      ла                          658      
       expect.objectContaining({
         name: expect.stringMatching(/fuel filter/i),
         price: 873,
+        quantity: 2,
       })
     );
+    expect(parts.filter((item) => item.part_number === 'N 2099' || item.part_number === 'F 026 402 099')).toHaveLength(1);
   });
 
   test('stabilizes the latest customer OCR dump from the current order flow', () => {
